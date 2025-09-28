@@ -63,6 +63,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Ping endpoint to keep service alive
+app.get('/ping', (req, res) => {
+  res.json({ 
+    status: 'pong', 
+    timestamp: new Date().toISOString(),
+    message: 'Service is alive'
+  });
+});
+
 
 // Force Fortune Panda re-login endpoint
 app.post('/api/health/fortune-panda/relogin', async (req, res) => {
