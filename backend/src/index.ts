@@ -63,15 +63,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Ping endpoint to keep service alive
-app.get('/ping', (req, res) => {
-  res.json({ 
-    status: 'pong', 
-    timestamp: new Date().toISOString(),
-    message: 'Service is alive'
-  });
-});
-
 
 // Force Fortune Panda re-login endpoint
 app.post('/api/health/fortune-panda/relogin', async (req, res) => {
@@ -162,15 +153,23 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const startServer = async () => {
   try {
+    console.log('🔧 Starting server initialization...');
+    console.log(`📊 Environment: ${NODE_ENV}`);
+    console.log(`🔌 Port: ${PORT}`);
+    
     // Connect to MongoDB
+    console.log('🗄️ Connecting to MongoDB...');
     await connectDB();
+    console.log('✅ MongoDB connected successfully');
     
     // Start server first
+    console.log('🚀 Starting HTTP server...');
     server.listen(PORT, () => {
       console.log(`🚀 Global Ace Gaming Backend Server running on port ${PORT}`);
       console.log(`🌍 Environment: ${NODE_ENV}`);
       console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
       console.log(`📡 WebSocket Server: ws://localhost:${PORT}`);
+      console.log('✅ Server started successfully!');
     });
     
     // Fortune Panda service will be initialized on first API call
