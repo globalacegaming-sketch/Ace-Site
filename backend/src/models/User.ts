@@ -144,9 +144,7 @@ const UserSchema = new Schema<IUser>({
   }
 });
 
-// Index for better query performance
-UserSchema.index({ email: 1 });
-UserSchema.index({ username: 1 });
+// Index for better query performance (email and username already indexed by unique: true)
 UserSchema.index({ createdAt: -1 });
 
 // Hash password before saving
