@@ -802,7 +802,7 @@ class FortunePandaService {
       
       // Get Fortune Panda info for each user
       const usersWithFortunePandaInfo = await Promise.all(
-        users.map(async (user) => {
+        users.map(async (user: any) => {
           try {
             if (user.fortunePandaUsername) {
               const fortunePandaInfo = await this.queryUserInfo(user.fortunePandaUsername, 'temp');
