@@ -29,7 +29,7 @@ export const generateTokens = (user: IUser): TokenPair => {
     expiresIn: JWT_EXPIRES_IN,
     issuer: 'global-ace-gaming',
     audience: 'global-ace-gaming-users'
-  });
+  } as jwt.SignOptions);
 
   const refreshToken = jwt.sign(
     { userId: user._id.toString() },
@@ -38,7 +38,7 @@ export const generateTokens = (user: IUser): TokenPair => {
       expiresIn: JWT_REFRESH_EXPIRES_IN,
       issuer: 'global-ace-gaming',
       audience: 'global-ace-gaming-refresh'
-    }
+    } as jwt.SignOptions
   );
 
   return { accessToken, refreshToken };
