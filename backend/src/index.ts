@@ -11,8 +11,8 @@ dotenv.config();
 // Import database connection
 import connectDB from './config/database';
 
-// Import Fortune Panda service
-import fortunePandaService from './services/fortunePandaService';
+// Import Agent Login service
+import agentLoginService from './services/agentLoginService';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -64,14 +64,14 @@ app.get('/health', (req, res) => {
 });
 
 
-// Force Fortune Panda re-login endpoint
-app.post('/api/health/fortune-panda/relogin', async (req, res) => {
+// Agent login health check endpoint
+app.post('/api/health/agent/relogin', async (req, res) => {
   try {
-    const result = await fortunePandaService.forceReLogin();
+    const result = await agentLoginService.forceReLogin();
     res.json({
       status: result.success ? 'OK' : 'ERROR',
       timestamp: new Date().toISOString(),
-      service: 'Fortune Panda Agent',
+      service: 'Agent Login Service',
       message: result.message,
       data: result.data
     });
@@ -79,35 +79,9 @@ app.post('/api/health/fortune-panda/relogin', async (req, res) => {
     res.status(500).json({
       status: 'ERROR',
       timestamp: new Date().toISOString(),
-      service: 'Fortune Panda Agent',
+      service: 'Agent Login Service',
       message: 'Force re-login failed',
       error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-// Public Fortune Panda users endpoint (for admin dashboard)
-app.get('/api/fortune-panda/users', async (req, res) => {
-  try {
-    const result = await fortunePandaService.getAllUsersWithFortunePandaInfo();
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        message: result.message,
-        data: result.data
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: result.message
-      });
-    }
-  } catch (error) {
-    console.error('Get all users error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
     });
   }
 });
@@ -172,8 +146,17 @@ const startServer = async () => {
       console.log('✅ Server started successfully!');
     });
     
-    // Fortune Panda service will be initialized on first API call
-    console.log('🔄 Fortune Panda service will be initialized on first API call');
+    // Initialize Agent Login service
+    console.log('🎰 Initializing Agent Login service...');
+    try {
+      await agentLoginService.initialize();
+      console.log('✅ Agent Login service initialized successfully');
+    } catch (error) {
+      console.warn('⚠️ Agent Login service initialization failed, but continuing:', error);
+    }
+    
+    // Agent Login service is now the primary service for game list fetching
+    console.log('🔄 Agent Login service is ready for game list fetching');
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
@@ -185,7 +168,7 @@ startServer();
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
-  fortunePandaService.cleanup();
+  agentLoginService.cleanup();
   server.close(() => {
     console.log('Process terminated');
   });
@@ -193,7 +176,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
-  fortunePandaService.cleanup();
+  agentLoginService.cleanup();
   server.close(() => {
     console.log('Process terminated');
   });
