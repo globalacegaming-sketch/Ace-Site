@@ -27,7 +27,7 @@ const Games = () => {
       setLoading(true);
       setError(null);
       
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
       const response = await axios.get(`${API_BASE_URL}/games/fortune-panda`);
       
       if (response.data.success && response.data.data.code === 200) {
@@ -59,7 +59,7 @@ const Games = () => {
       console.log('Attempting to play game:', game.gameName, 'with token:', token ? 'present' : 'missing');
       
       // Get user's Fortune Panda credentials
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
       const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -229,7 +229,7 @@ const Games = () => {
               <button
                 onClick={async () => {
                   try {
-                    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+                    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
                     const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
                       headers: { 'Authorization': `Bearer ${token}` }
                     });
