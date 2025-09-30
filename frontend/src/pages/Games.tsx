@@ -27,7 +27,8 @@ const Games = () => {
       setLoading(true);
       setError(null);
       
-      const response = await axios.get('/api/games/fortune-panda');
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      const response = await axios.get(`${API_BASE_URL}/games/fortune-panda`);
       
       if (response.data.success && response.data.data.code === 200) {
         setGames(response.data.data.data || []);
@@ -58,7 +59,8 @@ const Games = () => {
       console.log('Attempting to play game:', game.gameName, 'with token:', token ? 'present' : 'missing');
       
       // Get user's Fortune Panda credentials
-      const response = await axios.get('/api/fortune-panda-user/balance', {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -66,7 +68,7 @@ const Games = () => {
 
       if (response.data.success) {
         // Create game entry request
-        const gameResponse = await axios.post('/api/fortune-panda-user/enter-game', {
+        const gameResponse = await axios.post(`${API_BASE_URL}/fortune-panda-user/enter-game`, {
           kindId: game.kindId.toString()
         }, {
           headers: {
@@ -227,7 +229,8 @@ const Games = () => {
               <button
                 onClick={async () => {
                   try {
-                    const response = await axios.get('/api/fortune-panda-user/balance', {
+                    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+                    const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
                       headers: { 'Authorization': `Bearer ${token}` }
                     });
                     console.log('Balance response:', response.data);
