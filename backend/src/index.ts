@@ -29,20 +29,46 @@ import proxyRoutes from './routes/proxy';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 
+// CORS configuration for multiple origins
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000", 
+  "https://ace-site-rouge.vercel.app",
+  process.env.FRONTEND_URL
+].filter(Boolean); // Remove any undefined values
+
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
 // Middleware
 app.use(helmet());
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Allow any Vercel preview URLs
+    if (origin && origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -59,7 +85,11 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     timestamp: new Date().toISOString(),
     service: 'Global Ace Gaming Backend',
-    version: '1.0.0'
+    version: '1.0.0',
+    cors: {
+      allowedOrigins: allowedOrigins,
+      requestOrigin: req.headers.origin
+    }
   });
 });
 
