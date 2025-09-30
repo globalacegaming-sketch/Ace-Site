@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '../utils/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
+const API_BASE_URL = getApiBaseUrl();
 
 // Fortune Panda API service for frontend
 class FortunePandaAPI {

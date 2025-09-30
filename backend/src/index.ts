@@ -34,7 +34,9 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000", 
   "https://ace-site-rouge.vercel.app",
-  process.env.FRONTEND_URL
+  process.env.FRONTEND_URL,
+  process.env.VITE_FRONTEND_URL,
+  process.env.PRODUCTION_FRONTEND_URL
 ].filter(Boolean); // Remove any undefined values
 
 const app = express();
@@ -61,6 +63,11 @@ app.use(cors({
     
     // Allow any Vercel preview URLs
     if (origin && origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // Allow any localhost development
+    if (origin && origin.includes('localhost')) {
       return callback(null, true);
     }
     

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Gamepad2, Play, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
+import { getApiBaseUrl, getGamesApiUrl } from '../utils/api';
 
 interface Game {
   kindId: number;
@@ -27,8 +28,9 @@ const Games = () => {
       setLoading(true);
       setError(null);
       
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
-      const response = await axios.get(`${API_BASE_URL}/games/fortune-panda`);
+      const GAMES_API_URL = getGamesApiUrl();
+      console.log('GAMES_API_URL:', GAMES_API_URL);
+      const response = await axios.get(GAMES_API_URL);
       
       if (response.data.success && response.data.data.code === 200) {
         setGames(response.data.data.data || []);
@@ -59,7 +61,7 @@ const Games = () => {
       console.log('Attempting to play game:', game.gameName, 'with token:', token ? 'present' : 'missing');
       
       // Get user's Fortune Panda credentials
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
+      const API_BASE_URL = getApiBaseUrl();
       const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -229,7 +231,7 @@ const Games = () => {
               <button
                 onClick={async () => {
                   try {
-                    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://global-ace-gaming-backend.onrender.com/api';
+                    const API_BASE_URL = getApiBaseUrl();
                     const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
                       headers: { 'Authorization': `Bearer ${token}` }
                     });
