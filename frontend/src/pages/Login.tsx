@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
-// import fortunePandaAPI from '../services/fortunePandaApi';
+import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const loginSchema = z.object({
@@ -36,7 +36,8 @@ const Login = () => {
 
     try {
       // Call the backend API for authentication
-      const response = await fetch('/api/auth/login', {
+      const API_BASE_URL = getApiBaseUrl();
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

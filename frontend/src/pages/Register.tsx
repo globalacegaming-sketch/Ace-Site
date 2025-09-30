@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const registerSchema = z.object({
@@ -45,7 +46,8 @@ const Register = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/register', {
+      const API_BASE_URL = getApiBaseUrl();
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

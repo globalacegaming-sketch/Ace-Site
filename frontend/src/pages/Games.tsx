@@ -3,6 +3,7 @@ import { Gamepad2, Play, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getGamesApiUrl } from '../utils/api';
+import EnvTest from '../components/EnvTest';
 
 interface Game {
   kindId: number;
@@ -204,6 +205,9 @@ const Games = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
+      {/* Environment Test - Remove this after testing */}
+      <EnvTest />
+      
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-10 left-10 w-32 h-32 bg-yellow-400 rounded-full opacity-20 animate-pulse"></div>
