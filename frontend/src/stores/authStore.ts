@@ -63,7 +63,7 @@ export const useAuthStore = create<AuthState>()(
         const { user } = get();
         if (user) {
           set({
-            user: { ...user, balance }
+            user: { ...user, fortunePandaBalance: balance }
           });
         }
       },

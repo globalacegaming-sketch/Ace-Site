@@ -5,8 +5,8 @@ const Settings = () => {
   const { user } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: user?.firstname || '',
-    lastName: user?.lastname || '',
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
     email: user?.email || '',
     phone: '',
   });
@@ -27,8 +27,8 @@ const Settings = () => {
 
   const handleCancel = () => {
     setFormData({
-      firstName: user?.firstname || '',
-      lastName: user?.lastname || '',
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
       email: user?.email || '',
       phone: '',
     });
@@ -133,20 +133,20 @@ const Settings = () => {
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium text-gray-900 mb-2">Member Since</h3>
                 <p className="text-sm text-gray-600">
-                  {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                  {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
                 </p>
               </div>
 
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium text-gray-900 mb-2">Last Login</h3>
                 <p className="text-sm text-gray-600">
-                  {user?.updated_at ? new Date(user.updated_at).toLocaleDateString() : 'N/A'}
+                  {user?.updatedAt ? new Date(user.updatedAt).toLocaleDateString() : 'N/A'}
                 </p>
               </div>
 
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium text-gray-900 mb-2">Fortune Account</h3>
-                <p className="text-sm text-gray-600">{user?.fortune_account || 'N/A'}</p>
+                <p className="text-sm text-gray-600">{user?.fortunePandaUsername || 'N/A'}</p>
               </div>
             </div>
           </div>

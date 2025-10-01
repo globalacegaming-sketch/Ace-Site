@@ -39,7 +39,7 @@ const Dashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">
-            Welcome back, {user?.firstname || 'Player'}! 🎮
+            Welcome back, {user?.firstName || 'Player'}! 🎮
           </h1>
           <p className="text-gray-300">
             Ready to play? Choose your next adventure from our extensive game library.
