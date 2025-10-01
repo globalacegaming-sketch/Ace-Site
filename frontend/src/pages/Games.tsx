@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Gamepad2, Play, Loader2 } from 'lucide-react';
+import { Play, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getGamesApiUrl } from '../utils/api';
@@ -16,24 +16,33 @@ const Games = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playingGame, setPlayingGame] = useState<number | null>(null);
-  const { isAuthenticated, token, user } = useAuthStore();
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
     fetchGames();
   }, []);
-  
+
+  const filteredGames = games.filter((game) => {
+    if (selectedCategory === 'All') return true;
+    const categoryMap: { [key: string]: string[] } = {
+      Slots: ['SLOT'],
+      Fishing: ['FISH'],
+      Live: ['LIVE', 'POKER'],
+      Sports: ['SPORT', 'SPORTS'],
+    };
+    const gameTypes = categoryMap[selectedCategory] || [];
+    return gameTypes.includes(game.gameType);
+  });
 
   const fetchGames = async () => {
     try {
       setLoading(true);
       setError(null);
-      
       const GAMES_API_URL = getGamesApiUrl();
-      console.log('GAMES_API_URL:', GAMES_API_URL);
       const response = await axios.get(GAMES_API_URL);
-      
-      if (response.data.success && response.data.data.code === 200) {
-        setGames(response.data.data.data || []);
+      if (response.data.success) {
+        setGames(response.data.data || []);
       } else {
         setError(response.data.message || 'Failed to fetch games');
       }
@@ -51,20 +60,14 @@ const Games = () => {
       return;
     }
 
-    if (!token) {
-      alert('Authentication token not found. Please log in again.');
-      return;
-    }
-
     try {
       setPlayingGame(game.kindId);
-      console.log('Attempting to play game:', game.gameName, 'with token:', token ? 'present' : 'missing');
       
       // Get user's Fortune Panda credentials
       const API_BASE_URL = getApiBaseUrl();
       const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${useAuthStore.getState().token}`
         }
       });
 
@@ -74,13 +77,11 @@ const Games = () => {
           kindId: game.kindId.toString()
         }, {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${useAuthStore.getState().token}`
           }
         });
 
         if (gameResponse.data.success) {
-          console.log('Game entry response:', gameResponse.data);
-          
           // Check for game URL in different possible locations
           const gameUrl = gameResponse.data.data?.webLoginUrl || 
                          gameResponse.data.data?.gameUrl || 
@@ -89,111 +90,18 @@ const Games = () => {
                          gameResponse.data.data?.loginUrl ||
                          gameResponse.data.data?.login_url;
           
-          console.log('Game URL found:', gameUrl);
-          
           if (gameUrl) {
             // Open game in new window
             const gameWindow = window.open(gameUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
-            if (gameWindow) {
-              console.log('Game window opened successfully');
-            } else {
+            if (!gameWindow) {
               alert('Popup blocked! Please allow popups for this site and try again.');
             }
           } else {
-            // Show the full response data for debugging
-            console.log('No game URL found. Full response:', gameResponse.data);
-            
-            // Create a simple game interface as fallback
-            const gameWindow = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
-            if (gameWindow) {
-              gameWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <title>${game.gameName} - Global Ace Gaming</title>
-                  <style>
-                    body { 
-                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                      color: white; 
-                      font-family: Arial, sans-serif; 
-                      margin: 0; 
-                      padding: 20px;
-                      text-align: center;
-                    }
-                    .game-container {
-                      max-width: 800px;
-                      margin: 0 auto;
-                      padding: 40px;
-                    }
-                    .game-title {
-                      font-size: 2.5em;
-                      margin-bottom: 20px;
-                      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-                    }
-                    .game-info {
-                      background: rgba(255,255,255,0.1);
-                      padding: 20px;
-                      border-radius: 10px;
-                      margin: 20px 0;
-                    }
-                    .status {
-                      font-size: 1.2em;
-                      margin: 20px 0;
-                      padding: 15px;
-                      background: rgba(0,255,0,0.2);
-                      border-radius: 5px;
-                      border: 1px solid #00ff00;
-                    }
-                    .response-data {
-                      background: rgba(0,0,0,0.3);
-                      padding: 15px;
-                      border-radius: 5px;
-                      margin: 20px 0;
-                      text-align: left;
-                      font-family: monospace;
-                      font-size: 0.9em;
-                      max-height: 300px;
-                      overflow-y: auto;
-                    }
-                  </style>
-                </head>
-                <body>
-                  <div class="game-container">
-                    <h1 class="game-title">🎮 ${game.gameName}</h1>
-                    <div class="game-info">
-                      <p><strong>Game Type:</strong> ${game.gameType}</p>
-                      <p><strong>Game ID:</strong> ${game.kindId}</p>
-                    </div>
-                    <div class="status">
-                      ✅ Game session established successfully!
-                    </div>
-                    <p>Your game session is ready. The game should be loading...</p>
-                    <div class="response-data">
-                      <strong>API Response:</strong><br>
-                      <pre>${JSON.stringify(gameResponse.data.data, null, 2)}</pre>
-                    </div>
-                    <p><em>If the game doesn't load automatically, please contact support.</em></p>
-                  </div>
-                </body>
-                </html>
-              `);
-              gameWindow.document.close();
-            } else {
-              alert(`Game ${game.gameName} is ready to play!\n\nResponse: ${JSON.stringify(gameResponse.data.data, null, 2)}`);
-            }
+            alert('Game URL not found in response. Please try again.');
           }
         } else {
-          alert(`Failed to enter game: ${gameResponse.data.message}`);
+          alert('Failed to start game. Please try again.');
         }
-      } else {
-        alert('Failed to get user balance. Please try again.');
-      }
-    } catch (error: any) {
-      console.error('Error playing game:', error);
-      if (error.response?.status === 401) {
-        alert('Authentication failed. Please log in again.');
-      } else if (error.response?.status === 400) {
-        alert(`Game entry failed: ${error.response.data?.message || 'Unknown error'}`);
       } else {
         alert('Failed to start game. Please try again.');
       }
@@ -203,178 +111,137 @@ const Games = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-10 left-10 w-32 h-32 bg-yellow-400 rounded-full opacity-20 animate-pulse"></div>
-        <div className="absolute top-32 right-20 w-24 h-24 bg-red-400 rounded-full opacity-30 animate-bounce"></div>
-        <div className="absolute bottom-20 left-1/4 w-16 h-16 bg-green-400 rounded-full opacity-25 animate-pulse"></div>
+    <div className="min-h-screen bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#312e81] relative overflow-hidden">
+      {/* Decorative glowing orbs */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-20 left-10 w-64 h-64 bg-purple-500 rounded-full blur-3xl opacity-30 animate-pulse"></div>
+        <div className="absolute bottom-20 right-10 w-72 h-72 bg-blue-500 rounded-full blur-3xl opacity-25 animate-ping"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full mb-6 shadow-2xl">
-            <Gamepad2 className="w-10 h-10 text-black" />
-          </div>
-          <h1 className="text-5xl font-bold text-white mb-4 drop-shadow-lg">
-            FORTUNE PANDA
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-4 sm:py-8 lg:py-12">
+        {/* Welcome Section */}
+        <div className="text-center mb-6 sm:mb-8 lg:mb-12">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">
+            Welcome to Our Games
           </h1>
-          <p className="text-xl text-yellow-300 mb-8 font-semibold">
-            Exclusive Gaming Experience
+          <p className="text-base sm:text-lg text-blue-200 px-4">
+            Choose your favorite game and start playing
           </p>
-          {isAuthenticated && (
-            <div className="bg-green-900 bg-opacity-50 border border-green-500 rounded-lg p-4 max-w-md mx-auto mb-8">
-              <p className="text-green-300 text-sm">
-                ✅ Logged in as: {user?.email || 'User'} | Token: {token ? 'Present' : 'Missing'}
-              </p>
-              <button
-                onClick={async () => {
-                  try {
-                    const API_BASE_URL = getApiBaseUrl();
-                    const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
-                      headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    console.log('Balance response:', response.data);
-                    alert(`Balance: ${response.data.data?.balance || 'Unknown'}`);
-                  } catch (error: any) {
-                    console.error('Balance test error:', error);
-                    alert(`Error: ${error.response?.data?.message || error.message}`);
-                  }
-                }}
-                className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
-              >
-                Test Balance API
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Game Categories Tabs */}
-        <div className="flex flex-wrap justify-center gap-2 mb-12">
-          {['All', 'FISH', 'SLOT', 'KENO', 'POKER'].map((category) => (
+
+        {/* Categories */}
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-8 sm:mb-12 lg:mb-16 px-2">
+          {[
+            { name: 'All', icon: '🎮', color: 'from-purple-500 to-pink-500' },
+            { name: 'Slots', icon: '🎰', color: 'from-green-500 to-emerald-500' },
+            { name: 'Fishing', icon: '🎣', color: 'from-blue-500 to-cyan-500' },
+            { name: 'Live', icon: '🎲', color: 'from-red-500 to-orange-500' },
+            { name: 'Sports', icon: '⚽', color: 'from-yellow-500 to-amber-500' },
+          ].map((category) => (
             <button
-              key={category}
-              className={`px-6 py-3 rounded-full font-semibold transition-all duration-300 ${
-                category === 'All'
-                  ? 'bg-gray-800 text-white shadow-lg'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+              key={category.name}
+              className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all flex items-center gap-2 sm:gap-3 text-xs sm:text-sm md:text-base shadow-lg hover:shadow-xl transform hover:scale-105 ${
+                selectedCategory === category.name
+                  ? `bg-gradient-to-r ${category.color} text-white shadow-2xl scale-105`
+                  : 'bg-gray-800/80 backdrop-blur-lg text-gray-300 hover:bg-gray-700 hover:text-white border border-gray-600/50'
               }`}
+              onClick={() => setSelectedCategory(category.name)}
             >
-              {category}
+              <span className="text-sm sm:text-lg">{category.icon}</span> 
+              <span className="hidden sm:inline">{category.name}</span>
+              <span className="sm:hidden">{category.name}</span>
             </button>
           ))}
         </div>
 
+        {/* Content */}
         {loading ? (
-          <div className="flex justify-center items-center py-20">
-            <div className="text-center">
-              <Loader2 className="w-12 h-12 animate-spin text-yellow-400 mx-auto mb-4" />
-              <span className="text-xl text-white font-semibold">Loading Games...</span>
-            </div>
+          <div className="flex justify-center items-center py-28">
+            <Loader2 className="w-14 h-14 animate-spin text-yellow-400" />
           </div>
         ) : error ? (
           <div className="text-center py-20">
-            <div className="bg-gray-800 bg-opacity-80 backdrop-blur-sm rounded-2xl p-8 max-w-md mx-auto border border-gray-700">
-              <p className="text-red-400 mb-6 text-lg">{error}</p>
+            <div className="bg-gray-800/80 backdrop-blur-lg rounded-2xl p-10 max-w-md mx-auto border border-red-400/40 shadow-lg">
+              <p className="text-red-400 mb-6 text-lg font-semibold">{error}</p>
               <button
                 onClick={fetchGames}
-                className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-8 rounded-full hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-lg"
+                className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-8 rounded-full hover:from-yellow-500 hover:to-yellow-600 transition-all shadow-lg"
               >
                 Try Again
               </button>
             </div>
           </div>
-        ) : games.length === 0 ? (
+        ) : filteredGames.length === 0 ? (
           <div className="text-center py-20">
-            <div className="bg-gray-800 bg-opacity-80 backdrop-blur-sm rounded-2xl p-8 max-w-md mx-auto border border-gray-700">
-              <p className="text-gray-300 text-lg">No games available at the moment.</p>
-            </div>
+            <p className="text-gray-400 text-lg">No games available right now 🚫</p>
           </div>
         ) : (
-               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-                 {games.map((game) => (
-                   <div key={game.kindId} className="group bg-gray-800 bg-opacity-80 backdrop-blur-sm rounded-xl overflow-hidden border border-gray-700 hover:border-yellow-400 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-yellow-400/20">
-                     {/* Game Image */}
-                     <div className="relative aspect-square">
-                       <img 
-                         src={game.gameLogo} 
-                         alt={game.gameName}
-                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                         onError={(e) => {
-                           e.currentTarget.src = 'https://via.placeholder.com/300x300/1F2937/FFFFFF?text=Game';
-                         }}
-                       />
-                       {/* Game Type Badge */}
-                       <div className="absolute top-2 right-2">
-                         <span className="bg-black bg-opacity-80 text-white text-xs px-2 py-1 rounded-full font-semibold">
-                           {game.gameType}
-                         </span>
-                       </div>
-                       {/* Game ID Badge */}
-                       <div className="absolute top-2 left-2">
-                         <span className="bg-yellow-400 text-black text-xs px-2 py-1 rounded-full font-bold">
-                           #{game.kindId}
-                         </span>
-                       </div>
-                       {/* Play Button Overlay */}
-                       <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all duration-300 flex items-center justify-center">
-                         <button
-                           onClick={() => handlePlayGame(game)}
-                           disabled={playingGame === game.kindId}
-                           className="opacity-0 group-hover:opacity-100 bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-2 px-4 rounded-full hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 transform scale-75 group-hover:scale-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                         >
-                           {playingGame === game.kindId ? (
-                             <>
-                               <Loader2 className="w-4 h-4 mr-1 inline animate-spin" />
-                               LOADING...
-                             </>
-                           ) : (
-                             <>
-                               <Play className="w-4 h-4 mr-1 inline" />
-                               {isAuthenticated ? 'PLAY' : 'LOGIN TO PLAY'}
-                             </>
-                           )}
-                         </button>
-                       </div>
-                     </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 lg:gap-6 px-2 sm:px-0">
+            {filteredGames.map((game) => (
+              <div
+                key={game.kindId}
+                className="group relative bg-gray-900/80 backdrop-blur-lg rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-600/50 hover:border-blue-400/80 shadow-lg hover:shadow-[0_0_30px_rgba(59,130,246,0.6)] transition-all duration-500 transform hover:scale-105"
+              >
+                {/* Game Image */}
+                <div className="relative aspect-square overflow-hidden">
+                  <img
+                    src={game.gameLogo}
+                    alt={game.gameName}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    onError={(e) => {
+                      e.currentTarget.src =
+                        'https://via.placeholder.com/300x300/1F2937/FFFFFF?text=Game';
+                    }}
+                  />
+                  {/* Game Type Badge */}
+                  <div className="absolute top-3 right-3">
+                    <span className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-xs px-3 py-1.5 rounded-full font-bold shadow-lg backdrop-blur-sm">
+                      {game.gameType}
+                    </span>
+                  </div>
+                  {/* Overlay Play Button */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center">
+                    <button
+                      onClick={() => handlePlayGame(game)}
+                      disabled={playingGame === game.kindId}
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-2 sm:py-3 lg:py-4 px-4 sm:px-6 lg:px-8 rounded-xl sm:rounded-2xl hover:scale-110 transition-all duration-300 disabled:opacity-50 shadow-2xl hover:shadow-[0_0_25px_rgba(59,130,246,0.8)] transform hover:-translate-y-1 text-xs sm:text-sm"
+                    >
+                      {playingGame === game.kindId ? (
+                        <>
+                          <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-1 sm:mr-2 inline animate-spin" />
+                          <span className="hidden sm:inline">Loading...</span>
+                          <span className="sm:hidden">...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 mr-1 sm:mr-2 inline" />
+                          <span className="hidden sm:inline">
+                            {isAuthenticated ? 'PLAY NOW' : 'LOGIN TO PLAY'}
+                          </span>
+                          <span className="sm:hidden">
+                            {isAuthenticated ? 'PLAY' : 'LOGIN'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-                     {/* Game Info */}
-                     <div className="p-3">
-                       <h3 className="text-sm font-bold text-white mb-1 line-clamp-2 group-hover:text-yellow-300 transition-colors">
-                         {game.gameName}
-                       </h3>
-                       <p className="text-xs text-gray-400 capitalize">
-                         {game.gameType} Game
-                       </p>
-                     </div>
-                   </div>
-                 ))}
-               </div>
-        )}
-
-        {games.length > 0 && (
-          <div className="mt-16 text-center">
-            <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-2xl p-8 max-w-2xl mx-auto">
-              <h2 className="text-2xl font-bold text-black mb-4">Ready to Play?</h2>
-              <p className="text-black text-lg mb-6">
-                Join thousands of players and start your gaming journey today!
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a 
-                  href="/register" 
-                  className="bg-black text-yellow-400 font-bold py-3 px-8 rounded-full hover:bg-gray-800 transition-all duration-300 shadow-lg"
-                >
-                  Sign Up Now
-                </a>
-                <a 
-                  href="/login" 
-                  className="bg-transparent border-2 border-black text-black font-bold py-3 px-8 rounded-full hover:bg-black hover:text-yellow-400 transition-all duration-300"
-                >
-                  Login
-                </a>
+                {/* Game Info */}
+                <div className="p-3 sm:p-4 lg:p-5">
+                  <h3 className="text-sm sm:text-base lg:text-lg font-bold text-white truncate group-hover:text-blue-300 transition-colors duration-300">
+                    {game.gameName}
+                  </h3>
+                  <div className="mt-1 sm:mt-2 flex items-center justify-between">
+                    <span className="text-xs text-gray-400 font-medium">
+                      {game.gameType}
+                    </span>
+                    <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         )}
       </div>

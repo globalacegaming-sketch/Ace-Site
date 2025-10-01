@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Gamepad2, Wallet, User, Trophy, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { useBalancePolling } from '../hooks/useBalancePolling';
 
 const Dashboard = () => {
   const { user, lastRechargeStatus } = useAuthStore();
+  const { balance } = useBalancePolling(30000); // Poll every 30 seconds
 
   // const getStatusColor = (status: string | null) => {
   //   switch (status) {
@@ -45,23 +47,15 @@ const Dashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gray-900 bg-opacity-95 backdrop-blur-sm rounded-2xl p-6 border border-gray-700 text-center">
-            <div className="w-12 h-12 bg-gradient-to-r from-green-400 to-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Wallet className="w-6 h-6 text-black" />
-            </div>
-            <h3 className="text-2xl font-bold text-white mb-1">
-              ${user?.balance?.toFixed(2) || '0.00'}
-            </h3>
-            <p className="text-gray-300">Current Balance</p>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-gray-900 bg-opacity-95 backdrop-blur-sm rounded-2xl p-6 border border-gray-700 text-center">
             <div className="w-12 h-12 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4">
               <Gamepad2 className="w-6 h-6 text-black" />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-1">1000+</h3>
-            <p className="text-gray-300">Games Available</p>
+            <h3 className="text-2xl font-bold text-white mb-1">
+              ${balance || '0.00'}
+            </h3>
+            <p className="text-gray-300">Fortune Panda Balance</p>
           </div>
 
           <div className="bg-gray-900 bg-opacity-95 backdrop-blur-sm rounded-2xl p-6 border border-gray-700 text-center">

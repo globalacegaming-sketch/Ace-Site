@@ -1,14 +1,27 @@
 // User related types
 export interface User {
   id: string;
-  firstname: string;
-  lastname: string;
+  username: string;
   email: string;
-  fortune_account: string;
-  balance: number;
-  status: 'active' | 'inactive' | 'suspended';
-  created_at: string;
-  updated_at: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  country?: string;
+  currency?: string;
+  isEmailVerified: boolean;
+  isPhoneVerified: boolean;
+  isActive: boolean;
+  role: 'user' | 'admin' | 'moderator';
+  lastLogin?: string;
+  fortunePandaUsername?: string;
+  fortunePandaPassword?: string;
+  fortunePandaBalance?: number;
+  fortunePandaLastSync?: string;
+  referralCode?: string;
+  referredBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserSession {

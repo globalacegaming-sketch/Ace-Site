@@ -91,8 +91,8 @@ router.post('/register', async (req: Request, res: Response) => {
       userReferralCode = generateReferralCode();
     }
 
-    // Generate Fortune Panda credentials
-    const fortunePandaUsername = fortunePandaService.generateFortunePandaUsername(username);
+    // Generate Fortune Panda credentials using {firstName}_Aces9F format
+    const fortunePandaUsername = `${firstName}_Aces9F`;
     const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
 
     // Create new user

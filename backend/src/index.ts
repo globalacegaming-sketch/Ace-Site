@@ -13,6 +13,7 @@ import connectDB from './config/database';
 
 // Import Agent Login service
 import agentLoginService from './services/agentLoginService';
+import fortunePandaService from './services/fortunePandaService';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -192,8 +193,17 @@ const startServer = async () => {
       console.warn('⚠️ Agent Login service initialization failed, but continuing:', error);
     }
     
-    // Agent Login service is now the primary service for game list fetching
-    console.log('🔄 Agent Login service is ready for game list fetching');
+    // Initialize Fortune Panda service
+    console.log('🎰 Initializing Fortune Panda service...');
+    try {
+      await fortunePandaService.initialize();
+      console.log('✅ Fortune Panda service initialized successfully');
+    } catch (error) {
+      console.warn('⚠️ Fortune Panda service initialization failed, but continuing:', error);
+    }
+    
+    // Services are now ready for game list fetching
+    console.log('🔄 Services are ready for game list fetching');
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
@@ -206,6 +216,7 @@ startServer();
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   agentLoginService.cleanup();
+  fortunePandaService.cleanup();
   server.close(() => {
     console.log('Process terminated');
   });
@@ -214,6 +225,7 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   agentLoginService.cleanup();
+  fortunePandaService.cleanup();
   server.close(() => {
     console.log('Process terminated');
   });

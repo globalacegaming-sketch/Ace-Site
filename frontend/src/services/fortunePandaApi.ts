@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
+import { useAuthStore } from '../stores/authStore';
 
 const API_BASE_URL = getApiBaseUrl();
 
 // Fortune Panda API service for frontend
 class FortunePandaAPI {
   private getAuthHeaders() {
-    const token = localStorage.getItem('token');
+    const token = useAuthStore.getState().token;
     return {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
@@ -151,6 +152,18 @@ class FortunePandaAPI {
         kindId
       }, {
         headers: this.getAuthHeaders()
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getUserBalance() {
+    try {
+      const headers = this.getAuthHeaders();
+      const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
+        headers
       });
       return response.data;
     } catch (error) {

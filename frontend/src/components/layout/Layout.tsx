@@ -12,9 +12,12 @@ import {
   User,
   X,
   LogOut,
-  Wallet
+  Wallet,
+  Coins,
+  RefreshCw
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useBalancePolling } from '../../hooks/useBalancePolling';
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,6 +29,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [isMobile, setIsMobile] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuthStore();
+  const { balance, isLoading: balanceLoading, fetchBalance } = useBalancePolling(30000);
   const location = useLocation();
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -85,7 +89,6 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Games', href: '/games', icon: Gamepad2 },
     { name: 'Platforms', href: '/platforms', icon: Settings },
     { name: 'Bonuses', href: '/bonuses', icon: Star },
-    { name: 'Support', href: '/support', icon: Headphones },
   ];
 
   return (
@@ -99,28 +102,30 @@ const Layout = ({ children }: LayoutProps) => {
       </div>
 
       {/* Full Width Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-gray-900 bg-opacity-95 backdrop-blur-sm border-b border-gray-700 px-4 py-3 w-full">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-gray-900 bg-opacity-95 backdrop-blur-sm border-b border-gray-700 px-2 sm:px-4 py-1 sm:py-1.5 w-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="text-gray-400 hover:text-white mr-4 transition-colors duration-300 p-2 rounded-lg hover:bg-gray-800"
+                className="text-gray-400 hover:text-white mr-2 sm:mr-4 transition-colors duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-gray-800"
               >
-                <Menu className="w-6 h-6" />
+                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             )}
             <div className="flex items-center">
-              <div className="w-8 h-8 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded flex items-center justify-center mr-3">
-                <Gamepad2 className="w-5 h-5 text-black" />
-              </div>
-              <span className="text-white font-bold text-xl">GLOBAL ACE GAMING</span>
+              <img 
+                src="/logo.png" 
+                alt="Global Ace Gaming" 
+                className="w-10 h-10 sm:w-14 sm:h-14 mr-2 sm:mr-3 object-contain"
+              />
+              <span className="text-white font-bold text-sm sm:text-lg lg:text-xl">GLOBAL ACE GAMING</span>
             </div>
           </div>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4">
             {/* Search Bar */}
-            <div className="hidden md:flex items-center">
+            <div className="hidden lg:flex items-center">
               <div className="relative">
                 <input
                   type="text"
@@ -133,27 +138,38 @@ const Layout = ({ children }: LayoutProps) => {
             
             {/* Notification Bell */}
             <div className="relative">
-              <button className="text-gray-400 hover:text-white transition-all duration-300 p-2 rounded-lg hover:bg-gray-800">
-                <Bell className="w-5 h-5" />
+              <button className="text-gray-400 hover:text-white transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-gray-800">
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
+              <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-xs">0</span>
             </div>
             
-            {/* Star/Coin Icon */}
-            <div className="relative">
-              <button className="text-gray-400 hover:text-white transition-all duration-300 p-2 rounded-lg hover:bg-gray-800">
-                <Star className="w-5 h-5" />
-              </button>
-              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
-            </div>
+            {/* Balance Display */}
+            {isAuthenticated && (
+              <div className="flex items-center space-x-1 sm:space-x-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-black px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-full shadow-lg">
+                <Coins className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="font-bold text-xs sm:text-sm">
+                  ${balance || '0.00'}
+                </span>
+                <button
+                  onClick={() => fetchBalance(true)}
+                  disabled={balanceLoading}
+                  className={`p-0.5 sm:p-1 rounded-full transition ${
+                    balanceLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-yellow-600/20'
+                  }`}
+                >
+                  <RefreshCw className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${balanceLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            )}
             
             {isAuthenticated ? (
-              <div className="flex items-center space-x-3 relative" ref={userMenuRef}>
+              <div className="flex items-center space-x-2 sm:space-x-3 relative" ref={userMenuRef}>
                 <button 
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                  className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center transition-transform duration-300 hover:scale-110"
+                  className="w-6 h-6 sm:w-8 sm:h-8 bg-yellow-400 rounded-full flex items-center justify-center transition-transform duration-300 hover:scale-110"
                 >
-                  <span className="text-black font-bold text-sm">
+                  <span className="text-black font-bold text-xs sm:text-sm">
                     {user?.email?.charAt(0).toUpperCase()}
                   </span>
                 </button>
@@ -281,15 +297,15 @@ const Layout = ({ children }: LayoutProps) => {
 
         {/* Mobile Sidebar */}
         {isMobile && (
-          <div className={`fixed top-16 bottom-0 left-0 z-50 w-64 bg-gray-900 bg-opacity-95 backdrop-blur-sm transform transition-transform duration-500 ease-in-out shadow-2xl ${
+          <div className={`fixed top-14 sm:top-16 bottom-0 left-0 z-50 w-64 bg-gray-900 bg-opacity-95 backdrop-blur-sm transform transition-transform duration-500 ease-in-out shadow-2xl ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}>
-            <div className="flex items-center justify-end h-16 px-4 border-b border-gray-700">
+            <div className="flex items-center justify-end h-14 sm:h-16 px-4 border-b border-gray-700">
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="text-gray-400 hover:text-white transition-colors duration-300 p-2 rounded-lg hover:bg-gray-800"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
             
@@ -303,7 +319,7 @@ const Layout = ({ children }: LayoutProps) => {
                     <li key={item.name}>
                       <Link
                         to={item.href}
-                        className={`flex items-center px-3 py-2.5 rounded-lg transition-all duration-300 ease-in-out group relative ${
+                        className={`flex items-center px-3 py-3 rounded-lg transition-all duration-300 ease-in-out group relative ${
                           isActive
                             ? 'bg-gray-700 text-white font-medium shadow-md'
                             : 'text-gray-300 hover:bg-gray-800 hover:text-white hover:shadow-sm'
@@ -324,33 +340,33 @@ const Layout = ({ children }: LayoutProps) => {
         )}
 
         {/* Main Content */}
-        <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 pt-16 ${
+        <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 pt-14 sm:pt-16 ${
           !isMobile && sidebarCollapsed ? 'ml-16' : !isMobile ? 'ml-64' : 'ml-0'
         }`}>
           {/* Main Content Area */}
-          <main className="flex-1 pb-20 lg:pb-0">
-        {children}
-      </main>
+          <main className="flex-1 pb-16 sm:pb-20 lg:pb-0 -mt-2 sm:mt-0">
+            {children}
+          </main>
         </div>
       </div>
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 bg-opacity-95 backdrop-blur-sm border-t border-gray-700 shadow-2xl">
-          <div className="flex items-center justify-around py-2">
+          <div className="flex items-center justify-around py-1.5 sm:py-2">
             {mobileNavItems.map((item) => {
               const isActive = location.pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`flex flex-col items-center py-2 px-3 rounded-xl transition-all duration-300 group ${
+                  className={`flex flex-col items-center py-1.5 sm:py-2 px-2 sm:px-3 rounded-xl transition-all duration-300 group ${
                     isActive
                       ? 'text-yellow-400 bg-yellow-400 bg-opacity-10'
                       : 'text-gray-400 hover:text-white hover:bg-gray-800'
                   }`}
                 >
-                  <item.icon className={`w-6 h-6 mb-1 transition-transform duration-300 ${
+                  <item.icon className={`w-5 h-5 sm:w-6 sm:h-6 mb-0.5 sm:mb-1 transition-transform duration-300 ${
                     isActive ? 'scale-110' : 'group-hover:scale-110'
                   }`} />
                   <span className={`text-xs font-medium transition-all duration-300 ${

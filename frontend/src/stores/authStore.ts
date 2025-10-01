@@ -8,6 +8,8 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   lastRechargeStatus: 'success' | 'failed' | 'processing' | null;
+  fortunePandaBalance: string | null;
+  balanceLastUpdated: number | null;
   
   // Actions
   setUser: (user: User) => void;
@@ -17,6 +19,8 @@ interface AuthState {
   login: (session: UserSession) => void;
   logout: () => void;
   updateBalance: (balance: number) => void;
+  setFortunePandaBalance: (balance: string) => void;
+  setBalanceLastUpdated: (timestamp: number) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -27,6 +31,8 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       lastRechargeStatus: null,
+      fortunePandaBalance: null,
+      balanceLastUpdated: null,
 
       setUser: (user: User) => set({ user }),
       
@@ -49,6 +55,8 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: false,
         isLoading: false,
         lastRechargeStatus: null,
+        fortunePandaBalance: null,
+        balanceLastUpdated: null,
       }),
       
       updateBalance: (balance: number) => {
@@ -59,6 +67,13 @@ export const useAuthStore = create<AuthState>()(
           });
         }
       },
+
+      setFortunePandaBalance: (balance: string) => set({ 
+        fortunePandaBalance: balance,
+        balanceLastUpdated: Date.now()
+      }),
+
+      setBalanceLastUpdated: (timestamp: number) => set({ balanceLastUpdated: timestamp }),
     }),
     {
       name: 'global-ace-auth',
