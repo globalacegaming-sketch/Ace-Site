@@ -33,6 +33,11 @@ const Register = () => {
   const navigate = useNavigate();
   const { login } = useAuthStore();
 
+  // Error boundary for form rendering
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
   const {
     register,
     handleSubmit,
@@ -47,11 +52,19 @@ const Register = () => {
 
     try {
       const API_BASE_URL = getApiBaseUrl();
+      if (!API_BASE_URL) {
+        throw new Error('API base URL is not configured');
+      }
+      
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const result = await response.json();
 
@@ -90,19 +103,20 @@ const Register = () => {
       <div className="min-h-screen casino-bg-primary flex items-center justify-center pt-16">
         <div className="casino-bg-secondary rounded-3xl shadow-xl p-10 text-center max-w-md w-full casino-border">
           <div className="mx-auto w-16 h-16 flex items-center justify-center bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full mb-4 shadow-2xl">
-            <CheckCircle className="w-8 h-8 text-black" />
-          </div>
+              <CheckCircle className="w-8 h-8 text-black" />
+            </div>
           <h2 className="text-3xl font-bold casino-text-primary mb-2">Registration Successful!</h2>
           <p className="casino-text-secondary">
-            Your account has been created successfully. Redirecting to dashboard...
-          </p>
+              Your account has been created successfully. Redirecting to dashboard...
+            </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16">
+  try {
+    return (
+      <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16">
       {/* Casino-themed background elements */}
       <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
       <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
@@ -121,77 +135,77 @@ const Register = () => {
               <div className="text-center mb-6 lg:mb-8">
                 <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-2xl mb-3 lg:mb-4 shadow-2xl">
                   <UserPlus className="w-6 h-6 lg:w-8 lg:h-8 text-black" />
-                </div>
+          </div>
                 <h1 className="text-2xl lg:text-4xl font-bold casino-text-primary mb-2">Sign Up to Start your gaming journey</h1>
                 <p className="casino-text-secondary text-sm lg:text-lg">Create your account and start playing today</p>
-              </div>
+      </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 lg:space-y-6" noValidate>
                 {/* Name Fields */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                     <label htmlFor="firstName" className="block text-sm font-medium casino-text-primary mb-2">
                       First Name
-                    </label>
-                    <input
-                      {...register('firstName')}
-                      type="text"
-                      id="firstName"
+                </label>
+                <input
+                  {...register('firstName')}
+                  type="text"
+                  id="firstName"
                       className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
                         errors.firstName ? 'border-red-400 focus:ring-red-400' : ''
                       }`}
                       placeholder="Enter your first name"
-                    />
-                    {errors.firstName && (
-                      <p className="mt-2 text-sm text-red-300 flex items-center">
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        {errors.firstName.message}
-                      </p>
-                    )}
-                  </div>
-                  <div>
+                />
+                 {errors.firstName && (
+                   <p className="mt-2 text-sm text-red-300 flex items-center">
+                     <AlertCircle className="w-4 h-4 mr-2" />
+                     {errors.firstName?.message || 'Invalid first name'}
+                   </p>
+                 )}
+              </div>
+              <div>
                     <label htmlFor="lastName" className="block text-sm font-medium casino-text-primary mb-2">
                       Last Name
-                    </label>
-                    <input
-                      {...register('lastName')}
-                      type="text"
-                      id="lastName"
+                </label>
+                <input
+                  {...register('lastName')}
+                  type="text"
+                  id="lastName"
                       className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
                         errors.lastName ? 'border-red-400 focus:ring-red-400' : ''
                       }`}
                       placeholder="Enter your last name"
-                    />
-                    {errors.lastName && (
-                      <p className="mt-2 text-sm text-red-300 flex items-center">
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        {errors.lastName.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
+                />
+                 {errors.lastName && (
+                   <p className="mt-2 text-sm text-red-300 flex items-center">
+                     <AlertCircle className="w-4 h-4 mr-2" />
+                     {errors.lastName?.message || 'Invalid last name'}
+                   </p>
+                 )}
+              </div>
+            </div>
 
-                {/* Username */}
-                <div>
+            {/* Username */}
+            <div>
                   <label htmlFor="username" className="block text-sm font-medium casino-text-primary mb-2">
                     Username
-                  </label>
-                  <input
-                    {...register('username')}
-                    type="text"
-                    id="username"
+              </label>
+              <input
+                {...register('username')}
+                type="text"
+                id="username"
                     className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
                       errors.username ? 'border-red-400 focus:ring-red-400' : ''
                     }`}
                     placeholder="Choose a username"
-                  />
-                  {errors.username && (
-                    <p className="mt-2 text-sm text-red-300 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      {errors.username.message}
-                    </p>
-                  )}
-                </div>
+              />
+               {errors.username && (
+                 <p className="mt-2 text-sm text-red-300 flex items-center">
+                   <AlertCircle className="w-4 h-4 mr-2" />
+                   {errors.username?.message || 'Invalid username'}
+                 </p>
+               )}
+            </div>
 
                 {/* Phone */}
                 <div>
@@ -207,128 +221,128 @@ const Register = () => {
                     }`}
                     placeholder="Enter your phone number"
                   />
-                  {errors.phoneNumber && (
-                    <p className="mt-2 text-sm text-red-300 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      {errors.phoneNumber.message}
-                    </p>
-                  )}
+                   {errors.phoneNumber && (
+                     <p className="mt-2 text-sm text-red-300 flex items-center">
+                       <AlertCircle className="w-4 h-4 mr-2" />
+                       {errors.phoneNumber?.message || 'Invalid phone number'}
+                     </p>
+                   )}
                 </div>
 
-                {/* Email */}
-                <div>
+            {/* Email */}
+            <div>
                   <label htmlFor="email" className="block text-sm font-medium casino-text-primary mb-2">
                     Email Address
-                  </label>
-                  <input
-                    {...register('email')}
-                    type="email"
-                    id="email"
+              </label>
+              <input
+                {...register('email')}
+                type="email"
+                id="email"
                     className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
                       errors.email ? 'border-red-400 focus:ring-red-400' : ''
                     }`}
                     placeholder="Enter your email address"
-                  />
-                  {errors.email && (
-                    <p className="mt-2 text-sm text-red-300 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      {errors.email.message}
-                    </p>
-                  )}
-                </div>
+              />
+               {errors.email && (
+                 <p className="mt-2 text-sm text-red-300 flex items-center">
+                   <AlertCircle className="w-4 h-4 mr-2" />
+                   {errors.email?.message || 'Invalid email address'}
+                 </p>
+               )}
+          </div>
 
                 {/* Password Fields */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+            <div>
                     <label htmlFor="password" className="block text-sm font-medium casino-text-primary mb-2">
                       Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        {...register('password')}
-                        type={showPassword ? 'text' : 'password'}
-                        id="password"
+              </label>
+              <div className="relative">
+                <input
+                  {...register('password')}
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
                         className={`input-casino px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 ${
                           errors.password ? 'border-red-400 focus:ring-red-400' : ''
                         }`}
                         placeholder="Create a password"
-                      />
-                      <button
-                        type="button"
+                />
+                <button
+                  type="button"
                         className="absolute inset-y-0 right-0 pr-3 lg:pr-4 flex items-center hover:bg-yellow-400/20 rounded-r-lg transition-colors duration-200"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? (
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
                           <EyeOff className="h-4 w-4 lg:h-5 lg:w-5 casino-text-secondary" />
-                        ) : (
+                  ) : (
                           <Eye className="h-4 w-4 lg:h-5 lg:w-5 casino-text-secondary" />
-                        )}
-                      </button>
-                    </div>
-                    {errors.password && (
-                      <p className="mt-2 text-sm text-red-300 flex items-center">
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        {errors.password.message}
-                      </p>
-                    )}
-                  </div>
-                  <div>
+                  )}
+                </button>
+              </div>
+               {errors.password && (
+                 <p className="mt-2 text-sm text-red-300 flex items-center">
+                   <AlertCircle className="w-4 h-4 mr-2" />
+                   {errors.password?.message || 'Invalid password'}
+                 </p>
+               )}
+          </div>
+            <div>
                     <label htmlFor="confirmPassword" className="block text-sm font-medium casino-text-primary mb-2">
                       Confirm Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        {...register('confirmPassword')}
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        id="confirmPassword"
+              </label>
+              <div className="relative">
+                <input
+                  {...register('confirmPassword')}
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  id="confirmPassword"
                         className={`input-casino px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 ${
                           errors.confirmPassword ? 'border-red-400 focus:ring-red-400' : ''
                         }`}
-                        placeholder="Confirm your password"
-                      />
-                      <button
-                        type="button"
+                  placeholder="Confirm your password"
+                />
+                <button
+                  type="button"
                         className="absolute inset-y-0 right-0 pr-3 lg:pr-4 flex items-center hover:bg-yellow-400/20 rounded-r-lg transition-colors duration-200"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      >
-                        {showConfirmPassword ? (
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
                           <EyeOff className="h-4 w-4 lg:h-5 lg:w-5 casino-text-secondary" />
-                        ) : (
+                  ) : (
                           <Eye className="h-4 w-4 lg:h-5 lg:w-5 casino-text-secondary" />
-                        )}
-                      </button>
-                    </div>
-                    {errors.confirmPassword && (
-                      <p className="mt-2 text-sm text-red-300 flex items-center">
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        {errors.confirmPassword.message}
-                      </p>
-                    )}
+                  )}
+                </button>
+              </div>
+               {errors.confirmPassword && (
+                 <p className="mt-2 text-sm text-red-300 flex items-center">
+                   <AlertCircle className="w-4 h-4 mr-2" />
+                   {errors.confirmPassword?.message || 'Passwords do not match'}
+                 </p>
+               )}
                   </div>
-                </div>
+            </div>
 
                 {/* Referral */}
-                <div>
+            <div>
                   <label htmlFor="referralCode" className="block text-sm font-medium casino-text-primary mb-2">
-                    Referral Code (Optional)
-                  </label>
-                  <input
-                    {...register('referralCode')}
-                    type="text"
-                    id="referralCode"
+                Referral Code (Optional)
+              </label>
+              <input
+                {...register('referralCode')}
+                type="text"
+                id="referralCode"
                     className="input-casino px-3 py-3 lg:px-4 lg:py-4"
                     placeholder="Enter referral code if you have one"
                   />
-                </div>
+            </div>
 
-                {error && (
+            {error && (
                   <div className="status-error-casino rounded-xl lg:rounded-2xl p-3 lg:p-4">
-                    <div className="flex items-center">
+                <div className="flex items-center">
                       <AlertCircle className="w-4 h-4 lg:w-5 lg:h-5 text-red-300 mr-2 lg:mr-3" />
                       <p className="text-xs lg:text-sm text-red-200">{error}</p>
-                    </div>
-                  </div>
-                )}
+                </div>
+              </div>
+            )}
 
                 {/* Terms */}
                 <p className="casino-text-secondary text-xs lg:text-sm text-center">
@@ -339,35 +353,35 @@ const Register = () => {
                 </p>
 
                 {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={isLoading}
+            <button
+              type="submit"
+              disabled={isLoading}
                   className="btn-casino-primary w-full py-3 lg:py-4 px-6 rounded-xl lg:rounded-2xl flex items-center justify-center space-x-2 lg:space-x-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? (
-                    <>
+            >
+              {isLoading ? (
+                <>
                       <div className="animate-spin rounded-full h-4 w-4 lg:h-5 lg:w-5 border-2 border-black border-t-transparent"></div>
-                      <span>Creating Account...</span>
-                    </>
-                  ) : (
-                    <>
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
                       <UserPlus className="w-4 h-4 lg:w-5 lg:h-5" />
-                      <span>Create Account</span>
-                    </>
-                  )}
-                </button>
-              </form>
+                  <span>Create Account</span>
+                </>
+              )}
+            </button>
+          </form>
 
               <div className="mt-6 lg:mt-8 text-center">
                 <p className="casino-text-secondary text-sm lg:text-base">
-                  Already have an account?{' '}
-                  <Link
-                    to="/login"
+              Already have an account?{' '}
+              <Link
+                to="/login"
                     className="font-semibold casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4"
-                  >
-                    Sign in here
-                  </Link>
-                </p>
+              >
+                Sign in here
+              </Link>
+            </p>
               </div>
             </div>
           </div>
@@ -406,11 +420,22 @@ const Register = () => {
                   </div>
                 </div>
               </div>
-            </div>
           </div>
+        </div>
       </div>
     </div>
   );
+  } catch (error) {
+    console.error('Register component error:', error);
+    return (
+      <div className="min-h-screen casino-bg-primary flex items-center justify-center">
+        <div className="casino-bg-secondary rounded-3xl shadow-xl p-10 text-center max-w-md w-full casino-border">
+          <h2 className="text-2xl font-bold casino-text-primary mb-4">Something went wrong</h2>
+          <p className="casino-text-secondary">Please refresh the page and try again.</p>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default Register;
