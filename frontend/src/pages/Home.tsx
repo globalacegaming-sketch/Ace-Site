@@ -30,7 +30,8 @@ const Home = () => {
       const GAMES_API_URL = getGamesApiUrl();
       const response = await axios.get(GAMES_API_URL);
       if (response.data.success) {
-        setGames(response.data.data || []);
+        const gamesData = response.data.data;
+        setGames(Array.isArray(gamesData) ? gamesData : []);
       } else {
         setError(response.data.message || 'Failed to fetch games');
       }
@@ -42,7 +43,7 @@ const Home = () => {
   };
 
   // Get first 3 games as popular games
-  const popularGames = games.slice(0, 3);
+  const popularGames = Array.isArray(games) ? games.slice(0, 3) : [];
 
   // Handler functions
   const handleLoginClick = () => {

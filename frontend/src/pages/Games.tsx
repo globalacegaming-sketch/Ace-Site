@@ -27,7 +27,7 @@ const Games = () => {
     fetchGames();
   }, []);
   
-  const filteredGames = games.filter((game) => {
+  const filteredGames = Array.isArray(games) ? games.filter((game) => {
     if (selectedCategory === 'All') return true;
     const categoryMap: { [key: string]: string[] } = {
       Slots: ['SLOT'],
@@ -37,7 +37,7 @@ const Games = () => {
     };
     const gameTypes = categoryMap[selectedCategory] || [];
     return gameTypes.includes(game.gameType);
-  });
+  }) : [];
 
   const fetchGames = async () => {
     try {
@@ -46,7 +46,8 @@ const Games = () => {
       const GAMES_API_URL = getGamesApiUrl();
       const response = await axios.get(GAMES_API_URL);
       if (response.data.success) {
-        setGames(response.data.data || []);
+        const gamesData = response.data.data;
+        setGames(Array.isArray(gamesData) ? gamesData : []);
       } else {
         setError(response.data.message || 'Failed to fetch games');
       }
