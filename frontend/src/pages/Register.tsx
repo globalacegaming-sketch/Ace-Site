@@ -33,10 +33,6 @@ const Register = () => {
   const navigate = useNavigate();
   const { login } = useAuthStore();
 
-  // Error boundary for form rendering
-  if (typeof window === 'undefined') {
-    return null;
-  }
 
   const {
     register,
@@ -114,9 +110,8 @@ const Register = () => {
     );
   }
 
-  try {
-    return (
-      <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16">
+  return (
+    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16">
       {/* Casino-themed background elements */}
       <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
       <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
@@ -133,12 +128,16 @@ const Register = () => {
 
             <div className="relative z-10">
               <div className="text-center mb-6 lg:mb-8">
-                <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-2xl mb-3 lg:mb-4 shadow-2xl">
-                  <UserPlus className="w-6 h-6 lg:w-8 lg:h-8 text-black" />
-          </div>
+                <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 mb-3 lg:mb-4">
+                  <img 
+                    src="/logo.png" 
+                    alt="Global Ace Gaming" 
+                    className="w-full h-full object-contain"
+                  />
+                </div>
                 <h1 className="text-2xl lg:text-4xl font-bold casino-text-primary mb-2">Sign Up to Start your gaming journey</h1>
                 <p className="casino-text-secondary text-sm lg:text-lg">Create your account and start playing today</p>
-      </div>
+              </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 lg:space-y-6" noValidate>
                 {/* Name Fields */}
@@ -391,10 +390,12 @@ const Register = () => {
             <div className="absolute inset-0">
               <div className="w-full h-full bg-gradient-to-br from-yellow-400/20 via-yellow-600/20 to-orange-500/20 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="w-32 h-32 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-3xl flex items-center justify-center mb-8 shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-500 mx-auto">
-                    <div className="w-20 h-20 bg-black/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                      <UserPlus className="w-10 h-10 text-black" />
-                    </div>
+                  <div className="w-32 h-32 flex items-center justify-center mb-8 transform rotate-3 hover:rotate-0 transition-transform duration-500 mx-auto">
+                    <img 
+                      src="/logo.png" 
+                      alt="Global Ace Gaming" 
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <h2 className="text-4xl font-bold casino-text-primary mb-4">Global Ace Gaming</h2>
                   <p className="casino-text-secondary text-xl mb-8">Start your gaming adventure today</p>
@@ -425,17 +426,6 @@ const Register = () => {
       </div>
     </div>
   );
-  } catch (error) {
-    console.error('Register component error:', error);
-    return (
-      <div className="min-h-screen casino-bg-primary flex items-center justify-center">
-        <div className="casino-bg-secondary rounded-3xl shadow-xl p-10 text-center max-w-md w-full casino-border">
-          <h2 className="text-2xl font-bold casino-text-primary mb-4">Something went wrong</h2>
-          <p className="casino-text-secondary">Please refresh the page and try again.</p>
-        </div>
-      </div>
-    );
-  }
 };
 
 export default Register;

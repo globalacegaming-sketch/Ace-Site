@@ -44,19 +44,15 @@ const Games = () => {
       setLoading(true);
       setError(null);
       const GAMES_API_URL = getGamesApiUrl();
-      console.log('Fetching games from:', GAMES_API_URL);
       const response = await axios.get(GAMES_API_URL);
-      console.log('Games API response:', response.data);
+      
       if (response.data.success) {
-        const gamesData = response.data.data.data; // Access the nested data array
-        console.log('Games data:', gamesData);
+        const gamesData = response.data.data; // Access the data array directly
         setGames(Array.isArray(gamesData) ? gamesData : []);
       } else {
-        console.error('Games API error:', response.data.message);
         setError(response.data.message || 'Failed to fetch games');
       }
     } catch (err) {
-      console.error('Games fetch error:', err);
       setError('Failed to load games. Please try again later.');
     } finally {
       setLoading(false);
@@ -105,10 +101,11 @@ const Games = () => {
                          gameResponse.data.data?.login_url;
           
           if (gameUrl) {
-            // Open game in new window
-            const gameWindow = window.open(gameUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
-            if (!gameWindow) {
-              alert('Popup blocked! Please allow popups for this site and try again.');
+            // Open game in new window with proper popup handling
+            const gameWindow = window.open(gameUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes,noopener,noreferrer');
+            if (!gameWindow || gameWindow.closed || typeof gameWindow.closed == 'undefined') {
+              // If popup blocked, navigate to game launch page
+              navigate(`/game-launch?url=${encodeURIComponent(gameUrl)}&name=${encodeURIComponent(game.gameName)}`);
             }
           } else {
             alert('Game URL not found in response. Please try again.');
@@ -145,14 +142,6 @@ const Games = () => {
           <p className="text-sm sm:text-base lg:text-lg casino-text-secondary px-2 sm:px-4">
             Choose your favorite game and start playing
           </p>
-          
-          {/* Debug button for testing API */}
-          <button 
-            onClick={fetchGames}
-            className="mt-4 px-4 py-2 bg-yellow-400 text-black rounded-lg hover:bg-yellow-500 transition-colors"
-          >
-            🔄 Refresh Games
-          </button>
         </div>
 
         {/* Categories */}

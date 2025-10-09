@@ -141,8 +141,12 @@ const Login = () => {
             
             <div className="relative z-10">
               <div className="text-center mb-6 lg:mb-8">
-                <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-2xl mb-3 lg:mb-4 shadow-2xl">
-                  <LogIn className="w-6 h-6 lg:w-8 lg:h-8 text-black" />
+                <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 mb-3 lg:mb-4">
+                  <img 
+                    src="/logo.png" 
+                    alt="Global Ace Gaming" 
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h1 className="text-2xl lg:text-4xl font-bold casino-text-primary mb-2">Welcome Back!</h1>
                 <p className="casino-text-secondary text-sm lg:text-lg">Sign in to continue your gaming journey</p>
@@ -263,10 +267,12 @@ const Login = () => {
             <div className="absolute inset-0">
               <div className="w-full h-full bg-gradient-to-br from-yellow-400/20 via-yellow-600/20 to-orange-500/20 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="w-32 h-32 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-3xl flex items-center justify-center mb-8 shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-500 mx-auto">
-                    <div className="w-20 h-20 bg-black/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                      <LogIn className="w-10 h-10 text-black" />
-                    </div>
+                  <div className="w-32 h-32 flex items-center justify-center mb-8 transform rotate-3 hover:rotate-0 transition-transform duration-500 mx-auto">
+                    <img 
+                      src="/logo.png" 
+                      alt="Global Ace Gaming" 
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <h2 className="text-4xl font-bold casino-text-primary mb-4">Global Ace Gaming</h2>
                   <p className="casino-text-secondary text-xl mb-8">Your ultimate gaming destination</p>

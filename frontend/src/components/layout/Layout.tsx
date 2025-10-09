@@ -118,9 +118,12 @@ const Layout = ({ children }: LayoutProps) => {
               </button>
             )}
             <div className="flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-14 lg:h-14 mr-2 rounded-lg flex items-center justify-center" 
-                   style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)' }}>
-                <Gamepad2 className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" style={{ color: '#0A0A0F' }} />
+              <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-14 lg:h-14 mr-2 flex items-center justify-center">
+                <img 
+                  src="/logo.png" 
+                  alt="Global Ace Gaming" 
+                  className="w-full h-full object-contain"
+                />
               </div>
               <span className="font-bold text-xs sm:text-sm lg:text-lg xl:text-xl hidden sm:block" style={{ color: '#F5F5F5' }}>GLOBAL ACE GAMING</span>
               <span className="font-bold text-xs sm:hidden" style={{ color: '#F5F5F5' }}>GAG</span>
