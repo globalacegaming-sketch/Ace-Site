@@ -62,7 +62,7 @@ const AdminDashboard: React.FC = () => {
         await loadGames();
       }
     } catch (error) {
-      console.error('Failed to check admin status:', error);
+      // Failed to check admin status
     }
   };
 
@@ -73,7 +73,6 @@ const AdminDashboard: React.FC = () => {
       const result = await axios.post('/api/health/fortune-panda/relogin');
       if (result.data.status === 'OK') {
         setIsLoggedIn(true);
-        console.log('Agent login successful:', result.data);
         await loadGames();
       } else {
         setError(result.data.message);
@@ -89,13 +88,11 @@ const AdminDashboard: React.FC = () => {
     try {
       const result = await axios.get('/api/games/fortune-panda');
       if (result.data.success) {
-        console.log('Games loaded from Fortune Panda API:', result.data.data?.data?.length || 0, 'games');
-        console.log('Sample game data:', result.data.data?.data?.[0]);
+        // Games loaded successfully
       } else {
-        console.error('Failed to load games:', result.data.message);
       }
     } catch (error) {
-      console.error('Failed to load games:', error);
+      // Failed to load games
     }
   };
 
@@ -104,14 +101,11 @@ const AdminDashboard: React.FC = () => {
       const result = await axios.get('/api/fortune-panda/users');
       if (result.data.success) {
         setUsers(result.data.data);
-        console.log('Users loaded from API:', result.data.data);
       } else {
-        console.error('Failed to load users:', result.data.message);
         // Fallback to empty array if API fails
         setUsers([]);
       }
     } catch (error) {
-      console.error('Failed to load users:', error);
       // Fallback to empty array if API fails
       setUsers([]);
     }
@@ -128,13 +122,11 @@ const AdminDashboard: React.FC = () => {
         navigate('/'); // Redirect to home if not authenticated
       }
     } catch (error) {
-      console.error('Logout failed:', error);
+      // Logout failed
     }
   };
 
   const handleUserAction = async (action: string, userId?: string) => {
-    console.log(`Action: ${action}`, userId ? `User: ${userId}` : '');
-    
     try {
       switch (action) {
         case 'recharge':
@@ -189,8 +181,7 @@ const AdminDashboard: React.FC = () => {
           if (userId) {
             const result = await axios.get(`/api/fortune-panda/users/${userId}/game-records`);
             if (result.data.success) {
-              console.log('Game records:', result.data.data);
-              alert(`Game records loaded. Check console for details.`);
+              alert(`Game records loaded successfully.`);
             } else {
               alert(`Failed to load game records: ${result.data.message}`);
             }
@@ -204,8 +195,7 @@ const AdminDashboard: React.FC = () => {
             if (fromDate && toDate) {
               const result = await axios.get(`/api/fortune-panda/users/${userId}/jp-records?fromDate=${fromDate}&toDate=${toDate}`);
               if (result.data.success) {
-                console.log('JP records:', result.data.data);
-                alert(`JP records loaded. Check console for details.`);
+                alert(`JP records loaded successfully.`);
               } else {
                 alert(`Failed to load JP records: ${result.data.message}`);
               }
@@ -220,8 +210,7 @@ const AdminDashboard: React.FC = () => {
             if (fromDate && toDate) {
               const result = await axios.get(`/api/fortune-panda/users/${userId}/trade-records?fromDate=${fromDate}&toDate=${toDate}`);
               if (result.data.success) {
-                console.log('Transaction records:', result.data.data);
-                alert(`Transaction records loaded. Check console for details.`);
+                alert(`Transaction records loaded successfully.`);
               } else {
                 alert(`Failed to load transaction records: ${result.data.message}`);
               }
@@ -237,7 +226,6 @@ const AdminDashboard: React.FC = () => {
           alert(`Action ${action} not implemented yet`);
       }
     } catch (error: any) {
-      console.error('User action error:', error);
       alert(`Error: ${error.response?.data?.message || error.message}`);
     }
   };

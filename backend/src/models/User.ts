@@ -9,6 +9,7 @@ export interface IUser extends Document {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  avatar?: string;
   dateOfBirth?: Date;
   country?: string;
   currency?: string;
@@ -67,6 +68,11 @@ const UserSchema = new Schema<IUser>({
     type: String,
     trim: true,
     match: [/^\+?[\d\s\-\(\)]+$/, 'Please enter a valid phone number']
+  },
+  avatar: {
+    type: String,
+    default: 'gorilla',
+    enum: ['gorilla', 'lion', 'tiger', 'eagle', 'shark', 'wolf', 'bear', 'dragon']
   },
   dateOfBirth: {
     type: Date,

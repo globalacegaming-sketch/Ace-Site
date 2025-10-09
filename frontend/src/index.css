@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind base;
+/* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind components;
+/* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind utilities;
 
 @layer base {
@@ -9,90 +12,360 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    background-color: #0A0A0F;
+    color: #F5F5F5;
   }
 }
 
+/* Casino Theme CSS Variables */
+:root {
+  --casino-primary-dark: #0A0A0F;
+  --casino-secondary-dark: #1B1B2F;
+  --casino-highlight-gold: #FFD700;
+  --casino-accent-green: #00C853;
+  --casino-accent-red: #E53935;
+  --casino-accent-blue: #00B0FF;
+  --casino-accent-purple: #6A1B9A;
+  --casino-text-primary: #F5F5F5;
+  --casino-text-secondary: #B0B0B0;
+  --casino-card-border: #2C2C3A;
+  --casino-shadow-glow: rgba(255, 215, 0, 0.3);
+  --casino-glass-overlay: rgba(255, 255, 255, 0.08);
+}
+
 @layer components {
-  .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  /* Casino Button Styles */
+  .btn-casino-primary {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%);
+    color: #0A0A0F;
+    border: 2px solid #FFD700;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+    font-weight: bold;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    transition: all 0.3s ease;
   }
   
-  .btn-secondary {
-    @apply bg-secondary-600 hover:bg-secondary-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
+  .btn-casino-primary:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
   }
   
-  .btn-accent {
-    @apply bg-accent-600 hover:bg-accent-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2;
+  .btn-casino-secondary {
+    background: linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%);
+    color: #F5F5F5;
+    border: 2px solid #6A1B9A;
+    box-shadow: 0 0 20px rgba(106, 27, 154, 0.3);
+    font-weight: bold;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    transition: all 0.3s ease;
   }
   
-  .btn-outline {
-    @apply border-2 border-primary-600 text-primary-600 hover:bg-primary-600 hover:text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  .btn-casino-secondary:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(106, 27, 154, 0.5);
   }
   
-  .btn-ghost {
-    @apply text-gray-600 hover:text-gray-900 hover:bg-gray-100 font-medium py-3 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+  .btn-casino-outline {
+    background: transparent;
+    color: #F5F5F5;
+    border: 2px solid #F5F5F5;
+    box-shadow: 0 0 20px rgba(245, 245, 245, 0.2);
+    font-weight: bold;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    transition: all 0.3s ease;
   }
   
-  .input-field {
-    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200;
+  .btn-casino-outline:hover {
+    background: #F5F5F5;
+    color: #0A0A0F;
+    transform: scale(1.05);
   }
   
-  .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+  /* Casino Card Styles */
+  .card-casino {
+    background-color: #1B1B2F;
+    border: 1px solid #2C2C3A;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   }
   
-  .card-hover {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200;
+  .card-casino-hover {
+    background-color: #1B1B2F;
+    border: 1px solid #2C2C3A;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
   }
   
-  .game-card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-lg hover:border-primary-200 transition-all duration-200 cursor-pointer;
+  .card-casino-hover:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+    border-color: #FFD700;
   }
   
-  .feature-card {
-    @apply bg-gradient-to-br from-primary-50 to-secondary-50 rounded-xl p-6 border border-primary-100 hover:shadow-md transition-shadow duration-200;
+  /* Casino Input Styles */
+  .input-casino {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background-color: #1B1B2F;
+    border: 1px solid #2C2C3A;
+    border-radius: 0.5rem;
+    color: #F5F5F5;
+    transition: all 0.3s ease;
   }
   
-  .promo-card {
-    @apply bg-gradient-to-r from-accent-500 to-accent-600 text-white rounded-xl p-6 hover:shadow-lg transition-shadow duration-200;
+  .input-casino:focus {
+    outline: none;
+    border-color: #FFD700;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
   }
   
-  .status-badge {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+  .input-casino::placeholder {
+    color: #B0B0B0;
   }
   
-  .status-success {
-    @apply bg-success-100 text-success-800;
+  /* Casino Status Badges */
+  .status-badge-casino {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
   }
   
-  .status-pending {
-    @apply bg-warning-100 text-warning-800;
+  .status-success-casino {
+    background-color: rgba(0, 200, 83, 0.2);
+    color: #00C853;
+    border: 1px solid #00C853;
   }
   
-  .status-failed {
-    @apply bg-error-100 text-error-800;
+  .status-error-casino {
+    background-color: rgba(229, 57, 53, 0.2);
+    color: #E53935;
+    border: 1px solid #E53935;
   }
   
-  .status-processing {
-    @apply bg-primary-100 text-primary-800;
+  .status-warning-casino {
+    background-color: rgba(255, 215, 0, 0.2);
+    color: #FFD700;
+    border: 1px solid #FFD700;
+  }
+  
+  .status-info-casino {
+    background-color: rgba(0, 176, 255, 0.2);
+    color: #00B0FF;
+    border: 1px solid #00B0FF;
+  }
+
+  /* Casino Background Classes */
+  .casino-bg-primary {
+    background-color: #0A0A0F;
+  }
+
+  .casino-bg-secondary {
+    background-color: #1B1B2F;
+  }
+
+  .casino-text-primary {
+    color: #F5F5F5;
+  }
+
+  .casino-text-secondary {
+    color: #B0B0B0;
+  }
+
+  .casino-border {
+    border-color: #2C2C3A;
+  }
+
+  /* Casino Promo Banner */
+  .casino-promo-banner {
+    background: linear-gradient(135deg, #6A1B9A 0%, #00B0FF 50%, #6A1B9A 100%);
+    border: 1px solid #2C2C3A;
+    border-radius: 0;
+  }
+
+  /* Casino Game Card */
+  .casino-game-card {
+    background-color: #1B1B2F;
+    border: 1px solid #2C2C3A;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+  }
+
+  .casino-game-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+    border-color: #FFD700;
+  }
+
+  /* Casino Feature Card */
+  .casino-feature-card {
+    background: linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%);
+    border: 1px solid #2C2C3A;
+    border-radius: 0.75rem;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+    transition: all 0.3s ease;
+  }
+
+  .casino-feature-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.2);
+  }
+
+  /* Casino Stats Card */
+  .casino-stats-card {
+    background: linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%);
+    border: 1px solid #2C2C3A;
+    border-radius: 0.75rem;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+  }
+
+  /* Casino CTA Section */
+  .casino-cta-section {
+    background: linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%);
+  }
+
+  /* Casino Sidebar Item Fix */
+  .casino-sidebar-item {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    min-height: 45px;
+    background-color: transparent;
+    color: #F5F5F5;
+    text-decoration: none;
+    width: 100%;
+  }
+
+  /* Collapsed state - fixed width and centered */
+  .casino-sidebar-item.collapsed {
+    width: 45px;
+    height: 45px;
+    padding: 8px;
+    justify-content: center;
+    margin: 4px auto;
+  }
+
+  /* Expanded state - full width with padding */
+  .casino-sidebar-item.expanded {
+    width: 100%;
+    padding: 8px 12px;
+    justify-content: flex-start;
+    margin: 4px 0;
+  }
+
+  .casino-sidebar-item.active {
+    background-color: #FFD700;
+    color: #0A0A0F;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+  }
+
+  .casino-sidebar-item.active i,
+  .casino-sidebar-item.active svg {
+    color: #0A0A0F !important;
+  }
+
+  .casino-sidebar-item.active .sidebar-text {
+    color: #0A0A0F !important;
+  }
+
+  /* Hover state */
+  .casino-sidebar-item:hover:not(.active) {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #F5F5F5;
+  }
+
+  .casino-sidebar-item:hover:not(.active) i,
+  .casino-sidebar-item:hover:not(.active) svg {
+    color: #F5F5F5;
+  }
+
+  .casino-sidebar-item:hover:not(.active) .sidebar-text {
+    color: #F5F5F5;
+  }
+
+  .casino-sidebar-item i,
+  .casino-sidebar-item svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+    color: #F5F5F5;
+  }
+
+  /* Text label styling */
+  .casino-sidebar-item .sidebar-text {
+    margin-left: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+    color: #F5F5F5;
   }
 }
 
 @layer utilities {
   .text-gradient {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent;
   }
   
   .bg-gradient-primary {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply bg-gradient-to-r from-primary-600 to-primary-700;
   }
   
   .bg-gradient-secondary {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply bg-gradient-to-r from-secondary-600 to-secondary-700;
   }
   
   .bg-gradient-accent {
+    /* stylelint-disable-next-line at-rule-no-unknown */
     @apply bg-gradient-to-r from-accent-600 to-accent-700;
   }
+}
+
+/* Music Slider Styling */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFD700;
+  cursor: pointer;
+  border: 2px solid #0A0A0F;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFD700;
+  cursor: pointer;
+  border: 2px solid #0A0A0F;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
 }

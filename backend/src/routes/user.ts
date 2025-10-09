@@ -49,12 +49,23 @@ router.get('/profile', authenticate, async (req: Request, res: Response) => {
 router.put('/profile', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = req.user!._id;
-    const { firstName, lastName, phone, dateOfBirth, country, currency } = req.body;
+    const { firstName, lastName, username, phone, dateOfBirth, country, currency } = req.body;
 
     const updateData: any = {};
     
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
+    if (username !== undefined) {
+      // Check if username is already taken by another user
+      const existingUser = await User.findOne({ username, _id: { $ne: userId } });
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: 'Username already taken'
+        });
+      }
+      updateData.username = username;
+    }
     if (phone !== undefined) updateData.phone = phone;
     if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : undefined;
     if (country !== undefined) updateData.country = country;
@@ -84,6 +95,7 @@ router.put('/profile', authenticate, async (req: Request, res: Response) => {
           firstName: user.firstName,
           lastName: user.lastName,
           phone: user.phone,
+          avatar: user.avatar,
           dateOfBirth: user.dateOfBirth,
           country: user.country,
           currency: user.currency,
@@ -105,8 +117,62 @@ router.put('/profile', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// Update user avatar (protected route)
+router.put('/avatar', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!._id;
+    const { avatar } = req.body;
+
+    if (!avatar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Avatar is required'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { avatar },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Avatar updated successfully',
+      data: {
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phone: user.phone,
+          avatar: user.avatar,
+          role: user.role,
+          isEmailVerified: user.isEmailVerified,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Update avatar error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 // Change password (protected route)
-router.put('/change-password', authenticate, async (req: Request, res: Response) => {
+router.put('/password', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = req.user!._id;
     const { currentPassword, newPassword } = req.body;

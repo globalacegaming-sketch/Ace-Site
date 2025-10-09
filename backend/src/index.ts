@@ -82,10 +82,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-});
+// Request logging removed for production
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -137,20 +134,16 @@ app.use('/api', proxyRoutes);
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-  
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    // Client disconnected
   });
   
   // Handle game-related events
   socket.on('join-game', (data) => {
-    console.log('User joining game:', data);
     socket.join(`game-${data.gameId}`);
   });
   
   socket.on('leave-game', (data) => {
-    console.log('User leaving game:', data);
     socket.leave(`game-${data.gameId}`);
   });
 });

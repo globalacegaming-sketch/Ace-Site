@@ -53,7 +53,7 @@ const UserFortunePandaDashboard: React.FC = () => {
         setGames(result.data?.data || []);
       }
     } catch (error) {
-      console.error('Failed to load games:', error);
+      // Failed to load games
     }
   };
 

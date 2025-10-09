@@ -18,12 +18,10 @@ const AgentLogin: React.FC = () => {
       if (result.data.status === 'OK') {
         setIsLoggedIn(true);
         setAgentInfo(result.data.data);
-        console.log('Fortune Panda Agent login successful:', result.data);
       } else {
         setError(result.data.message || 'Failed to login as agent');
       }
     } catch (error: any) {
-      console.error('Agent login error:', error);
       setError(error.response?.data?.message || 'Failed to login as agent');
     } finally {
       setIsLoading(false);

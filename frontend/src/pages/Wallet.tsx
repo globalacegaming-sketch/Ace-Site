@@ -2,7 +2,7 @@ import { Wallet } from 'lucide-react';
 
 const WalletPage = () => {
   return (
-    <div className="min-h-screen py-8">
+    <div className="min-h-screen py-8 pt-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <div className="mx-auto w-16 h-16 bg-gradient-to-r from-green-400 to-green-500 rounded-full flex items-center justify-center mb-4">

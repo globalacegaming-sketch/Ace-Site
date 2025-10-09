@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import fortunePandaApi from '../services/fortunePandaApi';
+import toast from 'react-hot-toast';
 
 export const useBalancePolling = (intervalMs: number = 20000) => {
   const {
@@ -24,8 +25,15 @@ export const useBalancePolling = (intervalMs: number = 20000) => {
 
       if (response.success && response.data?.balance) {
         setFortunePandaBalance(response.data.balance);
+      } else {
+        if (showLoading) {
+          toast.error('Failed to update balance. Please try again.');
+        }
       }
     } catch (error) {
+      if (showLoading) {
+        toast.error('Failed to update balance. Please check your connection.');
+      }
       // Don't update balance on error to keep last known value
     } finally {
       if (showLoading) setIsLoading(false);
@@ -42,14 +50,12 @@ export const useBalancePolling = (intervalMs: number = 20000) => {
 
     // Then poll at intervals
     intervalRef.current = setInterval(fetchBalance, intervalMs);
-    console.log(`⏰ Balance polling started (every ${intervalMs / 1000}s)`);
   };
 
   const stopPolling = () => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
-      console.log('⏹️ Balance polling stopped');
     }
   };
 

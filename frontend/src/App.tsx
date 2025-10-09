@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
+import { MusicProvider } from './contexts/MusicContext';
+import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -58,32 +60,34 @@ const HomeRoute = () => {
 
 function App() {
   return (
-    <Router>
-      <div className="App">
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: '#363636',
-              color: '#fff',
-            },
-            success: {
-              duration: 3000,
-              iconTheme: {
-                primary: '#22c55e',
-                secondary: '#fff',
+    <MusicProvider>
+      <ClickSoundProvider>
+        <Router>
+          <div className="App">
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#363636',
+                color: '#fff',
               },
-            },
-            error: {
-              duration: 5000,
-              iconTheme: {
-                primary: '#ef4444',
-                secondary: '#fff',
+              success: {
+                duration: 3000,
+                iconTheme: {
+                  primary: '#22c55e',
+                  secondary: '#fff',
+                },
               },
-            },
-          }}
-        />
+              error: {
+                duration: 5000,
+                iconTheme: {
+                  primary: '#ef4444',
+                  secondary: '#fff',
+                },
+              },
+            }}
+          />
         
         <Routes>
           {/* Public Routes */}
@@ -149,8 +153,10 @@ function App() {
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </div>
-    </Router>
+          </div>
+        </Router>
+      </ClickSoundProvider>
+    </MusicProvider>
   );
 }
 

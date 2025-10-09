@@ -1,31 +1,78 @@
-// import { useEffect } from 'react';
-import { Star, Trophy, Shield, Zap, Users, Gamepad2, Crown, Globe, LogIn } from 'lucide-react';
-// import { useContentStore } from '../stores/contentStore';
+import { useState, useEffect } from 'react';
+import { Star, Trophy, Shield, Zap, Users, Gamepad2, Crown, Globe, LogIn, Play, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { getGamesApiUrl } from '../utils/api';
+import { useAuthStore } from '../stores/authStore';
+
+interface Game {
+  kindId: number;
+  gameName: string;
+  gameType: string;
+  gameLogo: string;
+}
 
 const Home = () => {
-  // const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const [games, setGames] = useState<Game[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuthStore();
+  const navigate = useNavigate();
 
-  // Mock data for now - will be replaced with real API data
-  // const heroBanners = [
-  //   {
-  //     id: '1',
-  //     title: 'Welcome to Global Ace Gaming',
-  //     subtitle: 'Where Champions Rise & Fortunes Await',
-  //     description: 'Experience the ultimate gaming platform with exclusive games, instant payouts, and 24/7 support.',
-  //     image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80',
-  //     cta: 'Start Playing Now',
-  //     link: '/games'
-  //   },
-  //   {
-  //     id: '2',
-  //     title: 'Exclusive VIP Experience',
-  //     subtitle: 'Unlock Premium Benefits',
-  //     description: 'Join our VIP program and enjoy exclusive bonuses, faster withdrawals, and dedicated support.',
-  //     image: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?ixlib=rb-4.0.3&auto=format&fit=crop&w=2071&q=80',
-  //     cta: 'Become VIP',
-  //     link: '/vip'
-  //   }
-  // ];
+  useEffect(() => {
+    fetchGames();
+  }, []);
+
+  const fetchGames = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const GAMES_API_URL = getGamesApiUrl();
+      const response = await axios.get(GAMES_API_URL);
+      if (response.data.success) {
+        setGames(response.data.data || []);
+      } else {
+        setError(response.data.message || 'Failed to fetch games');
+      }
+    } catch (err) {
+      setError('Failed to load games. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get first 3 games as popular games
+  const popularGames = games.slice(0, 3);
+
+  // Handler functions
+  const handleLoginClick = () => {
+    navigate('/login');
+  };
+
+  const handleGetStartedClick = () => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      navigate('/register');
+    }
+  };
+
+  const handleLearnMoreClick = () => {
+    navigate('/about-us');
+  };
+
+  const handlePlayGame = () => {
+    if (isAuthenticated) {
+      // Navigate to game launch or dashboard
+      navigate('/dashboard');
+    } else {
+      // Show login prompt
+      const shouldLogin = window.confirm('Please login to play games. Would you like to login now?');
+      if (shouldLogin) {
+        navigate('/login');
+      }
+    }
+  };
 
   const features = [
     {
@@ -58,32 +105,6 @@ const Home = () => {
     }
   ];
 
-  const popularGames = [
-    {
-      id: '1',
-      name: 'Fortune Dragon',
-      platform: 'Pragmatic Play',
-      image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80',
-      rating: 4.8,
-      players: 1250
-    },
-    {
-      id: '2',
-      name: 'Mystic Fortune',
-      platform: 'NetEnt',
-      image: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?ixlib=rb-4.0.3&auto=format&fit=crop&w=2071&q=80',
-      rating: 4.9,
-      players: 980
-    },
-    {
-      id: '3',
-      name: 'Golden Empire',
-      platform: 'Microgaming',
-      image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80',
-      rating: 4.7,
-      players: 1560
-    }
-  ];
 
   const stats = [
     { label: 'Active Players', value: '50K+', icon: Users },
@@ -100,57 +121,81 @@ const Home = () => {
   // }, [heroBanners.length]);
 
   return (
-    <div className="min-h-screen">
-      {/* Promotional Banner Section */}
-      <section className="relative py-16 px-4">
+    <div className="min-h-screen pt-16">
+      {/* Promotional Banner Section - Fixed to Screen */}
+      <section style={{ backgroundColor: '#0A0A0F' }}>
         <div className="max-w-7xl mx-auto">
-          <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 rounded-3xl p-8 md:p-12 relative overflow-hidden">
-            {/* Background decorative elements */}
+          <div className="casino-promo-banner p-6 sm:p-8 md:p-12 relative overflow-hidden shadow-2xl">
+            {/* Enhanced Background decorative elements */}
             <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute top-4 right-4 w-32 h-32 bg-yellow-400 rounded-full opacity-20 animate-pulse"></div>
-              <div className="absolute bottom-4 left-4 w-24 h-24 bg-red-400 rounded-full opacity-30 animate-bounce"></div>
-              <div className="absolute top-1/2 right-1/4 w-16 h-16 bg-green-400 rounded-full opacity-25 animate-pulse"></div>
+              <div className="absolute top-4 right-4 w-16 sm:w-24 lg:w-32 h-16 sm:h-24 lg:h-32 rounded-full opacity-20 animate-pulse" style={{ backgroundColor: '#FFD700' }}></div>
+              <div className="absolute bottom-4 left-4 w-12 sm:w-16 lg:w-24 h-12 sm:h-16 lg:h-24 rounded-full opacity-30 animate-bounce" style={{ backgroundColor: '#E53935' }}></div>
+              <div className="absolute top-1/2 right-1/4 w-8 sm:w-12 lg:w-16 h-8 sm:h-12 lg:h-16 rounded-full opacity-25 animate-pulse" style={{ backgroundColor: '#00C853' }}></div>
+              <div className="absolute top-1/3 left-1/3 w-6 sm:w-8 lg:w-12 h-6 sm:h-8 lg:h-12 rounded-full opacity-15 animate-ping" style={{ backgroundColor: '#00B0FF' }}></div>
             </div>
 
             <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between">
-              {/* Left Content */}
-              <div className="text-center lg:text-left mb-8 lg:mb-0 lg:flex-1">
-                <div className="text-white text-sm font-semibold mb-2">Exclusive Bonus Offer</div>
-                <div className="text-4xl md:text-6xl font-bold text-yellow-400 mb-4">
-                  125% up to $100
+              {/* Enhanced Left Content */}
+              <div className="text-center lg:text-left mb-6 lg:mb-0 lg:flex-1">
+                <div className="inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold mb-3" style={{ backgroundColor: 'rgba(255, 215, 0, 0.1)', color: '#FFD700', border: '1px solid #FFD700' }}>
+                  🎉 Welcome Bonus Offer
                 </div>
-                <div className="text-white text-lg mb-6">
-                  + 180 Free Spins (25 on Sign up)
+                <div className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold mb-3 sm:mb-4" style={{ 
+                  color: '#FFD700',
+                  textShadow: '0 0 20px rgba(255, 215, 0, 0.5)',
+                  background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}>
+                  100% up to $100
                 </div>
-                <button className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-4 px-8 rounded-full text-lg hover:from-yellow-500 hover:to-yellow-600 transition-all duration-300 shadow-lg">
-                  <LogIn className="w-5 h-5 mr-2 inline" />
-                  Login
+                <div className="casino-text-primary text-sm sm:text-base lg:text-lg mb-4 sm:mb-6 leading-relaxed">
+                  + Referral Bonus, VIP Rewards and much more (25 on Sign up)
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                  <button 
+                    onClick={handleLoginClick}
+                    className="btn-casino-primary py-3 sm:py-4 px-6 sm:px-8 rounded-full text-sm sm:text-base lg:text-lg transform hover:scale-105 transition-all duration-300 shadow-lg"
+                  >
+                    <LogIn className="w-4 h-4 sm:w-5 sm:h-5 mr-2 inline" />
+                    Login Now
+                  </button>
+                  <button 
+                    onClick={handleGetStartedClick}
+                    className="btn-casino-outline py-3 sm:py-4 px-6 sm:px-8 rounded-full text-sm sm:text-base lg:text-lg transform hover:scale-105 transition-all duration-300"
+                  >
+                    Get Started
                 </button>
+                </div>
               </div>
 
-              {/* Right Graphics - Crab Character */}
+              {/* Enhanced Right Graphics */}
               <div className="lg:flex-1 flex justify-center lg:justify-end">
                 <div className="relative">
-                  {/* Crab Character Placeholder */}
-                  <div className="w-48 h-48 bg-gradient-to-br from-red-400 to-red-600 rounded-full flex items-center justify-center relative">
-                    <div className="w-32 h-32 bg-red-500 rounded-full flex items-center justify-center">
-                      <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center">
-                        <div className="w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center">
-                          <span className="text-2xl">🦀</span>
+                  {/* Enhanced Casino Slot Machine */}
+                  <div className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 rounded-2xl flex items-center justify-center relative shadow-2xl" style={{ 
+                    background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)'
+                  }}>
+                    <div className="text-7xl sm:text-8xl lg:text-9xl animate-pulse">🎰</div>
+                    
+                    {/* Enhanced Floating Elements */}
+                    <div className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center shadow-xl animate-bounce" style={{ backgroundColor: '#FFD700' }}>
+                      <span className="text-xl">💰</span>
                         </div>
-                      </div>
+                    <div className="absolute -bottom-3 -left-3 w-8 h-8 rounded-full flex items-center justify-center shadow-xl animate-pulse" style={{ backgroundColor: '#E53935' }}>
+                      <span className="text-sm">💎</span>
                     </div>
-                    {/* Gold coin */}
-                    <div className="absolute top-4 right-4 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg">
-                      <span className="text-lg">💰</span>
+                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-ping" style={{ backgroundColor: '#00C853' }}>
+                      <span className="text-xs">⭐</span>
                     </div>
-                    {/* Gems */}
-                    <div className="absolute bottom-4 left-4 flex space-x-1">
-                      <div className="w-4 h-4 bg-red-500 rounded"></div>
-                      <div className="w-4 h-4 bg-green-500 rounded"></div>
-                      <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                    <div className="absolute bottom-2 left-2 w-5 h-5 rounded-full flex items-center justify-center shadow-lg animate-bounce" style={{ backgroundColor: '#00B0FF' }}>
+                      <span className="text-xs">🎯</span>
                     </div>
                   </div>
+                  
+                  {/* Additional Decorative Elements */}
+                  <div className="absolute -top-6 -left-6 w-4 h-4 rounded-full animate-ping" style={{ backgroundColor: '#6A1B9A' }}></div>
+                  <div className="absolute -bottom-6 -right-6 w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: '#FFD700' }}></div>
                 </div>
               </div>
             </div>
@@ -159,25 +204,25 @@ const Home = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-4 bg-gray-900">
+      <section className="py-12 sm:py-16 lg:py-20 px-4 casino-bg-secondary">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+          <div className="text-center mb-8 sm:mb-12 lg:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 casino-text-primary">
               Why Choose Global Ace Gaming?
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-base sm:text-lg lg:text-xl max-w-3xl mx-auto casino-text-secondary">
               Experience gaming excellence with our cutting-edge platform designed for champions
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {features.map((feature) => (
               <div key={feature.id} className="text-center group">
-                <div className="bg-gradient-to-br from-purple-600 to-blue-600 p-6 rounded-2xl mb-6 transform group-hover:scale-110 transition-all duration-300">
-                  <feature.icon className={`w-12 h-12 ${feature.color} mx-auto`} />
+                <div className="casino-feature-card p-4 sm:p-6 rounded-xl sm:rounded-2xl mb-4 sm:mb-6 transform group-hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                  <feature.icon className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mx-auto" style={{ color: '#FFD700' }} />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">{feature.title}</h3>
-                <p className="text-gray-300">{feature.description}</p>
+                <h3 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3 casino-text-primary">{feature.title}</h3>
+                <p className="text-sm sm:text-base casino-text-secondary">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -185,69 +230,100 @@ const Home = () => {
       </section>
 
       {/* Popular Games Section */}
-      <section className="py-20 px-4 bg-gradient-to-br from-gray-800 to-gray-900">
+      <section className="py-12 sm:py-16 lg:py-20 px-4" style={{ background: 'linear-gradient(135deg, #0A0A0F 0%, #1B1B2F 100%)' }}>
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+          <div className="text-center mb-8 sm:mb-12 lg:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 casino-text-primary">
               Popular Games
             </h2>
-            <p className="text-xl text-gray-300">
+            <p className="text-base sm:text-lg lg:text-xl casino-text-secondary">
               Join thousands of players enjoying our most popular titles
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {loading ? (
+            <div className="flex justify-center items-center py-20">
+              <Loader2 className="w-12 h-12 animate-spin" style={{ color: '#FFD700' }} />
+            </div>
+          ) : error ? (
+            <div className="text-center py-20">
+              <div className="casino-bg-secondary rounded-xl p-8 max-w-md mx-auto casino-border" style={{ borderColor: '#E53935' }}>
+                <p className="mb-6 text-lg font-semibold" style={{ color: '#E53935' }}>{error}</p>
+                <button
+                  onClick={fetchGames}
+                  className="btn-casino-primary py-3 px-8 rounded-full"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          ) : popularGames.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-lg casino-text-secondary">No games available right now 🚫</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {popularGames.map((game) => (
-              <div key={game.id} className="bg-gray-800 rounded-2xl overflow-hidden group hover:transform hover:scale-105 transition-all duration-300">
+                <div key={game.kindId} className="casino-game-card rounded-xl sm:rounded-2xl overflow-hidden group hover:transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <div className="relative">
                   <img 
-                    src={game.image} 
-                    alt={game.name}
-                    className="w-full h-48 object-cover"
+                      src={game.gameLogo}
+                      alt={game.gameName}
+                      className="w-full h-40 sm:h-48 object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://via.placeholder.com/300x300/1B1B2F/FFD700?text=Game';
+                      }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                    <button className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-6 rounded-full transform hover:scale-110 transition-all duration-300">
-                      Play Now
+                      <button 
+                        onClick={handlePlayGame}
+                        className="btn-casino-primary py-2 sm:py-3 px-4 sm:px-6 rounded-full text-sm sm:text-base transform hover:scale-110 transition-all duration-300"
+                      >
+                        <Play className="w-4 h-4 mr-2 inline" />
+                        {isAuthenticated ? 'Play Now' : 'Login to Play'}
                     </button>
                   </div>
                 </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-bold text-white mb-2">{game.name}</h3>
-                  <p className="text-gray-400 mb-4">{game.platform}</p>
+                  <div className="p-4 sm:p-6">
+                    <h3 className="text-lg sm:text-xl font-bold mb-2 casino-text-primary">{game.gameName}</h3>
+                    <p className="mb-3 sm:mb-4 text-sm sm:text-base casino-text-secondary">{game.gameType}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
-                      <Star className="w-5 h-5 text-yellow-500 fill-current" />
-                      <span className="text-white font-semibold">{game.rating}</span>
+                        <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-current" style={{ color: '#FFD700' }} />
+                        <span className="font-semibold text-sm sm:text-base casino-text-primary">4.8</span>
                     </div>
-                    <div className="flex items-center gap-1 text-gray-400">
-                      <Users className="w-4 h-4" />
-                      <span>{game.players}</span>
+                      <div className="flex items-center gap-1 casino-text-secondary">
+                        <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="text-xs sm:text-sm">Live</span>
                     </div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
+          )}
 
-          <div className="text-center mt-12">
-            <button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-full text-lg transform hover:scale-105 transition-all duration-300">
-              View All Games
-            </button>
+          <div className="text-center mt-8 sm:mt-12">
+            <Link to="/games">
+              <button className="btn-casino-primary py-3 sm:py-4 px-6 sm:px-8 rounded-full text-sm sm:text-base lg:text-lg transform hover:scale-105 transition-all duration-300 shadow-lg">
+                View All Games
+              </button>
+            </Link>
           </div>
         </div>
       </section>
 
       {/* Stats Section */}
-      <section className="py-20 px-4 bg-gray-900">
+      <section className="py-12 sm:py-16 lg:py-20 px-4 casino-bg-secondary">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {stats.map((stat, index) => (
               <div key={index} className="text-center">
-                <div className="bg-gradient-to-br from-purple-600 to-blue-600 p-6 rounded-2xl mb-4">
-                  <stat.icon className="w-12 h-12 text-white mx-auto" />
+                <div className="casino-stats-card p-4 sm:p-6 rounded-xl sm:rounded-2xl mb-3 sm:mb-4 shadow-lg">
+                  <stat.icon className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mx-auto" style={{ color: '#FFD700' }} />
                 </div>
-                <div className="text-3xl md:text-4xl font-bold text-white mb-2">{stat.value}</div>
-                <div className="text-gray-400">{stat.label}</div>
+                <div className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2 casino-text-primary">{stat.value}</div>
+                <div className="text-sm sm:text-base casino-text-secondary">{stat.label}</div>
               </div>
             ))}
           </div>
@@ -255,19 +331,25 @@ const Home = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 px-4 bg-gradient-to-r from-purple-900 to-blue-900">
+      <section className="py-12 sm:py-16 lg:py-20 px-4 casino-cta-section">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 casino-text-primary">
             Ready to Start Your Gaming Journey?
           </h2>
-          <p className="text-xl text-gray-200 mb-8">
+          <p className="text-base sm:text-lg lg:text-xl mb-6 sm:mb-8 casino-text-secondary">
             Join thousands of players and experience the ultimate gaming platform
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-4 px-8 rounded-full text-lg transform hover:scale-105 transition-all duration-300">
-              Get Started Now
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+            <button 
+              onClick={handleGetStartedClick}
+              className="btn-casino-primary py-3 sm:py-4 px-6 sm:px-8 rounded-full text-sm sm:text-base lg:text-lg transform hover:scale-105 transition-all duration-300"
+            >
+              {isAuthenticated ? 'Go to Dashboard' : 'Get Started Now'}
             </button>
-            <button className="border-2 border-white text-white hover:bg-white hover:text-purple-900 font-bold py-4 px-8 rounded-full text-lg transform hover:scale-105 transition-all duration-300">
+            <button 
+              onClick={handleLearnMoreClick}
+              className="btn-casino-outline py-3 sm:py-4 px-6 sm:px-8 rounded-full text-sm sm:text-base lg:text-lg transform hover:scale-105 transition-all duration-300"
+            >
               Learn More
             </button>
           </div>
