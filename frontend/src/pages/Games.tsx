@@ -47,7 +47,8 @@ const Games = () => {
       const response = await axios.get(GAMES_API_URL);
       
       if (response.data.success) {
-        const gamesData = response.data.data; // Access the data array directly
+        // Handle the nested data structure: response.data.data.data
+        const gamesData = response.data.data?.data || response.data.data;
         setGames(Array.isArray(gamesData) ? gamesData : []);
       } else {
         setError(response.data.message || 'Failed to fetch games');
