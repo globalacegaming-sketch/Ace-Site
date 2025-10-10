@@ -35,6 +35,8 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000", 
   "https://ace-site-rouge.vercel.app",
+  "https://www.globalacegaming.com",
+  "https://globalacegaming.com",
   process.env.FRONTEND_URL,
   process.env.VITE_FRONTEND_URL,
   process.env.PRODUCTION_FRONTEND_URL
