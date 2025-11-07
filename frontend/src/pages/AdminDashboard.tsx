@@ -1,20 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Shield, 
-  Users, 
   TrendingUp,
-  FileText,
   Gift,
   Download,
   ArrowUp,
   ArrowDown,
   Search,
   Loader2,
-  CheckCircle,
   XCircle,
   RefreshCw,
-  DollarSign,
-  Edit,
   X
 } from 'lucide-react';
 import axios from 'axios';
@@ -58,7 +52,7 @@ const AdminDashboard: React.FC = () => {
   
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'deposit' | 'redeem' | 'trades' | 'jackpots' | 'games'>('users');
+  const [activeTab] = useState<'users' | 'deposit' | 'redeem' | 'trades' | 'jackpots' | 'games'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [agentBalance, setAgentBalance] = useState<string>('0.00');
@@ -142,36 +136,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const loadUserFpInfo = async (userId: string) => {
-    try {
-      setLoading(true);
-      const token = getAdminToken();
-      if (!token) {
-        navigate('/adminacers/login');
-        return;
-      }
-
-      const response = await axios.get(`${API_BASE_URL}/admin/users/${userId}/fortune-panda`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.data.success) {
-        toast.success(`User info fetched! Balance: $${response.data.data?.userBalance || '0.00'}, Agent Balance: $${response.data.data?.agentBalance || '0.00'}`);
-        // Refresh users list to update balance
-        loadUsers();
-        // Refresh agent balance
-        loadAgentBalance();
-      } else {
-        toast.error(response.data.message || 'Failed to fetch user info');
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to fetch user info');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const syncAllUsersFromFortunePanda = async () => {
     try {
@@ -463,14 +427,6 @@ const AdminDashboard: React.FC = () => {
     u.fortunePandaUsername?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const tabs = [
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'deposit', label: 'Deposit', icon: ArrowUp },
-    { id: 'redeem', label: 'Redeem', icon: ArrowDown },
-    { id: 'trades', label: 'Trade Records', icon: FileText },
-    { id: 'jackpots', label: 'Jackpot Records', icon: Gift },
-    { id: 'games', label: 'Game Records', icon: TrendingUp },
-  ];
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -579,7 +535,7 @@ const AdminDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredUsers.map((u, index) => (
+                      {filteredUsers.map((u) => (
                         <tr key={u._id} className="border-b hover:bg-gray-50">
                           <td className="p-3 text-gray-800">{u._id.slice(-6).toUpperCase()}</td>
                           <td className="p-3 text-gray-800">{getFPAccountName(u.fortunePandaUsername)}</td>
