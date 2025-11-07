@@ -138,9 +138,16 @@ const TawkToWidget = () => {
         console.log('Attempting Tawk.to login with:', {
           userId,
           hashLength: userHash.length,
+          hasSecretKey: !!TAWK_TO_SECRET_KEY,
           userName,
           userEmail
         });
+
+        // Check if we have a secret key - if not, warn the user
+        if (!TAWK_TO_SECRET_KEY) {
+          console.warn('⚠️ Tawk.to secret key not configured. Hash may be invalid. Please add VITE_TAWK_TO_SECRET_KEY to your .env.local file.');
+          console.warn('⚠️ Get your secret key from: Tawk.to Dashboard > Settings > Channels > Chat Widget > Security');
+        }
 
         // Step 1: Login with ONLY required fields (userId and hash)
         // This is the most reliable method based on Tawk.to documentation
@@ -152,6 +159,14 @@ const TawkToWidget = () => {
           (loginError) => {
             if (loginError) {
               console.error('❌ Tawk.to login failed:', loginError);
+              
+              // Provide helpful error message for INVALID_HASH
+              if (loginError.code === 'BadRequestError' && loginError.message === 'INVALID_HASH') {
+                console.error('❌ INVALID_HASH error: You need to configure VITE_TAWK_TO_SECRET_KEY in your .env.local file');
+                console.error('❌ Get your secret key from: Tawk.to Dashboard > Settings > Channels > Chat Widget > Security');
+                console.error('❌ Then add: VITE_TAWK_TO_SECRET_KEY=your-secret-key-here');
+              }
+              
               loginAttemptedRef.current = false; // Allow retry
             } else {
               console.log('✅ Tawk.to user logged in successfully');
