@@ -79,6 +79,18 @@ class FortunePandaService {
     return crypto.createHash('md5').update(text).digest('hex');
   }
 
+  // Get full FortunePanda username with _GAGame suffix
+  // FortunePanda automatically appends _GAGame when creating accounts
+  // So we need to append it when querying, but store without it in database
+  public getFullFortunePandaUsername(username: string): string {
+    // If username already ends with _GAGame, return as is
+    if (username.endsWith('_GAGame')) {
+      return username;
+    }
+    // Otherwise, append _GAGame
+    return `${username}_GAGame`;
+  }
+
   // Get current timestamp in milliseconds (as per your specification)
   private getCurrentTimestamp(): number {
     return Date.now();
