@@ -39,6 +39,17 @@ interface RecordData {
   [key: string]: any;
 }
 
+// Helper function to get the actual FP account name (with _GAGame suffix)
+const getFPAccountName = (dbUsername: string | undefined): string => {
+  if (!dbUsername) return 'N/A';
+  // If it already ends with _GAGame, return as is
+  if (dbUsername.endsWith('_GAGame')) {
+    return dbUsername;
+  }
+  // Otherwise append _GAGame
+  return `${dbUsername}_GAGame`;
+};
+
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const API_BASE_URL = getApiBaseUrl();
@@ -585,7 +596,9 @@ const AdminDashboard: React.FC = () => {
                         <tr key={u._id} className="border-b casino-border hover:casino-bg-primary/10">
                           <td className="p-3 casino-text-secondary">{u.username}</td>
                           <td className="p-3 casino-text-secondary">{u.email}</td>
-                          <td className="p-3 casino-text-secondary">{u.fortunePandaUsername || 'N/A'}</td>
+                          <td className="p-3 casino-text-secondary" title={`DB: ${u.fortunePandaUsername || 'N/A'}`}>
+                            {getFPAccountName(u.fortunePandaUsername)}
+                          </td>
                           <td className="p-3 casino-text-secondary">
                             ${u.fortunePandaBalance?.toFixed(2) || '0.00'}
                           </td>
@@ -662,14 +675,17 @@ const AdminDashboard: React.FC = () => {
                     <option value="">Select a user...</option>
                     {users.map(u => (
                       <option key={u._id} value={u._id}>
-                        {u.username} ({u.fortunePandaUsername || 'No FP Account'})
+                        {u.username} ({getFPAccountName(u.fortunePandaUsername)})
                       </option>
                     ))}
                   </select>
                 </div>
                 {selectedUser && (
                   <div className="p-4 rounded-lg casino-bg-primary">
-                    <p className="casino-text-secondary">Current Balance: <span className="font-bold casino-text-primary">
+                    <p className="casino-text-secondary">FP Account: <span className="font-bold casino-text-primary">
+                      {getFPAccountName(selectedUser.fortunePandaUsername)}
+                    </span></p>
+                    <p className="casino-text-secondary mt-2">Current Balance: <span className="font-bold casino-text-primary">
                       ${selectedUser.fortunePandaBalance?.toFixed(2) || '0.00'}
                     </span></p>
                   </div>
@@ -720,14 +736,17 @@ const AdminDashboard: React.FC = () => {
                     <option value="">Select a user...</option>
                     {users.map(u => (
                       <option key={u._id} value={u._id}>
-                        {u.username} ({u.fortunePandaUsername || 'No FP Account'})
+                        {u.username} ({getFPAccountName(u.fortunePandaUsername)})
                       </option>
                     ))}
                   </select>
                 </div>
                 {selectedUser && (
                   <div className="p-4 rounded-lg casino-bg-primary">
-                    <p className="casino-text-secondary">Current Balance: <span className="font-bold casino-text-primary">
+                    <p className="casino-text-secondary">FP Account: <span className="font-bold casino-text-primary">
+                      {getFPAccountName(selectedUser.fortunePandaUsername)}
+                    </span></p>
+                    <p className="casino-text-secondary mt-2">Current Balance: <span className="font-bold casino-text-primary">
                       ${selectedUser.fortunePandaBalance?.toFixed(2) || '0.00'}
                     </span></p>
                   </div>

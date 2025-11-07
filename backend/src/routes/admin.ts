@@ -481,16 +481,39 @@ router.post('/deposit', async (req: Request, res: Response) => {
       });
     }
 
+    // Get the actual FP account name (with _GAGame suffix)
+    const fpAccountName = fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername);
+    
+    // Verify account exists in FortunePanda first
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const verifyResult = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+    
+    if (!verifyResult.success) {
+      console.error('❌ FortunePanda account not found:', {
+        dbUsername: user.fortunePandaUsername,
+        fpAccountName,
+        error: verifyResult.message
+      });
+      return res.status(400).json({
+        success: false,
+        message: `FortunePanda account not found. FP Account: ${fpAccountName}. ${verifyResult.message || 'Please verify the account exists in FortunePanda.'}`,
+        debug: {
+          dbUsername: user.fortunePandaUsername,
+          fpAccountName,
+          error: verifyResult.message
+        }
+      });
+    }
     
     console.log('🔐 Calling FortunePanda agentDeposit:', {
-      account: user.fortunePandaUsername,
+      dbAccount: user.fortunePandaUsername,
+      fpAccount: fpAccountName,
       amount: amount.toString(),
       passwdLength: passwdMd5.length
     });
 
     const result = await fortunePandaService.agentDeposit(
-      user.fortunePandaUsername,
+      user.fortunePandaUsername, // Service will append _GAGame internally
       passwdMd5,
       amount.toString()
     );
@@ -610,16 +633,39 @@ router.post('/redeem', async (req: Request, res: Response) => {
       });
     }
 
+    // Get the actual FP account name (with _GAGame suffix)
+    const fpAccountName = fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername);
+    
+    // Verify account exists in FortunePanda first
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const verifyResult = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+    
+    if (!verifyResult.success) {
+      console.error('❌ FortunePanda account not found:', {
+        dbUsername: user.fortunePandaUsername,
+        fpAccountName,
+        error: verifyResult.message
+      });
+      return res.status(400).json({
+        success: false,
+        message: `FortunePanda account not found. FP Account: ${fpAccountName}. ${verifyResult.message || 'Please verify the account exists in FortunePanda.'}`,
+        debug: {
+          dbUsername: user.fortunePandaUsername,
+          fpAccountName,
+          error: verifyResult.message
+        }
+      });
+    }
     
     console.log('🔐 Calling FortunePanda agentRedeem:', {
-      account: user.fortunePandaUsername,
+      dbAccount: user.fortunePandaUsername,
+      fpAccount: fpAccountName,
       amount: amount.toString(),
       passwdLength: passwdMd5.length
     });
 
     const result = await fortunePandaService.agentRedeem(
-      user.fortunePandaUsername,
+      user.fortunePandaUsername, // Service will append _GAGame internally
       passwdMd5,
       amount.toString()
     );
