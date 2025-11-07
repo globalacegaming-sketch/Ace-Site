@@ -524,59 +524,18 @@ router.post('/deposit', async (req: Request, res: Response) => {
       });
     }
 
-    if (!user.fortunePandaPassword) {
-      console.error('❌ User missing FortunePanda password:', {
-        userId: user._id.toString(),
-        username: user.username,
-        fpUsername: user.fortunePandaUsername
-      });
-      return res.status(400).json({
-        success: false,
-        message: `User has FortunePanda username (${user.fortunePandaUsername}) but is missing password. Please set the FortunePanda password for this user first using the admin panel.`,
-        debug: {
-          userId: user._id.toString(),
-          username: user.username,
-          fpUsername: user.fortunePandaUsername,
-          hasFPUsername: true,
-          hasFPPassword: false
-        }
-      });
-    }
-
     // Use FP account name as stored in database
     const fpAccountName = user.fortunePandaUsername || 'N/A';
     
-    // Verify account exists in FortunePanda first
-    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    const verifyResult = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
-    
-    if (!verifyResult.success) {
-      console.error('❌ FortunePanda account not found:', {
-        dbUsername: user.fortunePandaUsername,
-        fpAccountName,
-        error: verifyResult.message
-      });
-      return res.status(400).json({
-        success: false,
-        message: `FortunePanda account not found. FP Account: ${fpAccountName}. ${verifyResult.message || 'Please verify the account exists in FortunePanda.'}`,
-        debug: {
-          dbUsername: user.fortunePandaUsername,
-          fpAccountName,
-          error: verifyResult.message
-        }
-      });
-    }
-    
-    console.log('🔐 Calling FortunePanda agentDeposit:', {
+    console.log('🔐 Calling FortunePanda recharge:', {
       dbAccount: user.fortunePandaUsername,
       fpAccount: fpAccountName,
-      amount: amount.toString(),
-      passwdLength: passwdMd5.length
+      amount: amount.toString()
     });
 
+    // Call recharge API directly (no password needed, uses agent authentication via sign)
     const result = await fortunePandaService.agentDeposit(
       user.fortunePandaUsername, // Use account name directly as stored
-      passwdMd5,
       amount.toString()
     );
 
@@ -715,37 +674,15 @@ router.post('/redeem', async (req: Request, res: Response) => {
     // Use FP account name as stored in database
     const fpAccountName = user.fortunePandaUsername || 'N/A';
     
-    // Verify account exists in FortunePanda first
-    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    const verifyResult = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
-    
-    if (!verifyResult.success) {
-      console.error('❌ FortunePanda account not found:', {
-        dbUsername: user.fortunePandaUsername,
-        fpAccountName,
-        error: verifyResult.message
-      });
-      return res.status(400).json({
-        success: false,
-        message: `FortunePanda account not found. FP Account: ${fpAccountName}. ${verifyResult.message || 'Please verify the account exists in FortunePanda.'}`,
-        debug: {
-          dbUsername: user.fortunePandaUsername,
-          fpAccountName,
-          error: verifyResult.message
-        }
-      });
-    }
-    
-    console.log('🔐 Calling FortunePanda agentRedeem:', {
+    console.log('🔐 Calling FortunePanda redeem:', {
       dbAccount: user.fortunePandaUsername,
       fpAccount: fpAccountName,
-      amount: amount.toString(),
-      passwdLength: passwdMd5.length
+      amount: amount.toString()
     });
 
+    // Call redeem API directly (no password needed, uses agent authentication via sign)
     const result = await fortunePandaService.agentRedeem(
       user.fortunePandaUsername, // Use account name directly as stored
-      passwdMd5,
       amount.toString()
     );
 

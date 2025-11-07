@@ -544,13 +544,14 @@ class FortunePandaService {
 
 
   // Agent Deposit (Load money to user account)
-  async agentDeposit(account: string, passwdMd5: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
+  // Format: ?action=recharge&account=test01&amount=1&agentName=agent01&time=1598452539&sign=7b35f60db33dcfd237fdb48cb5de97c5
+  async agentDeposit(account: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       if (!this.agentKeyCache) {
         await this.loginAgent();
       }
 
-      // Append _GAGame suffix to account name
+      // Use account name directly as stored in database
       const fortunePandaAccount = account;
 
       const time = Date.now();
@@ -560,16 +561,24 @@ class FortunePandaService {
         this.agentKeyCache!
       );
 
+      // Build query params exactly as per FortunePanda API format
+      const queryParams = {
+        action: 'recharge',
+        account: fortunePandaAccount,
+        amount: amount,
+        agentName: this.config.agentName,
+        time: time.toString(),
+        sign: sign
+      };
+
+      console.log('💰 FortunePanda recharge request:', {
+        ...queryParams,
+        sign: '[HIDDEN]',
+        accountLength: fortunePandaAccount?.length
+      });
+
       const response = await axios.post(this.config.baseUrl, null, {
-        params: {
-          action: 'agentDeposit',
-          account: fortunePandaAccount,
-          passwd: passwdMd5,
-          agentName: this.config.agentName,
-          amount,
-          time,
-          sign
-        },
+        params: queryParams,
         timeout: 30000
       });
 
@@ -591,16 +600,17 @@ class FortunePandaService {
         // Use the same FortunePanda account name for retry
         const fortunePandaAccount = account;
 
+        const retryQueryParams = {
+          action: 'recharge',
+          account: fortunePandaAccount,
+          amount: amount,
+          agentName: this.config.agentName,
+          time: retryTime.toString(),
+          sign: retrySign
+        };
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
-          params: {
-            action: 'agentDeposit',
-            account: fortunePandaAccount,
-            passwd: passwdMd5,
-            agentName: this.config.agentName,
-            amount,
-            time: retryTime,
-            sign: retrySign
-          },
+          params: retryQueryParams,
           timeout: 30000
         });
 
@@ -631,13 +641,14 @@ class FortunePandaService {
   }
 
   // Agent Redeem (Withdraw money from user account)
-  async agentRedeem(account: string, passwdMd5: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
+  // Format: ?action=redeem&account=test01&amount=1&agentName=agent01&time=1598452539&sign=7b35f60db33dcfd237fdb48cb5de97c5
+  async agentRedeem(account: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       if (!this.agentKeyCache) {
         await this.loginAgent();
       }
 
-      // Append _GAGame suffix to account name
+      // Use account name directly as stored in database
       const fortunePandaAccount = account;
 
       const time = Date.now();
@@ -647,16 +658,24 @@ class FortunePandaService {
         this.agentKeyCache!
       );
 
+      // Build query params exactly as per FortunePanda API format
+      const queryParams = {
+        action: 'redeem',
+        account: fortunePandaAccount,
+        amount: amount,
+        agentName: this.config.agentName,
+        time: time.toString(),
+        sign: sign
+      };
+
+      console.log('💸 FortunePanda redeem request:', {
+        ...queryParams,
+        sign: '[HIDDEN]',
+        accountLength: fortunePandaAccount?.length
+      });
+
       const response = await axios.post(this.config.baseUrl, null, {
-        params: {
-          action: 'agentRedeem',
-          account: fortunePandaAccount,
-          passwd: passwdMd5,
-          agentName: this.config.agentName,
-          amount,
-          time,
-          sign
-        },
+        params: queryParams,
         timeout: 30000
       });
 

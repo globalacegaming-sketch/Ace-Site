@@ -8,7 +8,8 @@
     "dev": "nodemon src/index.ts",
     "build": "tsc --skipLibCheck",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "update-fp-usernames": "ts-node scripts/update-fp-usernames.ts"
+    "update-fp-usernames": "ts-node scripts/update-fp-usernames.ts",
+    "remove-gagame-suffix": "ts-node scripts/remove-gagame-suffix.ts"
   },
   "keywords": [
     "gaming",
