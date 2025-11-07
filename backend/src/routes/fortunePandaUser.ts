@@ -194,8 +194,8 @@ router.get('/balance', async (req: Request, res: Response) => {
         }
       });
     } else if (result.message?.includes('account does not exist')) {
-      // Account doesn't exist, create it
-      console.log('🔄 Fortune Panda account does not exist, creating new account...');
+      // Account doesn't exist, try to create it
+      console.log('🔄 Fortune Panda account does not exist, attempting to create new account...');
       
       try {
         const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, user.fortunePandaPassword || '');
@@ -232,6 +232,18 @@ router.get('/balance', async (req: Request, res: Response) => {
               }
             });
           }
+        } else if (createResult.message?.includes('already exists')) {
+          // Account exists but password might be wrong, or account was created with different credentials
+          console.error('❌ Account already exists in FortunePanda but query failed. Possible password mismatch.');
+          return res.status(400).json({
+            success: false,
+            message: 'FortunePanda account exists but authentication failed. The account password may not match. Please contact support to reset your FortunePanda account password.',
+            debug: {
+              fortunePandaUsername: `${fortunePandaUsername}_GAGame`,
+              accountExists: true,
+              passwordMismatch: true
+            }
+          });
         } else {
           console.log('❌ Failed to create Fortune Panda account:', createResult.message);
           return res.status(400).json({

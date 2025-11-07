@@ -35,15 +35,9 @@ interface RecordData {
   [key: string]: any;
 }
 
-// Helper function to get the actual FP account name (with _GAGame suffix)
+// Helper function to get the FP account name (use as stored in database)
 const getFPAccountName = (dbUsername: string | undefined): string => {
-  if (!dbUsername) return 'N/A';
-  // If it already ends with _GAGame, return as is
-  if (dbUsername.endsWith('_GAGame')) {
-    return dbUsername;
-  }
-  // Otherwise append _GAGame
-  return `${dbUsername}_GAGame`;
+  return dbUsername || 'N/A';
 };
 
 const AdminDashboard: React.FC = () => {

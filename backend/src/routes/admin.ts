@@ -308,8 +308,8 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
           continue;
         }
 
-        // Get the actual FP account name (with _GAGame suffix)
-        const fpAccountName = fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername);
+        // Use FP account name as stored in database
+        const fpAccountName = user.fortunePandaUsername || 'N/A';
         
         console.log(`🔍 Syncing user ${user.username || user._id}:`, {
           dbUsername: user.fortunePandaUsername,
@@ -363,7 +363,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
         }
       } catch (error: any) {
         const fpAccountName = user.fortunePandaUsername 
-          ? fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername)
+          ? user.fortunePandaUsername
           : 'N/A';
         
         console.error(`❌ Error syncing user ${user.username || user._id}:`, {
@@ -526,8 +526,8 @@ router.post('/deposit', async (req: Request, res: Response) => {
       });
     }
 
-    // Get the actual FP account name (with _GAGame suffix)
-    const fpAccountName = fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername);
+    // Use FP account name as stored in database
+    const fpAccountName = user.fortunePandaUsername || 'N/A';
     
     // Verify account exists in FortunePanda first
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
@@ -558,7 +558,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
     });
 
     const result = await fortunePandaService.agentDeposit(
-      user.fortunePandaUsername, // Service will append _GAGame internally
+      user.fortunePandaUsername, // Use account name directly as stored
       passwdMd5,
       amount.toString()
     );
@@ -678,8 +678,8 @@ router.post('/redeem', async (req: Request, res: Response) => {
       });
     }
 
-    // Get the actual FP account name (with _GAGame suffix)
-    const fpAccountName = fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername);
+    // Use FP account name as stored in database
+    const fpAccountName = user.fortunePandaUsername || 'N/A';
     
     // Verify account exists in FortunePanda first
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
@@ -710,7 +710,7 @@ router.post('/redeem', async (req: Request, res: Response) => {
     });
 
     const result = await fortunePandaService.agentRedeem(
-      user.fortunePandaUsername, // Service will append _GAGame internally
+      user.fortunePandaUsername, // Use account name directly as stored
       passwdMd5,
       amount.toString()
     );
