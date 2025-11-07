@@ -62,22 +62,18 @@ router.get('/account', async (req: Request, res: Response) => {
   try {
     const user = req.user!;
     
-    // Get Fortune Panda username format (stored in DB without _GAGame)
-    const baseUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(baseUsername);
+    // Get Fortune Panda username format
+        const fortunePandaUsername = `${user.firstName}_Aces9F`;
     
     // Query user info from Fortune Panda
-    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
-    const result = await fortunePandaService.queryUserInfo(fullUsername, passwdMd5);
+    const result = await fortunePandaService.queryUserInfo(fortunePandaUsername, user.fortunePandaPassword || '');
     
     if (result.success) {
       res.json({
         success: true,
         message: 'Account info retrieved successfully',
         data: {
-          fortunePandaUsername: baseUsername, // Return base username (without _GAGame) for display
-          fullFortunePandaUsername: fullUsername, // Full username used for queries
+          fortunePandaUsername,
           balance: result.data?.userbalance || '0.00',
           agentBalance: result.data?.agentBalance || '0.00',
           lastLogin: result.data?.lastLogin,
@@ -112,12 +108,9 @@ router.post('/games/enter', async (req: Request, res: Response) => {
       });
     }
 
-    // Get Fortune Panda username format (stored in DB without _GAGame)
-    const baseUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(baseUsername);
+        const fortunePandaUsername = `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
-    const result = await fortunePandaService.enterGame(fullUsername, passwdMd5, kindId);
+    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, kindId);
     
     if (result.success) {
       return res.json({
@@ -152,15 +145,15 @@ router.get('/balance', async (req: Request, res: Response) => {
       // User missing Fortune Panda password, creating account
       
       // Try to create Fortune Panda account for existing user
-      const baseUsername = `${user.firstName}_Aces9F`;
-      const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
+          const fortunePandaUsername = `${user.firstName}_Aces9F`;
+          const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
 
-      try {
-        const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, fortunePandaPassword);
+          try {
+            const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, fortunePandaPassword);
         
         if (createResult.success) {
           // Update user with Fortune Panda credentials
-          user.fortunePandaUsername = baseUsername;
+          user.fortunePandaUsername = fortunePandaUsername;
           user.fortunePandaPassword = fortunePandaPassword;
           await user.save();
           
@@ -181,14 +174,12 @@ router.get('/balance', async (req: Request, res: Response) => {
       }
     }
     
-    // Get Fortune Panda username format (stored in DB without _GAGame)
-    const baseUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(baseUsername);
+    // Get Fortune Panda username format: {firstname}_Aces9F
+    const fortunePandaUsername = `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
     
     // Query user info from Fortune Panda
-    const result = await fortunePandaService.queryUserInfo(fullUsername, passwdMd5);
+    const result = await fortunePandaService.queryUserInfo(fortunePandaUsername, passwdMd5);
     
     if (result.success) {
       return res.json({
@@ -197,7 +188,7 @@ router.get('/balance', async (req: Request, res: Response) => {
         data: {
           balance: result.data?.userbalance || '0.00',
           agentBalance: result.data?.agentBalance || '0.00',
-          fortunePandaUsername: baseUsername // Return base username (without _GAGame) for display
+          fortunePandaUsername
         }
       });
     } else if (result.message?.includes('account does not exist')) {
@@ -209,14 +200,13 @@ router.get('/balance', async (req: Request, res: Response) => {
         
         if (createResult.success) {
           // Update user with new Fortune Panda credentials
-          user.fortunePandaUsername = baseUsername;
+          user.fortunePandaUsername = fortunePandaUsername;
           await user.save();
           
           console.log('✅ Fortune Panda account created successfully, retrying balance query...');
           
-          // Retry balance query with full username (including _GAGame)
-          const retryFullUsername = fortunePandaService.getFullFortunePandaUsername(baseUsername);
-          const retryResult = await fortunePandaService.queryUserInfo(retryFullUsername, passwdMd5);
+          // Retry balance query
+          const retryResult = await fortunePandaService.queryUserInfo(fortunePandaUsername, passwdMd5);
           
           if (retryResult.success) {
             console.log('✅ Balance retrieved successfully after account creation:', retryResult.data);
@@ -226,7 +216,7 @@ router.get('/balance', async (req: Request, res: Response) => {
               data: {
                 balance: retryResult.data?.userbalance || '0.00',
                 agentBalance: retryResult.data?.agentBalance || '0.00',
-                fortunePandaUsername: baseUsername
+                fortunePandaUsername
               }
             });
           } else {
@@ -235,7 +225,7 @@ router.get('/balance', async (req: Request, res: Response) => {
               success: false,
               message: retryResult.message,
               debug: {
-                fortunePandaUsername: baseUsername,
+                fortunePandaUsername,
                 accountCreated: true
               }
             });
@@ -246,7 +236,7 @@ router.get('/balance', async (req: Request, res: Response) => {
             success: false,
             message: 'Failed to create Fortune Panda account: ' + createResult.message,
             debug: {
-              fortunePandaUsername: baseUsername,
+              fortunePandaUsername,
               createError: createResult.message
             }
           });
@@ -257,7 +247,7 @@ router.get('/balance', async (req: Request, res: Response) => {
           success: false,
           message: 'Failed to create Fortune Panda account',
           debug: {
-            fortunePandaUsername: baseUsername,
+            fortunePandaUsername,
             error: error instanceof Error ? error.message : 'Unknown error'
           }
         });
@@ -269,7 +259,7 @@ router.get('/balance', async (req: Request, res: Response) => {
         message: result.message || 'Failed to retrieve balance. Please try again.',
         error: result.message,
         debug: {
-          fortunePandaUsername: baseUsername,
+          fortunePandaUsername,
           hasPassword: !!user.fortunePandaPassword
         }
       });
@@ -315,19 +305,15 @@ router.post('/enter-game', async (req: Request, res: Response) => {
       });
     }
 
-    // Get Fortune Panda username format (stored in DB without _GAGame)
-    const baseUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(baseUsername);
+    const fortunePandaUsername = `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
     
     console.log('🎮 Calling Fortune Panda enterGame API:', {
-      baseUsername,
-      fullUsername,
+      username: fortunePandaUsername,
       kindId: kindId
     });
     
-    const result = await fortunePandaService.enterGame(fullUsername, passwdMd5, kindId);
+    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, kindId);
     
     console.log('🎮 Fortune Panda enterGame result:', {
       success: result.success,

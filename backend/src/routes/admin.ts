@@ -174,9 +174,7 @@ router.get('/agent-balance', async (req: Request, res: Response) => {
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
-    const result = await fortunePandaService.queryUserInfo(fullUsername, passwdMd5);
+    const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
 
     if (result.success) {
       return res.json({
@@ -306,9 +304,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
         if (!user.fortunePandaUsername || !user.fortunePandaPassword) continue;
 
         const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-        // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-        const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
-        const result = await fortunePandaService.queryUserInfo(fullUsername, passwdMd5);
+        const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
 
         if (result.success) {
           // Update user in database
@@ -443,10 +439,8 @@ router.post('/deposit', async (req: Request, res: Response) => {
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
     const result = await fortunePandaService.agentDeposit(
-      fullUsername,
+      user.fortunePandaUsername,
       passwdMd5,
       amount.toString()
     );
@@ -507,10 +501,8 @@ router.post('/redeem', async (req: Request, res: Response) => {
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
     const result = await fortunePandaService.agentRedeem(
-      fullUsername,
+      user.fortunePandaUsername,
       passwdMd5,
       amount.toString()
     );
@@ -570,15 +562,13 @@ router.get('/trades', async (req: Request, res: Response) => {
       });
     }
 
-        const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-        // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-        const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
-        const result = await fortunePandaService.getTradeRecord(
-          fullUsername,
-          passwdMd5,
-          fromDate as string,
-          toDate as string
-        );
+    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const result = await fortunePandaService.getTradeRecord(
+      user.fortunePandaUsername,
+      passwdMd5,
+      fromDate as string,
+      toDate as string
+    );
 
     if (result.success) {
       return res.json({
@@ -629,10 +619,8 @@ router.get('/jackpots', async (req: Request, res: Response) => {
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
     const result = await fortunePandaService.getJpRecord(
-      fullUsername,
+      user.fortunePandaUsername,
       passwdMd5,
       fromDate as string,
       toDate as string
@@ -687,10 +675,8 @@ router.get('/game-records', async (req: Request, res: Response) => {
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-    // FortunePanda automatically appends _GAGame to usernames, so we need to include it when querying
-    const fullUsername = fortunePandaService.getFullFortunePandaUsername(user.fortunePandaUsername);
     const result = await fortunePandaService.getGameRecord(
-      fullUsername,
+      user.fortunePandaUsername,
       passwdMd5,
       fromDate as string,
       toDate as string,
