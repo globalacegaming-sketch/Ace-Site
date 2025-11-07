@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Plus, Edit, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
+  Plus, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
   Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
-  ChevronDown, CheckCircle, Clock
+  ChevronDown, CheckCircle
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';

@@ -52,8 +52,10 @@ const Offers = () => {
       return;
     }
 
+    const userId = (user as any)._id || user.id;
+
     // Check if already claimed
-    if (bonus.claimedBy?.includes(user._id)) {
+    if (bonus.claimedBy?.includes(userId)) {
       toast.error('You have already claimed this bonus');
       return;
     }
@@ -64,7 +66,7 @@ const Offers = () => {
       // Claim the bonus
       const claimResponse = await axios.post(
         `${API_BASE_URL}/bonuses/${bonus._id}/claim`,
-        { userId: user._id }
+        { userId: userId }
       );
 
       if (claimResponse.data.success) {
@@ -72,19 +74,21 @@ const Offers = () => {
         
         // Send pre-message via Tawk.to if available
         const preMessage = claimResponse.data.data?.preMessage;
-        if (preMessage && window.Tawk_API) {
+        if (preMessage && window.Tawk_API?.maximize) {
           // Wait a bit for Tawk.to to be ready, then send message
           setTimeout(() => {
-            if (window.Tawk_API) {
+            if (window.Tawk_API?.maximize) {
               window.Tawk_API.maximize();
               // Tawk.to doesn't have a direct API to send messages, but we can use setAttributes
               // The support team will see the user has claimed a bonus
-              window.Tawk_API.setAttributes({
-                bonusClaimed: bonus.title,
-                bonusClaimMessage: preMessage
-              }, () => {
-                // Message sent to support team
-              });
+              if (window.Tawk_API.setAttributes) {
+                window.Tawk_API.setAttributes({
+                  bonusClaimed: bonus.title,
+                  bonusClaimMessage: preMessage
+                }, () => {
+                  // Message sent to support team
+                });
+              }
             }
           }, 500);
         } else if (preMessage) {
@@ -130,7 +134,9 @@ const Offers = () => {
   };
 
   const isClaimed = (bonus: Bonus) => {
-    return isAuthenticated && user && bonus.claimedBy?.includes(user._id);
+    if (!isAuthenticated || !user) return false;
+    const userId = (user as any)._id || user.id;
+    return bonus.claimedBy?.includes(userId) || false;
   };
 
   if (loading) {
