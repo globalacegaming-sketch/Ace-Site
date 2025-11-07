@@ -291,9 +291,9 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
 // Sync all users from FortunePanda
 router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => {
   try {
+    // Include users with username (even if password is missing)
     const users = await User.find({
-      fortunePandaUsername: { $exists: true, $ne: null },
-      fortunePandaPassword: { $exists: true, $ne: null }
+      fortunePandaUsername: { $exists: true, $ne: null }
     }).select('fortunePandaUsername fortunePandaPassword _id firstName username');
 
     console.log(`🔄 Starting sync for ${users.length} users from FortunePanda...`);
@@ -508,20 +508,37 @@ router.post('/deposit', async (req: Request, res: Response) => {
       fpUsername: user.fortunePandaUsername
     });
 
-    if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
-      console.error('❌ User missing FortunePanda credentials:', {
+    if (!user.fortunePandaUsername) {
+      console.error('❌ User missing FortunePanda username:', {
         userId: user._id.toString(),
-        hasFPUsername: !!user.fortunePandaUsername,
-        hasFPPassword: !!user.fortunePandaPassword
+        username: user.username
       });
       return res.status(400).json({
         success: false,
-        message: 'User does not have FortunePanda account. Please sync users from FortunePanda first or create an account for this user.',
+        message: 'User does not have FortunePanda username. Please sync users from FortunePanda first or create an account for this user.',
         debug: {
           userId: user._id.toString(),
           username: user.username,
-          hasFPUsername: !!user.fortunePandaUsername,
-          hasFPPassword: !!user.fortunePandaPassword
+          hasFPUsername: false
+        }
+      });
+    }
+
+    if (!user.fortunePandaPassword) {
+      console.error('❌ User missing FortunePanda password:', {
+        userId: user._id.toString(),
+        username: user.username,
+        fpUsername: user.fortunePandaUsername
+      });
+      return res.status(400).json({
+        success: false,
+        message: `User has FortunePanda username (${user.fortunePandaUsername}) but is missing password. Please set the FortunePanda password for this user first using the admin panel.`,
+        debug: {
+          userId: user._id.toString(),
+          username: user.username,
+          fpUsername: user.fortunePandaUsername,
+          hasFPUsername: true,
+          hasFPPassword: false
         }
       });
     }
@@ -660,20 +677,37 @@ router.post('/redeem', async (req: Request, res: Response) => {
       fpUsername: user.fortunePandaUsername
     });
 
-    if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
-      console.error('❌ User missing FortunePanda credentials:', {
+    if (!user.fortunePandaUsername) {
+      console.error('❌ User missing FortunePanda username:', {
         userId: user._id.toString(),
-        hasFPUsername: !!user.fortunePandaUsername,
-        hasFPPassword: !!user.fortunePandaPassword
+        username: user.username
       });
       return res.status(400).json({
         success: false,
-        message: 'User does not have FortunePanda account. Please sync users from FortunePanda first or create an account for this user.',
+        message: 'User does not have FortunePanda username. Please sync users from FortunePanda first or create an account for this user.',
         debug: {
           userId: user._id.toString(),
           username: user.username,
-          hasFPUsername: !!user.fortunePandaUsername,
-          hasFPPassword: !!user.fortunePandaPassword
+          hasFPUsername: false
+        }
+      });
+    }
+
+    if (!user.fortunePandaPassword) {
+      console.error('❌ User missing FortunePanda password:', {
+        userId: user._id.toString(),
+        username: user.username,
+        fpUsername: user.fortunePandaUsername
+      });
+      return res.status(400).json({
+        success: false,
+        message: `User has FortunePanda username (${user.fortunePandaUsername}) but is missing password. Please set the FortunePanda password for this user first using the admin panel.`,
+        debug: {
+          userId: user._id.toString(),
+          username: user.username,
+          fpUsername: user.fortunePandaUsername,
+          hasFPUsername: true,
+          hasFPPassword: false
         }
       });
     }
@@ -925,6 +959,64 @@ router.get('/game-records', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
+    });
+  }
+});
+
+// Set/Update FortunePanda password for a user
+router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required'
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (!user.fortunePandaUsername) {
+      return res.status(400).json({
+        success: false,
+        message: 'User does not have FortunePanda username. Cannot set password without username.'
+      });
+    }
+
+    // Update the password in database
+    user.fortunePandaPassword = password;
+    await user.save();
+
+    console.log('✅ FortunePanda password updated for user:', {
+      userId: user._id.toString(),
+      username: user.username,
+      fpUsername: user.fortunePandaUsername
+    });
+
+    return res.json({
+      success: true,
+      message: 'FortunePanda password updated successfully',
+      data: {
+        userId: user._id.toString(),
+        username: user.username,
+        fortunePandaUsername: user.fortunePandaUsername
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ Error updating FortunePanda password:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error',
+      error: error.message
     });
   }
 });

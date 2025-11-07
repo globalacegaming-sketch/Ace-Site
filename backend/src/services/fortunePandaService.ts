@@ -298,6 +298,7 @@ class FortunePandaService {
   }
 
   // Query user info from Fortune Panda (Demo API format - for balance polling every 20s)
+  // Format: ?action=queryInfo&account=test01&passwd=e10adc3949ba59abbe56e057f20f883e&agentName=agent01&time=1598452539&sign=7b35f60db33dcfd237fdb48cb5de97c5
   async queryUserInfo(account: string, passwdMd5: string): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       // Check if we have a cached agentKey, if not login
@@ -306,7 +307,7 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
-      // Use account name directly as stored in database
+      // Use account name directly as stored in database (no modifications)
       const fortunePandaAccount = account;
 
       const time = Date.now();
@@ -316,26 +317,26 @@ class FortunePandaService {
         this.agentKeyCache!
       );
 
-      console.log('🔍 FortunePanda queryInfo request:', {
+      // Build query params exactly as per FortunePanda API format
+      const queryParams = {
         action: 'queryInfo',
-        dbAccount: account,
-        fortunePandaAccount,
-        accountLength: fortunePandaAccount?.length,
-        passwdLength: passwdMd5?.length,
+        account: fortunePandaAccount,
+        passwd: passwdMd5,
         agentName: this.config.agentName,
-        time,
-        signLength: sign?.length
+        time: time.toString(),
+        sign: sign
+      };
+
+      console.log('🔍 FortunePanda queryInfo request:', {
+        ...queryParams,
+        passwd: '[HIDDEN]',
+        dbAccount: account,
+        accountLength: fortunePandaAccount?.length,
+        passwdLength: passwdMd5?.length
       });
 
       const response = await axios.post(this.config.baseUrl, null, {
-        params: {
-          action: 'queryInfo',
-          account: fortunePandaAccount,
-          passwd: passwdMd5,
-        agentName: this.config.agentName,
-          time,
-          sign
-        },
+        params: queryParams,
         timeout: 30000
       });
 
@@ -376,15 +377,17 @@ class FortunePandaService {
         // Use the same FortunePanda account name for retry
         const fortunePandaAccount = account;
 
+        const retryQueryParams = {
+          action: 'queryInfo',
+          account: fortunePandaAccount,
+          passwd: passwdMd5,
+          agentName: this.config.agentName,
+          time: retryTime.toString(),
+          sign: retrySign
+        };
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
-          params: {
-            action: 'queryInfo',
-            account: fortunePandaAccount,
-            passwd: passwdMd5,
-            agentName: this.config.agentName,
-            time: retryTime,
-            sign: retrySign
-          },
+          params: retryQueryParams,
           timeout: 30000
         });
 
