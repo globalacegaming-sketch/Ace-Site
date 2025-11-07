@@ -153,7 +153,7 @@ const TawkToWidget = () => {
                 
                 window.Tawk_API.setAttributes(
                   attributes,
-                  (attrError) => {
+                  () => {
                     // Show widget regardless of attribute setting result
                     setTimeout(() => {
                       window.Tawk_API?.showWidget?.();
