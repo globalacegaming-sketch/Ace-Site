@@ -83,6 +83,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Perform agent login to FortunePanda API to establish session
     // This ensures agentKey is cached and ready for all admin operations
+    let agentBalance = '0.00';
     try {
       console.log('🔐 Performing agent login to FortunePanda API...');
       const loginResult = await agentLoginService.loginAgent();
@@ -93,6 +94,9 @@ router.post('/login', async (req: Request, res: Response) => {
       } else {
         console.log('✅ FortunePanda agent login successful - agentKey cached and ready');
         console.log('✅ Agent session established for admin operations');
+        // Capture agent balance from login response
+        agentBalance = loginResult.data?.balance || loginResult.data?.Balance || '0.00';
+        console.log('💰 Agent balance from login:', agentBalance);
       }
     } catch (error) {
       // If login fails, still allow admin access (credentials are correct)
@@ -115,7 +119,8 @@ router.post('/login', async (req: Request, res: Response) => {
       data: {
         token: sessionToken,
         expiresAt,
-        agentName
+        agentName,
+        agentBalance
       }
     });
   } catch (error) {
@@ -217,12 +222,28 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    
+    console.log('🔍 Querying user info from FortunePanda:', {
+      account: user.fortunePandaUsername,
+      accountLength: user.fortunePandaUsername?.length,
+      hasPassword: !!user.fortunePandaPassword,
+      passwordHashLength: passwdMd5.length
+    });
+    
     const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+
+    console.log('📥 FortunePanda queryUserInfo result:', {
+      success: result.success,
+      message: result.message,
+      hasData: !!result.data,
+      userbalance: result.data?.userbalance,
+      agentBalance: result.data?.agentBalance
+    });
 
     if (result.success) {
       // Update user balance in database
-      if (result.data?.userbalance) {
-        user.fortunePandaBalance = parseFloat(result.data.userbalance);
+      if (result.data?.userbalance || result.data?.userBalance) {
+        user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
         user.fortunePandaLastSync = new Date();
         await user.save();
       }
@@ -240,9 +261,22 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
         }
       });
     } else {
+      // Check if it's an account not found error
+      const errorMsg = result.message || 'Failed to get user info';
+      console.error('❌ Failed to get user info:', {
+        account: user.fortunePandaUsername,
+        error: errorMsg,
+        code: result.data?.code
+      });
+      
       return res.status(400).json({
         success: false,
-        message: result.message || 'Failed to get user info'
+        message: errorMsg,
+        debug: {
+          account: user.fortunePandaUsername,
+          accountExists: !!user.fortunePandaUsername,
+          hasPassword: !!user.fortunePandaPassword
+        }
       });
     }
   } catch (error) {

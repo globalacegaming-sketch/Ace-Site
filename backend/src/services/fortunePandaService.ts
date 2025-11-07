@@ -313,16 +313,33 @@ class FortunePandaService {
         this.agentKeyCache!
       );
 
+      console.log('🔍 FortunePanda queryInfo request:', {
+        action: 'queryInfo',
+        account,
+        accountLength: account?.length,
+        passwdLength: passwdMd5?.length,
+        agentName: this.config.agentName,
+        time,
+        signLength: sign?.length
+      });
+
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'queryInfo',
           account,
           passwd: passwdMd5,
         agentName: this.config.agentName,
-        time,
-        sign
+          time,
+          sign
         },
         timeout: 30000
+      });
+
+      console.log('📥 FortunePanda queryInfo response:', {
+        code: response.data?.code,
+        msg: response.data?.msg,
+        hasUserbalance: !!response.data?.userbalance,
+        hasAgentBalance: !!response.data?.agentBalance
       });
 
       // Process user info query response
@@ -333,8 +350,9 @@ class FortunePandaService {
           success: true,
           message: 'User info retrieved successfully',
           data: {
-            userbalance: response.data.userbalance,
-            agentBalance: response.data.agentBalance,
+            userbalance: response.data.userbalance || response.data.userBalance,
+            agentBalance: response.data.agentBalance || response.data.agentbalance,
+            gameId: response.data.gameId || response.data.gameid,
             ...response.data
           }
         };
@@ -371,8 +389,9 @@ class FortunePandaService {
             success: true,
             message: 'User info retrieved successfully',
             data: {
-              userbalance: retryResponse.data.userbalance,
-              agentBalance: retryResponse.data.agentBalance,
+              userbalance: retryResponse.data.userbalance || retryResponse.data.userBalance,
+              agentBalance: retryResponse.data.agentBalance || retryResponse.data.agentbalance,
+              gameId: retryResponse.data.gameId || retryResponse.data.gameid,
               ...retryResponse.data
             }
           };

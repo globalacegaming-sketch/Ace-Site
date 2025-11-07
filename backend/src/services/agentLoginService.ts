@@ -226,7 +226,7 @@ class AgentLoginService {
           message: 'Agent login successful',
           data: { 
             agentKey, 
-            balance: response.data.Balance,
+            balance: response.data.balance || response.data.Balance || '0.00',
             expiresAt: this.agentSession.expiresAt
           }
         };

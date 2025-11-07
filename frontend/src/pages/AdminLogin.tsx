@@ -39,12 +39,13 @@ const AdminLogin: React.FC = () => {
         const adminSession = {
           token: response.data.data.token,
           expiresAt: response.data.data.expiresAt,
-          agentName: response.data.data.agentName
+          agentName: response.data.data.agentName,
+          agentBalance: response.data.data.agentBalance || '0.00'
         };
         localStorage.setItem('admin_session', JSON.stringify(adminSession));
         
-        console.log('✅ Admin session stored');
-        toast.success('Admin login successful!');
+        console.log('✅ Admin session stored', { agentBalance: adminSession.agentBalance });
+        toast.success(`Admin login successful! Agent Balance: $${parseFloat(adminSession.agentBalance).toFixed(2)}`);
         navigate('/adminacers');
       } else {
         console.error('❌ Login failed:', response.data.message);

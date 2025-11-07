@@ -80,6 +80,10 @@ const AdminDashboard: React.FC = () => {
         navigate('/adminacers/login');
         return;
       }
+      // Set agent balance from session if available
+      if (parsedSession.agentBalance) {
+        setAgentBalance(parsedSession.agentBalance);
+      }
       loadUsers();
       loadAgentBalance();
       
