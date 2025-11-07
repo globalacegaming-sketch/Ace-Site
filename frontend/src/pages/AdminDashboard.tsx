@@ -12,7 +12,8 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  DollarSign
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -47,6 +48,8 @@ const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'deposit' | 'redeem' | 'trades' | 'jackpots' | 'games'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [agentBalance, setAgentBalance] = useState<string>('0.00');
+  const [userFpInfo, setUserFpInfo] = useState<any>(null);
   
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
@@ -79,6 +82,7 @@ const AdminDashboard: React.FC = () => {
         return;
       }
       loadUsers();
+      loadAgentBalance();
       
       // Set default date range (last 30 days)
       const today = new Date();
@@ -99,6 +103,55 @@ const AdminDashboard: React.FC = () => {
       return parsed.token;
     }
     return null;
+  };
+
+  const loadAgentBalance = async () => {
+    try {
+      const token = getAdminToken();
+      if (!token) return;
+
+      const response = await axios.get(`${API_BASE_URL}/admin/agent-balance`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.data.success) {
+        setAgentBalance(response.data.data?.agentBalance || '0.00');
+      }
+    } catch (error: any) {
+      // Silently fail - agent balance is optional
+    }
+  };
+
+  const loadUserFpInfo = async (userId: string) => {
+    try {
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+
+      const response = await axios.get(`${API_BASE_URL}/admin/users/${userId}/fortune-panda`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.data.success) {
+        setUserFpInfo(response.data.data);
+        toast.success('User info fetched from FortunePanda');
+        // Refresh users list to update balance
+        loadUsers();
+      } else {
+        toast.error(response.data.message || 'Failed to fetch user info');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to fetch user info');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadUsers = async () => {
@@ -371,17 +424,34 @@ const AdminDashboard: React.FC = () => {
               <Shield className="w-8 h-8" />
               Admin Dashboard
             </h1>
-            <button
-              onClick={() => {
-                localStorage.removeItem('admin_session');
-                toast.success('Logged out successfully');
-                navigate('/adminacers/login');
-              }}
-              className="btn-casino-secondary px-4 py-2 rounded-lg flex items-center gap-2"
-            >
-              <XCircle className="w-4 h-4" />
-              Logout
-            </button>
+            <div className="flex items-center gap-4">
+              {/* Agent Balance Display */}
+              <div className="casino-bg-primary px-4 py-2 rounded-lg casino-border">
+                <div className="text-xs casino-text-secondary mb-1">Agent Balance</div>
+                <div className="text-lg font-bold casino-text-primary flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  ${parseFloat(agentBalance).toFixed(2)}
+                </div>
+              </div>
+              <button
+                onClick={loadAgentBalance}
+                className="btn-casino-secondary px-3 py-2 rounded-lg flex items-center gap-2"
+                title="Refresh agent balance"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('admin_session');
+                  toast.success('Logged out successfully');
+                  navigate('/adminacers/login');
+                }}
+                className="btn-casino-secondary px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <XCircle className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
 
@@ -482,12 +552,25 @@ const AdminDashboard: React.FC = () => {
                             )}
                           </td>
                           <td className="p-3">
-                            <button
-                              onClick={() => setSelectedUser(u)}
-                              className="btn-casino-primary px-3 py-1 rounded text-sm"
-                            >
-                              Select
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setSelectedUser(u)}
+                                className="btn-casino-primary px-3 py-1 rounded text-sm"
+                              >
+                                Select
+                              </button>
+                              {u.fortunePandaUsername && (
+                                <button
+                                  onClick={() => loadUserFpInfo(u._id)}
+                                  disabled={loading}
+                                  className="btn-casino-secondary px-3 py-1 rounded text-sm flex items-center gap-1"
+                                  title="Fetch from FortunePanda"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  Fetch FP
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

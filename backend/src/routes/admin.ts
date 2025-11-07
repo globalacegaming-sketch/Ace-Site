@@ -145,6 +145,109 @@ const verifyAdminSession = (req: Request, res: Response, next: any) => {
 // All other admin routes require admin session
 router.use(verifyAdminSession);
 
+// Get agent balance (from FortunePanda)
+router.get('/agent-balance', async (req: Request, res: Response) => {
+  try {
+    // Query any user to get agent balance, or use a test account
+    // Agent balance is returned in queryUserInfo response
+    // For now, we'll try to get it from the first user with FP account
+    const user = await User.findOne({ 
+      fortunePandaUsername: { $exists: true, $ne: null },
+      fortunePandaPassword: { $exists: true, $ne: null }
+    }).select('fortunePandaUsername fortunePandaPassword');
+
+    if (!user || !user.fortunePandaUsername || !user.fortunePandaPassword) {
+      return res.status(404).json({
+        success: false,
+        message: 'No FortunePanda user found to query agent balance'
+      });
+    }
+
+    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: 'Agent balance retrieved successfully',
+        data: {
+          agentBalance: result.data?.agentBalance || '0.00',
+          userBalance: result.data?.userbalance || '0.00',
+          account: user.fortunePandaUsername
+        }
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: result.message || 'Failed to get agent balance'
+      });
+    }
+  } catch (error) {
+    console.error('Get agent balance error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get user info from FortunePanda API
+router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'User does not have FortunePanda account'
+      });
+    }
+
+    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+
+    if (result.success) {
+      // Update user balance in database
+      if (result.data?.userbalance) {
+        user.fortunePandaBalance = parseFloat(result.data.userbalance);
+        user.fortunePandaLastSync = new Date();
+        await user.save();
+      }
+
+      return res.json({
+        success: true,
+        message: 'User info retrieved successfully',
+        data: {
+          fortunePandaUsername: user.fortunePandaUsername,
+          userBalance: result.data?.userbalance || '0.00',
+          agentBalance: result.data?.agentBalance || '0.00',
+          lastLogin: result.data?.lastLogin,
+          ...result.data
+        }
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: result.message || 'Failed to get user info'
+      });
+    }
+  } catch (error) {
+    console.error('Get user FortunePanda info error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
 // Get all users list
 router.get('/users', async (req: Request, res: Response) => {
   try {
