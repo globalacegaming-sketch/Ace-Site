@@ -652,25 +652,6 @@ router.post('/redeem', async (req: Request, res: Response) => {
       });
     }
 
-    if (!user.fortunePandaPassword) {
-      console.error('❌ User missing FortunePanda password:', {
-        userId: user._id.toString(),
-        username: user.username,
-        fpUsername: user.fortunePandaUsername
-      });
-      return res.status(400).json({
-        success: false,
-        message: `User has FortunePanda username (${user.fortunePandaUsername}) but is missing password. Please set the FortunePanda password for this user first using the admin panel.`,
-        debug: {
-          userId: user._id.toString(),
-          username: user.username,
-          fpUsername: user.fortunePandaUsername,
-          hasFPUsername: true,
-          hasFPPassword: false
-        }
-      });
-    }
-
     // Use FP account name as stored in database
     const fpAccountName = user.fortunePandaUsername || 'N/A';
     
