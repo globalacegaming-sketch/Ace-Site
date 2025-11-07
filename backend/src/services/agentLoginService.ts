@@ -25,6 +25,8 @@ class AgentLoginService {
   private isInitialized: boolean = false;
   private readonly SESSION_BUFFER_TIME = 5 * 60 * 1000; // 5 minutes buffer
   private readonly REFRESH_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours (more aggressive than 12h)
+  private readonly MAX_RETRIES = 3;
+  private readonly RETRY_DELAY = 2000; // 2 seconds base delay
 
   constructor() {
     this.config = {
@@ -32,6 +34,56 @@ class AgentLoginService {
       agentPassword: process.env.AGENT_PASSWORD || process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456',
       apiUrl: process.env.AGENT_API_URL || process.env.FORTUNE_PANDA_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx'
     };
+  }
+
+  // Helper method to sleep/delay
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Helper method to check if error is retryable (network/timeout errors)
+  private isRetryableError(error: any): boolean {
+    if (!error) return false;
+    
+    const errorCode = error.code || error.errno;
+    const errorMessage = error.message || '';
+    
+    // Network errors that should be retried
+    const retryableCodes = ['ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'ECONNRESET', 'EAI_AGAIN'];
+    const retryableMessages = ['timeout', 'network', 'connection'];
+    
+    return retryableCodes.includes(errorCode) || 
+           retryableMessages.some(msg => errorMessage.toLowerCase().includes(msg));
+  }
+
+  // Generic retry wrapper for API calls (keeps original API call structure intact)
+  private async retryRequest<T>(
+    requestFn: () => Promise<T>,
+    operationName: string,
+    retries: number = this.MAX_RETRIES
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await requestFn();
+      } catch (error: any) {
+        lastError = error;
+        
+        // If it's the last attempt or error is not retryable, throw
+        if (attempt === retries || !this.isRetryableError(error)) {
+          throw error;
+        }
+        
+        // Calculate exponential backoff delay
+        const delay = this.RETRY_DELAY * Math.pow(2, attempt);
+        console.warn(`⚠️ ${operationName} failed (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`, error.message);
+        
+        await this.sleep(delay);
+      }
+    }
+    
+    throw lastError;
   }
 
   // Initialize the service with auto-login and scheduling
@@ -127,13 +179,28 @@ class AgentLoginService {
       
       console.log('Agent login params:', { ...params, agentPasswd: '[HIDDEN]' });
       
-      const response = await axios.post(this.config.apiUrl, null, {
-        params,
-        timeout: 30000,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        }
-      });
+      // Use retry logic for network/timeout errors, but keep exact API call structure
+      const response = await this.retryRequest(
+        async () => {
+          // Generate fresh timestamp for each retry attempt
+          const retryTime = this.getCurrentTimestamp();
+          const retryParams = {
+            action: 'agentLogin',
+            agentName: this.config.agentName,
+            agentPasswd: agentPasswdMD5,
+            time: retryTime
+          };
+          
+          return await axios.post(this.config.apiUrl, null, {
+            params: retryParams,
+            timeout: 30000,
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            }
+          });
+        },
+        'Agent login'
+      );
       
       console.log('Agent login response:', response.data);
       

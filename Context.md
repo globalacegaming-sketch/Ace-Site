@@ -210,10 +210,13 @@ const sign = md5(agentName.toLowerCase() + time.toString() + agentKey.toLowerCas
 - **Protected Routes**: Authentication middleware
 
 ### ✅ Game Launch System
-- **One-Click Play**: Direct game access
-- **Popup Management**: Proper window handling
-- **Error Handling**: User-friendly messages
-- **Loading States**: Visual feedback
+- **One-Click Play**: Direct game access with authentication check
+- **Popup Window Launch**: Opens game in new window (1200x800) for fast loading
+- **Single Launch Method**: Popup window only - no iframe fallback for better performance
+- **Error Handling**: User-friendly messages for failed launches and blocked popups
+- **Loading States**: Visual feedback during game initialization
+- **Music Management**: Automatically stops background music when game launches
+- **Game URL Detection**: Handles multiple response formats (webLoginUrl, gameUrl, url, etc.)
 
 ## 🔹 Security & Performance
 

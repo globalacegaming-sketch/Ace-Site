@@ -256,18 +256,20 @@ router.get('/balance', async (req: Request, res: Response) => {
       console.log('❌ Balance retrieval failed:', result.message);
       return res.status(400).json({
         success: false,
-        message: result.message,
+        message: result.message || 'Failed to retrieve balance. Please try again.',
+        error: result.message,
         debug: {
           fortunePandaUsername,
           hasPassword: !!user.fortunePandaPassword
         }
       });
     }
-  } catch (error) {
-    console.error('Get balance error:', error);
+  } catch (error: any) {
+    console.error('❌ Get balance error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: error.message || 'Internal server error. Please try again.',
+      error: error.message
     });
   }
 });
@@ -288,6 +290,7 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     
     // Check if user has Fortune Panda credentials
     if (!user.fortunePandaPassword) {
+      console.error('❌ Fortune Panda password not found for user:', user._id);
       return res.status(400).json({
         success: false,
         message: 'Fortune Panda account not found. Please contact support.'
@@ -295,33 +298,51 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     }
     
     if (!kindId) {
+      console.error('❌ kindId missing in request');
       return res.status(400).json({
         success: false,
         message: 'Game ID (kindId) is required'
       });
     }
 
-        const fortunePandaUsername = `${user.firstName}_Aces9F`;
+    const fortunePandaUsername = `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
+    
+    console.log('🎮 Calling Fortune Panda enterGame API:', {
+      username: fortunePandaUsername,
+      kindId: kindId
+    });
+    
     const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, kindId);
     
+    console.log('🎮 Fortune Panda enterGame result:', {
+      success: result.success,
+      message: result.message,
+      hasData: !!result.data,
+      hasWebLoginUrl: !!result.data?.webLoginUrl
+    });
+    
     if (result.success) {
+      if (!result.data?.webLoginUrl) {
+        console.warn('⚠️ Game entry successful but no webLoginUrl in response:', result.data);
+      }
       return res.json({
         success: true,
         message: result.message,
         data: result.data
       });
     } else {
+      console.error('❌ Fortune Panda enterGame failed:', result.message);
       return res.status(400).json({
         success: false,
-        message: result.message
+        message: result.message || 'Failed to enter game. Please try again.'
       });
     }
-  } catch (error) {
-    console.error('Enter game error:', error);
+  } catch (error: any) {
+    console.error('❌ Enter game error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: error.message || 'Internal server error. Please try again or contact support.'
     });
   }
 });

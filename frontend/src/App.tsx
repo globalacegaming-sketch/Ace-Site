@@ -4,6 +4,7 @@ import { useAuthStore } from './stores/authStore';
 import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
+import TawkToWidget from './components/TawkToWidget';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -153,6 +154,9 @@ function App() {
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        
+        {/* Tawk.to Widget - Only shows for logged-in users */}
+        <TawkToWidget />
           </div>
         </Router>
       </ClickSoundProvider>
