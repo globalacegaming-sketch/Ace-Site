@@ -1,474 +1,559 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Shield, 
-  Gamepad2, 
   Users, 
-  DollarSign, 
-  Settings, 
-  LogOut, 
-  Search,
-  Plus,
+  TrendingUp,
+  FileText,
   Gift,
   Download,
-  Handshake,
-  TrendingUp,
-  Globe,
-  AlertCircle,
+  ArrowUp,
+  ArrowDown,
+  Search,
+  Loader2,
   CheckCircle,
-  Loader2
+  XCircle,
+  RefreshCw
 } from 'lucide-react';
 import axios from 'axios';
-import { useAuthStore } from '../stores/authStore';
+import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { getApiBaseUrl } from '../utils/api';
 
 interface User {
-  id: string;
-  account: string;
-  nickname: string;
-  balance: string;
-  registerDate: string;
-  lastLogin: string;
-  manager: string;
-  status: 'Active' | 'Inactive' | 'Banned';
+  _id: string;
+  username: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  fortunePandaUsername?: string;
+  fortunePandaBalance?: number;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+interface RecordData {
+  data?: any[];
+  [key: string]: any;
 }
 
 const AdminDashboard: React.FC = () => {
-  const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const API_BASE_URL = getApiBaseUrl();
   
-  // Mock admin user for display purposes
-  const adminUser = { email: 'admin@globalacegaming.com', role: 'admin' };
-  
-  // State management
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState('users');
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'users' | 'deposit' | 'redeem' | 'trades' | 'jackpots' | 'games'>('users');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showProhibited, setShowProhibited] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  
+  // Form states
+  const [depositAmount, setDepositAmount] = useState('');
+  const [redeemAmount, setRedeemAmount] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [kindId, setKindId] = useState('');
+  
+  // Records states
+  const [tradeRecords, setTradeRecords] = useState<RecordData | null>(null);
+  const [jpRecords, setJpRecords] = useState<RecordData | null>(null);
+  const [gameRecords, setGameRecords] = useState<RecordData | null>(null);
 
-  // Check admin session status on component mount
   useEffect(() => {
-    checkAdminStatus();
-    loadUsers();
-  }, []);
+    // Check for admin session
+    const session = localStorage.getItem('admin_session');
+    if (!session) {
+      toast.error('Please login to access admin panel');
+      navigate('/adminacers/login');
+      return;
+    }
 
-  const checkAdminStatus = async () => {
     try {
-      const result = await axios.get('/api/health/fortune-panda');
-      setIsLoggedIn(result.data.isLoggedIn);
-      if (result.data.isLoggedIn) {
-        await loadGames();
+      const parsedSession = JSON.parse(session);
+      // Check if session expired
+      if (parsedSession.expiresAt && Date.now() > parsedSession.expiresAt) {
+        localStorage.removeItem('admin_session');
+        toast.error('Session expired. Please login again.');
+        navigate('/adminacers/login');
+        return;
       }
+      loadUsers();
+      
+      // Set default date range (last 30 days)
+      const today = new Date();
+      const lastMonth = new Date(today);
+      lastMonth.setDate(lastMonth.getDate() - 30);
+      setToDate(today.toISOString().split('T')[0]);
+      setFromDate(lastMonth.toISOString().split('T')[0]);
     } catch (error) {
-      // Failed to check admin status
+      localStorage.removeItem('admin_session');
+      navigate('/adminacers/login');
     }
-  };
+  }, [navigate]);
 
-  const handleAdminLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await axios.post('/api/health/fortune-panda/relogin');
-      if (result.data.status === 'OK') {
-        setIsLoggedIn(true);
-        await loadGames();
-      } else {
-        setError(result.data.message);
-      }
-    } catch (error: any) {
-      setError('Failed to login as admin');
-    } finally {
-      setIsLoading(false);
+  const getAdminToken = () => {
+    const session = localStorage.getItem('admin_session');
+    if (session) {
+      const parsed = JSON.parse(session);
+      return parsed.token;
     }
-  };
-
-  const loadGames = async () => {
-    try {
-      const result = await axios.get('/api/games/fortune-panda');
-      if (result.data.success) {
-        // Games loaded successfully
-      } else {
-      }
-    } catch (error) {
-      // Failed to load games
-    }
+    return null;
   };
 
   const loadUsers = async () => {
     try {
-      const result = await axios.get('/api/fortune-panda/users');
-      if (result.data.success) {
-        setUsers(result.data.data);
-      } else {
-        // Fallback to empty array if API fails
-        setUsers([]);
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
       }
-    } catch (error) {
-      // Fallback to empty array if API fails
-      setUsers([]);
-    }
-  };
+      const response = await axios.get(`${API_BASE_URL}/admin/users`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-  const handleLogout = async () => {
-    try {
-      await axios.post('/api/fortune-panda/admin/logout');
-      setIsLoggedIn(false);
-      if (user) {
-        logout(); // Clear frontend auth state only if user is authenticated
-        navigate('/login'); // Redirect to login page
+      if (response.data.success) {
+        setUsers(response.data.data || []);
       } else {
-        navigate('/'); // Redirect to home if not authenticated
-      }
-    } catch (error) {
-      // Logout failed
-    }
-  };
-
-  const handleUserAction = async (action: string, userId?: string) => {
-    try {
-      switch (action) {
-        case 'recharge':
-          const rechargeAmount = prompt('Enter recharge amount (in cents):');
-          if (rechargeAmount && userId) {
-            const result = await axios.post('/api/fortune-panda/recharge', {
-              username: userId,
-              amount: parseInt(rechargeAmount)
-            });
-            if (result.data.success) {
-              alert('Recharge successful!');
-            } else {
-              alert(`Recharge failed: ${result.data.message}`);
-            }
-          }
-          break;
-          
-        case 'redeem':
-          const redeemAmount = prompt('Enter redeem amount (in cents):');
-          if (redeemAmount && userId) {
-            const result = await axios.post('/api/fortune-panda/redeem', {
-              username: userId,
-              amount: parseInt(redeemAmount)
-            });
-            if (result.data.success) {
-              alert('Redeem successful!');
-            } else {
-              alert(`Redeem failed: ${result.data.message}`);
-            }
-          }
-          break;
-          
-        case 'reset-password':
-          if (userId) {
-            const newPassword = prompt('Enter new password:');
-            if (newPassword) {
-              const result = await axios.post('/api/fortune-panda/users/change-password', {
-                username: userId,
-                oldPassword: 'temp', // This would need to be handled differently
-                newPassword: newPassword
-              });
-              if (result.data.success) {
-                alert('Password reset successful!');
-              } else {
-                alert(`Password reset failed: ${result.data.message}`);
-              }
-            }
-          }
-          break;
-          
-        case 'game-records':
-          if (userId) {
-            const result = await axios.get(`/api/fortune-panda/users/${userId}/game-records`);
-            if (result.data.success) {
-              alert(`Game records loaded successfully.`);
-            } else {
-              alert(`Failed to load game records: ${result.data.message}`);
-            }
-          }
-          break;
-          
-        case 'jp-records':
-          if (userId) {
-            const fromDate = prompt('Enter start date (YYYY-MM-DD):');
-            const toDate = prompt('Enter end date (YYYY-MM-DD):');
-            if (fromDate && toDate) {
-              const result = await axios.get(`/api/fortune-panda/users/${userId}/jp-records?fromDate=${fromDate}&toDate=${toDate}`);
-              if (result.data.success) {
-                alert(`JP records loaded successfully.`);
-              } else {
-                alert(`Failed to load JP records: ${result.data.message}`);
-              }
-            }
-          }
-          break;
-          
-        case 'transaction-records':
-          if (userId) {
-            const fromDate = prompt('Enter start date (YYYY-MM-DD):');
-            const toDate = prompt('Enter end date (YYYY-MM-DD):');
-            if (fromDate && toDate) {
-              const result = await axios.get(`/api/fortune-panda/users/${userId}/trade-records?fromDate=${fromDate}&toDate=${toDate}`);
-              if (result.data.success) {
-                alert(`Transaction records loaded successfully.`);
-              } else {
-                alert(`Failed to load transaction records: ${result.data.message}`);
-              }
-            }
-          }
-          break;
-          
-        case 'device-unbind':
-          alert('Device unbind functionality not yet implemented');
-          break;
-          
-        default:
-          alert(`Action ${action} not implemented yet`);
+        toast.error(response.data.message || 'Failed to load users');
       }
     } catch (error: any) {
-      alert(`Error: ${error.response?.data?.message || error.message}`);
+      toast.error(error.response?.data?.message || 'Failed to load users');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.account.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.nickname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.id.includes(searchQuery);
-    const matchesProhibited = showProhibited || user.status === 'Active';
-    return matchesSearch && matchesProhibited;
-  });
+  const handleDeposit = async () => {
+    if (!selectedUser) {
+      toast.error('Please select a user');
+      return;
+    }
 
-  const sidebarItems = [
-    { name: 'User Management', icon: Users, active: activeTab === 'users' },
-    { name: 'Transaction Records', icon: DollarSign, active: false },
-    { name: 'Game Records', icon: Gamepad2, active: false },
-    { name: 'JP Records', icon: Gift, active: false },
-    { name: 'Welfare Records', icon: Gift, active: false },
-    { name: 'Admin Structure', icon: Users, active: false },
-    { name: 'Transaction Records', icon: Handshake, active: false },
-    { name: 'Reports', icon: TrendingUp, active: false },
-    { name: 'JP Setting', icon: Settings, active: false },
-    { name: 'Setting', icon: Settings, active: false },
-    { name: 'Download', icon: Download, active: false },
-    { name: 'Logout', icon: LogOut, active: false }
+    if (!depositAmount || parseFloat(depositAmount) <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/deposit`,
+        {
+          userId: selectedUser._id,
+          amount: depositAmount
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        toast.success(`Deposit successful! New balance: ${response.data.data?.userbalance || 'N/A'}`);
+        setDepositAmount('');
+        loadUsers();
+      } else {
+        toast.error(response.data.message || 'Deposit failed');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Deposit failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRedeem = async () => {
+    if (!selectedUser) {
+      toast.error('Please select a user');
+      return;
+    }
+
+    if (!redeemAmount || parseFloat(redeemAmount) <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/redeem`,
+        {
+          userId: selectedUser._id,
+          amount: redeemAmount
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        toast.success(`Redeem successful! New balance: ${response.data.data?.userbalance || 'N/A'}`);
+        setRedeemAmount('');
+        loadUsers();
+      } else {
+        toast.error(response.data.message || 'Redeem failed');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Redeem failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTradeRecords = async () => {
+    if (!selectedUser) {
+      toast.error('Please select a user');
+      return;
+    }
+
+    if (!fromDate || !toDate) {
+      toast.error('Please select date range');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+      const response = await axios.get(
+        `${API_BASE_URL}/admin/trades?userId=${selectedUser._id}&fromDate=${fromDate}&toDate=${toDate}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setTradeRecords(response.data.data);
+        toast.success('Trade records loaded successfully');
+      } else {
+        toast.error(response.data.message || 'Failed to load trade records');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load trade records');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadJpRecords = async () => {
+    if (!selectedUser) {
+      toast.error('Please select a user');
+      return;
+    }
+
+    if (!fromDate || !toDate) {
+      toast.error('Please select date range');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+      const response = await axios.get(
+        `${API_BASE_URL}/admin/jackpots?userId=${selectedUser._id}&fromDate=${fromDate}&toDate=${toDate}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setJpRecords(response.data.data);
+        toast.success('Jackpot records loaded successfully');
+      } else {
+        toast.error(response.data.message || 'Failed to load jackpot records');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load jackpot records');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadGameRecords = async () => {
+    if (!selectedUser) {
+      toast.error('Please select a user');
+      return;
+    }
+
+    if (!fromDate || !toDate) {
+      toast.error('Please select date range');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        userId: selectedUser._id,
+        fromDate,
+        toDate
+      });
+      if (kindId) params.append('kindId', kindId);
+
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+      const response = await axios.get(
+        `${API_BASE_URL}/admin/game-records?${params.toString()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setGameRecords(response.data.data);
+        toast.success('Game records loaded successfully');
+      } else {
+        toast.error(response.data.message || 'Failed to load game records');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load game records');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredUsers = users.filter(u => 
+    u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.fortunePandaUsername?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const tabs = [
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'deposit', label: 'Deposit', icon: ArrowUp },
+    { id: 'redeem', label: 'Redeem', icon: ArrowDown },
+    { id: 'trades', label: 'Trade Records', icon: FileText },
+    { id: 'jackpots', label: 'Jackpot Records', icon: Gift },
+    { id: 'games', label: 'Game Records', icon: TrendingUp },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-gray-200 border-r border-gray-300">
-        <div className="p-4 border-b border-gray-300">
-          <div className="text-green-600 font-semibold text-sm mb-2">
-            Balance: 764
-          </div>
-        </div>
-        
-        <nav className="mt-4">
-          {sidebarItems.map((item, index) => (
-            <button
-              key={index}
-              onClick={() => {
-                if (item.name === 'Logout') {
-                  logout();
-                  navigate('/');
-                } else if (item.name === 'User Management') {
-                  setActiveTab('users');
-                }
-              }}
-              className={`w-full flex items-center px-4 py-3 text-left hover:bg-gray-300 transition-colors ${
-                item.active ? 'bg-gray-300 border-r-2 border-blue-500' : ''
-              }`}
-            >
-              <item.icon className="w-5 h-5 mr-3" />
-              <span className="text-sm font-medium">{item.name}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+    <div className="min-h-screen pt-16" style={{ 
+      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
+    }}>
+      <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="bg-blue-900 text-white px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-lg font-semibold">Milkyway (Release) / User Management</h1>
-            </div>
-             <div className="flex items-center space-x-4">
-               <span className="text-sm">Welcome {adminUser?.email || 'Admin'} (STORE)</span>
-              <div className="flex items-center space-x-2">
-                <Globe className="w-4 h-4" />
-                <select className="bg-blue-800 text-white border-none rounded px-2 py-1 text-sm">
-                  <option>English</option>
-                </select>
-              </div>
-            </div>
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-3xl font-bold casino-text-primary flex items-center gap-3">
+              <Shield className="w-8 h-8" />
+              Admin Dashboard
+            </h1>
+            <button
+              onClick={() => {
+                localStorage.removeItem('admin_session');
+                toast.success('Logged out successfully');
+                navigate('/adminacers/login');
+              }}
+              className="btn-casino-secondary px-4 py-2 rounded-lg flex items-center gap-2"
+            >
+              <XCircle className="w-4 h-4" />
+              Logout
+            </button>
           </div>
         </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 p-6">
-          <div className="bg-white rounded-lg shadow-sm">
-            {/* User Management Header */}
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">User Management</h2>
-              
-              {/* Search and Controls */}
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-4 py-2 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+                  activeTab === tab.id
+                    ? 'casino-bg-primary text-white'
+                    : 'casino-bg-secondary casino-text-secondary hover:casino-text-primary'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Content */}
+        <div className="casino-bg-secondary rounded-2xl p-6 casino-border shadow-xl">
+          {/* Users Tab */}
+          {activeTab === 'users' && (
+            <div>
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-4">
+                <h2 className="text-2xl font-bold casino-text-primary">User List</h2>
+                <div className="flex items-center gap-2">
                   <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 casino-text-secondary" />
                     <input
                       type="text"
-                      placeholder="ID or Account"
+                      placeholder="Search users..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="pl-10 pr-4 py-2 rounded-lg casino-bg-primary casino-text-primary border casino-border w-64"
                     />
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   </div>
-                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                    Search
-                  </button>
-                </div>
-                
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">Display prohibited accounts:</span>
-                    <button
-                      onClick={() => setShowProhibited(!showProhibited)}
-                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                        showProhibited 
-                          ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      {showProhibited ? 'ON' : 'OFF'}
-                    </button>
-                  </div>
-                  <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2">
-                    <Plus className="w-4 h-4" />
-                    <span>Create Player</span>
+                  <button
+                    onClick={loadUsers}
+                    className="btn-casino-primary px-4 py-2 rounded-lg flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Refresh
                   </button>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-2 mb-4">
-                <button 
-                  onClick={() => handleUserAction('recharge')}
-                  className="bg-red-600 text-white px-3 py-2 rounded text-sm hover:bg-red-700 transition-colors"
-                >
-                  Recharge
-                </button>
-                <button 
-                  onClick={() => handleUserAction('redeem')}
-                  className="bg-purple-600 text-white px-3 py-2 rounded text-sm hover:bg-purple-700 transition-colors"
-                >
-                  Redeem
-                </button>
-                <button 
-                  onClick={() => handleUserAction('reset-password')}
-                  className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors"
-                >
-                  Reset Password
-                </button>
-                <button 
-                  onClick={() => handleUserAction('game-records')}
-                  className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors"
-                >
-                  Game Records
-                </button>
-                <button 
-                  onClick={() => handleUserAction('jp-records')}
-                  className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors"
-                >
-                  JP Records
-                </button>
-                <button 
-                  onClick={() => handleUserAction('transaction-records')}
-                  className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors"
-                >
-                  Transaction Records
-                </button>
-                <button 
-                  onClick={() => handleUserAction('device-unbind')}
-                  className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition-colors"
-                >
-                  Device:Unbind
-                </button>
-              </div>
+              {loading ? (
+                <div className="flex justify-center items-center py-20">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#FFD700' }} />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b casino-border">
+                        <th className="text-left p-3 casino-text-primary">Username</th>
+                        <th className="text-left p-3 casino-text-primary">Email</th>
+                        <th className="text-left p-3 casino-text-primary">FP Account</th>
+                        <th className="text-left p-3 casino-text-primary">Balance</th>
+                        <th className="text-left p-3 casino-text-primary">Role</th>
+                        <th className="text-left p-3 casino-text-primary">Status</th>
+                        <th className="text-left p-3 casino-text-primary">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((u) => (
+                        <tr key={u._id} className="border-b casino-border hover:casino-bg-primary/10">
+                          <td className="p-3 casino-text-secondary">{u.username}</td>
+                          <td className="p-3 casino-text-secondary">{u.email}</td>
+                          <td className="p-3 casino-text-secondary">{u.fortunePandaUsername || 'N/A'}</td>
+                          <td className="p-3 casino-text-secondary">
+                            ${u.fortunePandaBalance?.toFixed(2) || '0.00'}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              u.role === 'admin' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
+                            }`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {u.isActive ? (
+                              <span className="flex items-center gap-1 text-green-400">
+                                <CheckCircle className="w-4 h-4" />
+                                Active
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-red-400">
+                                <XCircle className="w-4 h-4" />
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => setSelectedUser(u)}
+                              className="btn-casino-primary px-3 py-1 rounded text-sm"
+                            >
+                              Select
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {filteredUsers.length === 0 && (
+                    <div className="text-center py-10 casino-text-secondary">
+                      No users found
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+          )}
 
-            {/* User Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-blue-600 text-white">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium">ID</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Account</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">NickName</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Balance</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Register Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Last Login</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Manager</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <button 
-                          onClick={() => handleUserAction('recharge', user.account)}
-                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
-                        >
-                          Actions
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.id}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.account}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.nickname}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.balance}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.registerDate}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.lastLogin}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{user.manager}</td>
-                      <td className="px-4 py-3">
-                        <button className={`px-3 py-1 rounded text-sm font-medium ${
-                          user.status === 'Active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {user.status}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Agent Status Section */}
-          {!isLoggedIn && (
-            <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="text-center">
-                <Shield className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Fortune Panda Agent</h3>
-                <p className="text-gray-600 mb-4">Agent is not logged in. Click below to establish connection.</p>
+          {/* Deposit Tab */}
+          {activeTab === 'deposit' && (
+            <div>
+              <h2 className="text-2xl font-bold casino-text-primary mb-6">Deposit (Load Money)</h2>
+              <div className="max-w-md space-y-4">
+                <div>
+                  <label className="block casino-text-secondary mb-2">Select User</label>
+                  <select
+                    value={selectedUser?._id || ''}
+                    onChange={(e) => {
+                      const user = users.find(u => u._id === e.target.value);
+                      setSelectedUser(user || null);
+                    }}
+                    className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                  >
+                    <option value="">Select a user...</option>
+                    {users.map(u => (
+                      <option key={u._id} value={u._id}>
+                        {u.username} ({u.fortunePandaUsername || 'No FP Account'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedUser && (
+                  <div className="p-4 rounded-lg casino-bg-primary">
+                    <p className="casino-text-secondary">Current Balance: <span className="font-bold casino-text-primary">
+                      ${selectedUser.fortunePandaBalance?.toFixed(2) || '0.00'}
+                    </span></p>
+                  </div>
+                )}
+                <div>
+                  <label className="block casino-text-secondary mb-2">Amount</label>
+                  <input
+                    type="number"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                  />
+                </div>
                 <button
-                  onClick={handleAdminLogin}
-                  disabled={isLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 mx-auto"
+                  onClick={handleDeposit}
+                  disabled={loading || !selectedUser || !depositAmount}
+                  className="btn-casino-primary w-full py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Connecting...</span>
-                    </>
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
                     <>
-                      <Shield className="w-4 h-4" />
-                      <span>Connect Agent</span>
+                      <ArrowUp className="w-5 h-5" />
+                      Deposit
                     </>
                   )}
                 </button>
@@ -476,29 +561,281 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* Agent Status Display */}
-          {isLoggedIn && (
-            <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                <span className="text-green-800 font-medium">Fortune Panda Agent Connected</span>
+          {/* Redeem Tab */}
+          {activeTab === 'redeem' && (
+            <div>
+              <h2 className="text-2xl font-bold casino-text-primary mb-6">Redeem (Withdraw Money)</h2>
+              <div className="max-w-md space-y-4">
+                <div>
+                  <label className="block casino-text-secondary mb-2">Select User</label>
+                  <select
+                    value={selectedUser?._id || ''}
+                    onChange={(e) => {
+                      const user = users.find(u => u._id === e.target.value);
+                      setSelectedUser(user || null);
+                    }}
+                    className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                  >
+                    <option value="">Select a user...</option>
+                    {users.map(u => (
+                      <option key={u._id} value={u._id}>
+                        {u.username} ({u.fortunePandaUsername || 'No FP Account'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedUser && (
+                  <div className="p-4 rounded-lg casino-bg-primary">
+                    <p className="casino-text-secondary">Current Balance: <span className="font-bold casino-text-primary">
+                      ${selectedUser.fortunePandaBalance?.toFixed(2) || '0.00'}
+                    </span></p>
+                  </div>
+                )}
+                <div>
+                  <label className="block casino-text-secondary mb-2">Amount</label>
+                  <input
+                    type="number"
+                    value={redeemAmount}
+                    onChange={(e) => setRedeemAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                  />
+                </div>
                 <button
-                  onClick={handleLogout}
-                  className="ml-auto text-red-600 hover:text-red-800 text-sm"
+                  onClick={handleRedeem}
+                  disabled={loading || !selectedUser || !redeemAmount}
+                  className="btn-casino-primary w-full py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  Disconnect
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <ArrowDown className="w-5 h-5" />
+                      Redeem
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Error Display */}
-          {error && (
-            <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
-                <span className="text-red-800">{error}</span>
+          {/* Trade Records Tab */}
+          {activeTab === 'trades' && (
+            <div>
+              <h2 className="text-2xl font-bold casino-text-primary mb-6">Trade Records</h2>
+              <div className="space-y-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block casino-text-secondary mb-2">Select User</label>
+                    <select
+                      value={selectedUser?._id || ''}
+                      onChange={(e) => {
+                        const user = users.find(u => u._id === e.target.value);
+                        setSelectedUser(user || null);
+                      }}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    >
+                      <option value="">Select a user...</option>
+                      {users.map(u => (
+                        <option key={u._id} value={u._id}>
+                          {u.username}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">From Date</label>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">To Date</label>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={loadTradeRecords}
+                      disabled={loading || !selectedUser}
+                      className="btn-casino-primary w-full py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <Download className="w-5 h-5" />
+                          Load Records
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
+              {tradeRecords && (
+                <div className="mt-6">
+                  <pre className="p-4 rounded-lg casino-bg-primary overflow-auto max-h-96 casino-text-secondary text-sm">
+                    {JSON.stringify(tradeRecords, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Jackpot Records Tab */}
+          {activeTab === 'jackpots' && (
+            <div>
+              <h2 className="text-2xl font-bold casino-text-primary mb-6">Jackpot Records</h2>
+              <div className="space-y-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block casino-text-secondary mb-2">Select User</label>
+                    <select
+                      value={selectedUser?._id || ''}
+                      onChange={(e) => {
+                        const user = users.find(u => u._id === e.target.value);
+                        setSelectedUser(user || null);
+                      }}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    >
+                      <option value="">Select a user...</option>
+                      {users.map(u => (
+                        <option key={u._id} value={u._id}>
+                          {u.username}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">From Date</label>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">To Date</label>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={loadJpRecords}
+                      disabled={loading || !selectedUser}
+                      className="btn-casino-primary w-full py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <Gift className="w-5 h-5" />
+                          Load Records
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {jpRecords && (
+                <div className="mt-6">
+                  <pre className="p-4 rounded-lg casino-bg-primary overflow-auto max-h-96 casino-text-secondary text-sm">
+                    {JSON.stringify(jpRecords, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Game Records Tab */}
+          {activeTab === 'games' && (
+            <div>
+              <h2 className="text-2xl font-bold casino-text-primary mb-6">Game Records</h2>
+              <div className="space-y-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div>
+                    <label className="block casino-text-secondary mb-2">Select User</label>
+                    <select
+                      value={selectedUser?._id || ''}
+                      onChange={(e) => {
+                        const user = users.find(u => u._id === e.target.value);
+                        setSelectedUser(user || null);
+                      }}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    >
+                      <option value="">Select a user...</option>
+                      {users.map(u => (
+                        <option key={u._id} value={u._id}>
+                          {u.username}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">From Date</label>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">To Date</label>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div>
+                    <label className="block casino-text-secondary mb-2">Game ID (Optional)</label>
+                    <input
+                      type="text"
+                      value={kindId}
+                      onChange={(e) => setKindId(e.target.value)}
+                      placeholder="Game kindId"
+                      className="w-full p-3 rounded-lg casino-bg-primary casino-text-primary border casino-border"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={loadGameRecords}
+                      disabled={loading || !selectedUser}
+                      className="btn-casino-primary w-full py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <TrendingUp className="w-5 h-5" />
+                          Load Records
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {gameRecords && (
+                <div className="mt-6">
+                  <pre className="p-4 rounded-lg casino-bg-primary overflow-auto max-h-96 casino-text-secondary text-sm">
+                    {JSON.stringify(gameRecords, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
         </div>

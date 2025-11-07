@@ -64,7 +64,6 @@ const generateHMACHash = async (userId: string, secretKey: string): Promise<stri
     
     return hashBase64;
   } catch (error) {
-    console.error('Error generating HMAC hash:', error);
     // Fallback to base64
     return btoa(userId);
   }
@@ -111,7 +110,6 @@ const TawkToWidget = () => {
 
       // Check if Tawk.to is ready
       if (!window.Tawk_API.login) {
-        console.warn('Tawk.to API not ready yet, retrying...');
         setTimeout(() => loginUser(), 1000);
         return;
       }
@@ -135,20 +133,6 @@ const TawkToWidget = () => {
           ? user.email 
           : undefined;
 
-        console.log('Attempting Tawk.to login with:', {
-          userId,
-          hashLength: userHash.length,
-          hasSecretKey: !!TAWK_TO_SECRET_KEY,
-          userName,
-          userEmail
-        });
-
-        // Check if we have a secret key - if not, warn the user
-        if (!TAWK_TO_SECRET_KEY) {
-          console.warn('⚠️ Tawk.to secret key not configured. Hash may be invalid. Please add VITE_TAWK_TO_SECRET_KEY to your .env.local file.');
-          console.warn('⚠️ Get your secret key from: Tawk.to Dashboard > Settings > Channels > Chat Widget > Security');
-        }
-
         // Step 1: Login with ONLY required fields (userId and hash)
         // This is the most reliable method based on Tawk.to documentation
         window.Tawk_API.login(
@@ -158,36 +142,18 @@ const TawkToWidget = () => {
           },
           (loginError) => {
             if (loginError) {
-              console.error('❌ Tawk.to login failed:', loginError);
-              
-              // Provide helpful error message for INVALID_HASH
-              if (loginError.code === 'BadRequestError' && loginError.message === 'INVALID_HASH') {
-                console.error('❌ INVALID_HASH error: You need to configure VITE_TAWK_TO_SECRET_KEY in your .env.local file');
-                console.error('❌ Get your secret key from: Tawk.to Dashboard > Settings > Channels > Chat Widget > Security');
-                console.error('❌ Then add: VITE_TAWK_TO_SECRET_KEY=your-secret-key-here');
-              }
-              
               loginAttemptedRef.current = false; // Allow retry
             } else {
-              console.log('✅ Tawk.to user logged in successfully');
-              
               // Step 2: Set visitor attributes separately using setAttributes
               // This is more reliable than passing name/email in login()
               if ((userName || userEmail) && window.Tawk_API?.setAttributes) {
                 const attributes: { name?: string; email?: string } = {};
                 if (userName) attributes.name = userName;
                 if (userEmail) attributes.email = userEmail;
-
-                console.log('Setting Tawk.to visitor attributes:', attributes);
                 
                 window.Tawk_API.setAttributes(
                   attributes,
                   (attrError) => {
-                    if (attrError) {
-                      console.error('❌ Failed to set Tawk.to attributes:', attrError);
-                    } else {
-                      console.log('✅ Tawk.to visitor attributes set successfully');
-                    }
                     // Show widget regardless of attribute setting result
                     setTimeout(() => {
                       window.Tawk_API?.showWidget?.();
@@ -196,7 +162,6 @@ const TawkToWidget = () => {
                 );
               } else {
                 // No attributes to set or setAttributes not available
-                console.log('ℹ️ Skipping attribute setting (no name/email or setAttributes unavailable)');
                 setTimeout(() => {
                   window.Tawk_API?.showWidget?.();
                 }, 500);
@@ -205,7 +170,6 @@ const TawkToWidget = () => {
           }
         );
       } catch (error) {
-        console.error('❌ Error during Tawk.to login:', error);
         loginAttemptedRef.current = false; // Allow retry
       }
     };
@@ -220,7 +184,6 @@ const TawkToWidget = () => {
       
       // Set up onLoad callback BEFORE loading script
       window.Tawk_API.onLoad = () => {
-        console.log('✅ Tawk.to script loaded, attempting login...');
         // Wait a moment for Tawk.to to fully initialize
         setTimeout(() => {
           loginUser();
@@ -234,13 +197,7 @@ const TawkToWidget = () => {
       script.charset = 'UTF-8';
       script.setAttribute('crossorigin', '*');
 
-      script.onload = () => {
-        console.log('📦 Tawk.to script loaded');
-        // The onLoad callback will handle the login
-      };
-
       script.onerror = () => {
-        console.error('❌ Failed to load Tawk.to script');
         scriptLoadedRef.current = false;
       };
 
@@ -250,13 +207,11 @@ const TawkToWidget = () => {
       }
     } else if (existingScript && window.Tawk_API?.login) {
       // Script already loaded and API is ready
-      console.log('🔄 Tawk.to already loaded, attempting login...');
       setTimeout(() => {
         loginUser();
       }, 500);
     } else if (existingScript) {
       // Script loaded but API not ready yet
-      console.log('⏳ Tawk.to script loaded but API not ready, waiting...');
       window.Tawk_API.onLoad = () => {
         setTimeout(() => {
           loginUser();
@@ -274,7 +229,6 @@ const TawkToWidget = () => {
   // Handle logout - hide widget when user logs out
   useEffect(() => {
     if (!isAuthenticated && window.Tawk_API) {
-      console.log('👋 User logged out, hiding Tawk.to widget');
       window.Tawk_API.hideWidget?.();
       window.Tawk_API.logout?.();
       loginAttemptedRef.current = false;

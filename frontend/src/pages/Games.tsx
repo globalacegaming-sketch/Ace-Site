@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Play, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getGamesApiUrl } from '../utils/api';
 import { useMusic } from '../contexts/MusicContext';
@@ -77,39 +78,18 @@ const Games = () => {
       const API_BASE_URL = getApiBaseUrl();
       
       // Step 1: Verify user has Fortune Panda account (balance check - optional, non-blocking)
-      console.log('🎮 Starting game launch for:', game.gameName, 'kindId:', game.kindId);
-      
       // Try to get balance, but don't block game launch if it fails
       try {
-        const response = await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
+        await axios.get(`${API_BASE_URL}/fortune-panda-user/balance`, {
           headers: {
             'Authorization': `Bearer ${useAuthStore.getState().token}`
           }
         });
-
-        if (response.data.success) {
-          console.log('✅ Account verified, balance:', response.data.data?.balance);
-        } else {
-          console.warn('⚠️ Balance check returned unsuccessful, but continuing with game launch:', response.data.message);
-        }
       } catch (error: any) {
-        // Log error but don't block game launch - balance check is optional
-        const errorMsg = error.response?.data?.message || 
-                        error.response?.data?.error || 
-                        error.message || 
-                        'Balance check failed';
-        console.warn('⚠️ Balance check error (non-blocking):', {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data,
-          message: errorMsg
-        });
         // Continue with game launch even if balance check fails
       }
 
       // Step 2: Create game entry request
-      console.log('🎮 Requesting game entry for kindId:', game.kindId);
-      
       try {
         const gameResponse = await axios.post(`${API_BASE_URL}/fortune-panda-user/enter-game`, {
           kindId: game.kindId.toString()
@@ -119,12 +99,9 @@ const Games = () => {
           }
         });
 
-        console.log('🎮 Game entry response:', gameResponse.data);
-
         if (!gameResponse.data.success) {
           const errorMsg = gameResponse.data.message || 'Failed to start game. Please try again.';
-          console.error('❌ Game entry failed:', errorMsg);
-          alert(`Error: ${errorMsg}`);
+          toast.error(errorMsg);
           return;
         }
 
@@ -136,34 +113,29 @@ const Games = () => {
                        gameResponse.data.data?.loginUrl ||
                        gameResponse.data.data?.login_url;
         
-        console.log('🎮 Extracted game URL:', gameUrl ? 'Found' : 'Not found', gameResponse.data.data);
-        
         if (!gameUrl) {
-          console.error('❌ Game URL not found in response:', gameResponse.data);
-          alert('Game URL not found in response. Please contact support or try again.');
+          toast.error('Game URL not found. Please contact support or try again.');
           return;
         }
 
         // Step 4: Open game in popup window
-        console.log('🎮 Opening game in popup window:', gameUrl);
         const gameWindow = window.open(gameUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes,noopener,noreferrer');
         
         if (!gameWindow || gameWindow.closed || typeof gameWindow.closed == 'undefined') {
-          console.error('❌ Popup blocked');
-          alert('Popup blocked! Please allow popups for this site to play games.\n\nYou can enable popups in your browser settings.');
+          toast.error('Popup blocked! Please allow popups for this site to play games.', {
+            duration: 5000
+          });
           return;
         }
         
-        console.log('✅ Game launched successfully');
+        toast.success('Game launching...', { duration: 2000 });
       } catch (error: any) {
         const errorMsg = error.response?.data?.message || error.message || 'Failed to start game. Please try again.';
-        console.error('❌ Game entry error:', error);
-        alert(`Error: ${errorMsg}`);
+        toast.error(errorMsg);
         return;
       }
     } catch (error: any) {
-      console.error('❌ Unexpected error during game launch:', error);
-      alert(`Unexpected error: ${error.message || 'Please try again or contact support.'}`);
+      toast.error(error.message || 'An unexpected error occurred. Please try again or contact support.');
     } finally {
       setPlayingGame(null);
     }

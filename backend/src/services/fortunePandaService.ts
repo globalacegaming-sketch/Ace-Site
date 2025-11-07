@@ -506,6 +506,429 @@ class FortunePandaService {
     }
     return password;
   }
+
+  // Agent Deposit (Load money to user account)
+  async agentDeposit(account: string, passwdMd5: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      if (!this.agentKeyCache) {
+        await this.loginAgent();
+      }
+
+      const time = Date.now();
+      const sign = this.generateSignature(
+        this.config.agentName,
+        time,
+        this.agentKeyCache!
+      );
+
+      const response = await axios.post(this.config.baseUrl, null, {
+        params: {
+          action: 'agentDeposit',
+          account,
+          passwd: passwdMd5,
+          agentName: this.config.agentName,
+          amount,
+          time,
+          sign
+        },
+        timeout: 30000
+      });
+
+      if (response.data && (response.data.code === '200' || response.data.code === 200)) {
+        return {
+          success: true,
+          message: 'Deposit successful',
+          data: response.data
+        };
+      } else if (response.data && (response.data.code === '201' || response.data.code === 201)) {
+        await this.loginAgent();
+        const retryTime = Date.now();
+        const retrySign = this.generateSignature(
+          this.config.agentName,
+          retryTime,
+          this.agentKeyCache!
+        );
+
+        const retryResponse = await axios.post(this.config.baseUrl, null, {
+          params: {
+            action: 'agentDeposit',
+            account,
+            passwd: passwdMd5,
+            agentName: this.config.agentName,
+            amount,
+            time: retryTime,
+            sign: retrySign
+          },
+          timeout: 30000
+        });
+
+        if (retryResponse.data && (retryResponse.data.code === '200' || retryResponse.data.code === 200)) {
+          return {
+            success: true,
+            message: 'Deposit successful',
+            data: retryResponse.data
+          };
+        } else {
+          return {
+            success: false,
+            message: retryResponse.data?.msg || 'Failed to deposit after retry'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: response.data?.msg || 'Failed to deposit'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to deposit'
+      };
+    }
+  }
+
+  // Agent Redeem (Withdraw money from user account)
+  async agentRedeem(account: string, passwdMd5: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      if (!this.agentKeyCache) {
+        await this.loginAgent();
+      }
+
+      const time = Date.now();
+      const sign = this.generateSignature(
+        this.config.agentName,
+        time,
+        this.agentKeyCache!
+      );
+
+      const response = await axios.post(this.config.baseUrl, null, {
+        params: {
+          action: 'agentRedeem',
+          account,
+          passwd: passwdMd5,
+          agentName: this.config.agentName,
+          amount,
+          time,
+          sign
+        },
+        timeout: 30000
+      });
+
+      if (response.data && (response.data.code === '200' || response.data.code === 200)) {
+        return {
+          success: true,
+          message: 'Redeem successful',
+          data: response.data
+        };
+      } else if (response.data && (response.data.code === '201' || response.data.code === 201)) {
+        await this.loginAgent();
+        const retryTime = Date.now();
+        const retrySign = this.generateSignature(
+          this.config.agentName,
+          retryTime,
+          this.agentKeyCache!
+        );
+
+        const retryResponse = await axios.post(this.config.baseUrl, null, {
+          params: {
+            action: 'agentRedeem',
+            account,
+            passwd: passwdMd5,
+            agentName: this.config.agentName,
+            amount,
+            time: retryTime,
+            sign: retrySign
+          },
+          timeout: 30000
+        });
+
+        if (retryResponse.data && (retryResponse.data.code === '200' || retryResponse.data.code === 200)) {
+          return {
+            success: true,
+            message: 'Redeem successful',
+            data: retryResponse.data
+          };
+        } else {
+          return {
+            success: false,
+            message: retryResponse.data?.msg || 'Failed to redeem after retry'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: response.data?.msg || 'Failed to redeem'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to redeem'
+      };
+    }
+  }
+
+  // Get Trade Record
+  async getTradeRecord(account: string, passwdMd5: string, fromDate: string, toDate: string): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      if (!this.agentKeyCache) {
+        await this.loginAgent();
+      }
+
+      const time = Date.now();
+      const sign = this.generateSignature(
+        this.config.agentName,
+        time,
+        this.agentKeyCache!
+      );
+
+      const response = await axios.post(this.config.baseUrl, null, {
+        params: {
+          action: 'getTradeRecord',
+          account,
+          passwd: passwdMd5,
+          agentName: this.config.agentName,
+          fromDate,
+          toDate,
+          time,
+          sign
+        },
+        timeout: 30000
+      });
+
+      if (response.data && (response.data.code === '200' || response.data.code === 200)) {
+        return {
+          success: true,
+          message: 'Trade records retrieved successfully',
+          data: response.data
+        };
+      } else if (response.data && (response.data.code === '201' || response.data.code === 201)) {
+        await this.loginAgent();
+        const retryTime = Date.now();
+        const retrySign = this.generateSignature(
+          this.config.agentName,
+          retryTime,
+          this.agentKeyCache!
+        );
+
+        const retryResponse = await axios.post(this.config.baseUrl, null, {
+          params: {
+            action: 'getTradeRecord',
+            account,
+            passwd: passwdMd5,
+            agentName: this.config.agentName,
+            fromDate,
+            toDate,
+            time: retryTime,
+            sign: retrySign
+          },
+          timeout: 30000
+        });
+
+        if (retryResponse.data && (retryResponse.data.code === '200' || retryResponse.data.code === 200)) {
+          return {
+            success: true,
+            message: 'Trade records retrieved successfully',
+            data: retryResponse.data
+          };
+        } else {
+          return {
+            success: false,
+            message: retryResponse.data?.msg || 'Failed to get trade records after retry'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: response.data?.msg || 'Failed to get trade records'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get trade records'
+      };
+    }
+  }
+
+  // Get JP Record (Jackpot Record)
+  async getJpRecord(account: string, passwdMd5: string, fromDate: string, toDate: string): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      if (!this.agentKeyCache) {
+        await this.loginAgent();
+      }
+
+      const time = Date.now();
+      const sign = this.generateSignature(
+        this.config.agentName,
+        time,
+        this.agentKeyCache!
+      );
+
+      const response = await axios.post(this.config.baseUrl, null, {
+        params: {
+          action: 'getJpRecord',
+          account,
+          passwd: passwdMd5,
+          agentName: this.config.agentName,
+          fromDate,
+          toDate,
+          time,
+          sign
+        },
+        timeout: 30000
+      });
+
+      if (response.data && (response.data.code === '200' || response.data.code === 200)) {
+        return {
+          success: true,
+          message: 'JP records retrieved successfully',
+          data: response.data
+        };
+      } else if (response.data && (response.data.code === '201' || response.data.code === 201)) {
+        await this.loginAgent();
+        const retryTime = Date.now();
+        const retrySign = this.generateSignature(
+          this.config.agentName,
+          retryTime,
+          this.agentKeyCache!
+        );
+
+        const retryResponse = await axios.post(this.config.baseUrl, null, {
+          params: {
+            action: 'getJpRecord',
+            account,
+            passwd: passwdMd5,
+            agentName: this.config.agentName,
+            fromDate,
+            toDate,
+            time: retryTime,
+            sign: retrySign
+          },
+          timeout: 30000
+        });
+
+        if (retryResponse.data && (retryResponse.data.code === '200' || retryResponse.data.code === 200)) {
+          return {
+            success: true,
+            message: 'JP records retrieved successfully',
+            data: retryResponse.data
+          };
+        } else {
+          return {
+            success: false,
+            message: retryResponse.data?.msg || 'Failed to get JP records after retry'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: response.data?.msg || 'Failed to get JP records'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get JP records'
+      };
+    }
+  }
+
+  // Get Game Record
+  async getGameRecord(account: string, passwdMd5: string, fromDate: string, toDate: string, kindId?: string): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      if (!this.agentKeyCache) {
+        await this.loginAgent();
+      }
+
+      const time = Date.now();
+      const sign = this.generateSignature(
+        this.config.agentName,
+        time,
+        this.agentKeyCache!
+      );
+
+      const params: any = {
+        action: 'getGameRecord',
+        account,
+        passwd: passwdMd5,
+        agentName: this.config.agentName,
+        fromDate,
+        toDate,
+        time,
+        sign
+      };
+
+      if (kindId) {
+        params.kindId = kindId;
+      }
+
+      const response = await axios.post(this.config.baseUrl, null, {
+        params,
+        timeout: 30000
+      });
+
+      if (response.data && (response.data.code === '200' || response.data.code === 200)) {
+        return {
+          success: true,
+          message: 'Game records retrieved successfully',
+          data: response.data
+        };
+      } else if (response.data && (response.data.code === '201' || response.data.code === 201)) {
+        await this.loginAgent();
+        const retryTime = Date.now();
+        const retrySign = this.generateSignature(
+          this.config.agentName,
+          retryTime,
+          this.agentKeyCache!
+        );
+
+        const retryParams: any = {
+          action: 'getGameRecord',
+          account,
+          passwd: passwdMd5,
+          agentName: this.config.agentName,
+          fromDate,
+          toDate,
+          time: retryTime,
+          sign: retrySign
+        };
+
+        if (kindId) {
+          retryParams.kindId = kindId;
+        }
+
+        const retryResponse = await axios.post(this.config.baseUrl, null, {
+          params: retryParams,
+          timeout: 30000
+        });
+
+        if (retryResponse.data && (retryResponse.data.code === '200' || retryResponse.data.code === 200)) {
+          return {
+            success: true,
+            message: 'Game records retrieved successfully',
+            data: retryResponse.data
+          };
+        } else {
+          return {
+            success: false,
+            message: retryResponse.data?.msg || 'Failed to get game records after retry'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: response.data?.msg || 'Failed to get game records'
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get game records'
+      };
+    }
+  }
 }
 
 export default new FortunePandaService();

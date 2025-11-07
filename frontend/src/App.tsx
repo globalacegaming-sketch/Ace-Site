@@ -19,6 +19,7 @@ import Settings from './pages/Settings';
 import Support from './pages/Support';
 import GameLaunch from './pages/GameLaunch';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminLogin from './pages/AdminLogin';
 import UserFortunePandaDashboard from './pages/UserFortunePandaDashboard';
 import AgentLogin from './pages/AgentLogin';
 
@@ -146,6 +147,7 @@ function App() {
           } />
           
           {/* Admin Routes */}
+          <Route path="/adminacers/login" element={<AdminLogin />} />
           <Route path="/adminacers" element={<AdminDashboard />} />
           
           {/* Agent Login Route */}
