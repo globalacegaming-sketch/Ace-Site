@@ -227,8 +227,9 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
         message: 'User info retrieved successfully',
         data: {
           fortunePandaUsername: user.fortunePandaUsername,
-          userBalance: result.data?.userbalance || '0.00',
+          userBalance: result.data?.userbalance || result.data?.userBalance || '0.00',
           agentBalance: result.data?.agentBalance || '0.00',
+          gameId: result.data?.gameId,
           lastLogin: result.data?.lastLogin,
           ...result.data
         }

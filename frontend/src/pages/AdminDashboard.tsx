@@ -49,7 +49,6 @@ const AdminDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [agentBalance, setAgentBalance] = useState<string>('0.00');
-  const [userFpInfo, setUserFpInfo] = useState<any>(null);
   
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
@@ -140,10 +139,11 @@ const AdminDashboard: React.FC = () => {
       });
 
       if (response.data.success) {
-        setUserFpInfo(response.data.data);
-        toast.success('User info fetched from FortunePanda');
+        toast.success(`User info fetched! Balance: $${response.data.data?.userBalance || '0.00'}, Agent Balance: $${response.data.data?.agentBalance || '0.00'}`);
         // Refresh users list to update balance
         loadUsers();
+        // Refresh agent balance
+        loadAgentBalance();
       } else {
         toast.error(response.data.message || 'Failed to fetch user info');
       }
