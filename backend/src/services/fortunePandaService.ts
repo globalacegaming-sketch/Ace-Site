@@ -697,16 +697,17 @@ class FortunePandaService {
         // Use the same FortunePanda account name for retry
         const fortunePandaAccount = account;
 
+        const retryQueryParams = {
+          action: 'redeem',
+          account: fortunePandaAccount,
+          amount: amount,
+          agentName: this.config.agentName,
+          time: retryTime.toString(),
+          sign: retrySign
+        };
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
-          params: {
-            action: 'agentRedeem',
-            account: fortunePandaAccount,
-            passwd: passwdMd5,
-            agentName: this.config.agentName,
-            amount,
-            time: retryTime,
-            sign: retrySign
-          },
+          params: retryQueryParams,
           timeout: 30000
         });
 
