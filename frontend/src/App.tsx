@@ -5,6 +5,7 @@ import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
 import TawkToWidget from './components/TawkToWidget';
+import NoticePopup from './components/NoticePopup';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -22,6 +23,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminLogin from './pages/AdminLogin';
 import UserFortunePandaDashboard from './pages/UserFortunePandaDashboard';
 import AgentLogin from './pages/AgentLogin';
+import AgentDashboard from './pages/AgentDashboard';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -152,6 +154,7 @@ function App() {
           
           {/* Agent Login Route */}
           <Route path="/agent-login" element={<AgentLogin />} />
+          <Route path="/agent-dashboard" element={<AgentDashboard />} />
           
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -159,6 +162,9 @@ function App() {
         
         {/* Tawk.to Widget - Only shows for logged-in users */}
         <TawkToWidget />
+        
+        {/* Notice Popup - Shows active notices for logged-in users */}
+        <NoticePopup />
           </div>
         </Router>
       </ClickSoundProvider>

@@ -25,6 +25,12 @@ import adminRoutes from './routes/admin';
 import fortunePandaRoutes from './routes/fortunePanda';
 import fortunePandaUserRoutes from './routes/fortunePandaUser';
 import proxyRoutes from './routes/proxy';
+import platformRoutes from './routes/platform';
+import bonusRoutes from './routes/bonus';
+import agentAuthRoutes from './routes/agentAuth';
+import faqRoutes from './routes/faq';
+import noticeRoutes from './routes/notice';
+import contactsRoutes from './routes/contacts';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -133,6 +139,12 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/fortune-panda', fortunePandaRoutes);
 app.use('/api/fortune-panda-user', fortunePandaUserRoutes);
 app.use('/api', proxyRoutes);
+app.use('/api/platforms', platformRoutes);
+app.use('/api/bonuses', bonusRoutes);
+app.use('/api/agent-auth', agentAuthRoutes);
+app.use('/api/faqs', faqRoutes);
+app.use('/api/notices', noticeRoutes);
+app.use('/api/contacts', contactsRoutes);
 
 // WebSocket connection handling
 io.on('connection', (socket) => {

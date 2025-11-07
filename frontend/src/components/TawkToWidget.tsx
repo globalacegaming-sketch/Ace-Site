@@ -14,6 +14,7 @@ declare global {
       logout?: () => void;
       hideWidget?: () => void;
       showWidget?: () => void;
+      maximize?: () => void;
       onLoad?: () => void;
       onStatusChange?: (status: string) => void;
       isVisitorEngaged?: () => boolean;
