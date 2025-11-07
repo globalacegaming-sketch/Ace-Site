@@ -152,15 +152,15 @@ router.get('/balance', async (req: Request, res: Response) => {
       // User missing Fortune Panda password, creating account
       
       // Try to create Fortune Panda account for existing user
-          const fortunePandaUsername = `${user.firstName}_Aces9F`;
-          const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
+      const baseUsername = `${user.firstName}_Aces9F`;
+      const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
 
-          try {
-            const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, fortunePandaPassword);
+      try {
+        const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, fortunePandaPassword);
         
         if (createResult.success) {
           // Update user with Fortune Panda credentials
-          user.fortunePandaUsername = fortunePandaUsername;
+          user.fortunePandaUsername = baseUsername;
           user.fortunePandaPassword = fortunePandaPassword;
           await user.save();
           
@@ -209,13 +209,13 @@ router.get('/balance', async (req: Request, res: Response) => {
         
         if (createResult.success) {
           // Update user with new Fortune Panda credentials
-          user.fortunePandaUsername = fortunePandaUsername;
+          user.fortunePandaUsername = baseUsername;
           await user.save();
           
           console.log('✅ Fortune Panda account created successfully, retrying balance query...');
           
           // Retry balance query with full username (including _GAGame)
-          const retryFullUsername = fortunePandaService.getFullFortunePandaUsername(fortunePandaUsername);
+          const retryFullUsername = fortunePandaService.getFullFortunePandaUsername(baseUsername);
           const retryResult = await fortunePandaService.queryUserInfo(retryFullUsername, passwdMd5);
           
           if (retryResult.success) {
@@ -226,7 +226,7 @@ router.get('/balance', async (req: Request, res: Response) => {
               data: {
                 balance: retryResult.data?.userbalance || '0.00',
                 agentBalance: retryResult.data?.agentBalance || '0.00',
-                fortunePandaUsername
+                fortunePandaUsername: baseUsername
               }
             });
           } else {
@@ -235,7 +235,7 @@ router.get('/balance', async (req: Request, res: Response) => {
               success: false,
               message: retryResult.message,
               debug: {
-                fortunePandaUsername,
+                fortunePandaUsername: baseUsername,
                 accountCreated: true
               }
             });
@@ -246,7 +246,7 @@ router.get('/balance', async (req: Request, res: Response) => {
             success: false,
             message: 'Failed to create Fortune Panda account: ' + createResult.message,
             debug: {
-              fortunePandaUsername,
+              fortunePandaUsername: baseUsername,
               createError: createResult.message
             }
           });
@@ -257,7 +257,7 @@ router.get('/balance', async (req: Request, res: Response) => {
           success: false,
           message: 'Failed to create Fortune Panda account',
           debug: {
-            fortunePandaUsername,
+            fortunePandaUsername: baseUsername,
             error: error instanceof Error ? error.message : 'Unknown error'
           }
         });
@@ -269,7 +269,7 @@ router.get('/balance', async (req: Request, res: Response) => {
         message: result.message || 'Failed to retrieve balance. Please try again.',
         error: result.message,
         debug: {
-          fortunePandaUsername,
+          fortunePandaUsername: baseUsername,
           hasPassword: !!user.fortunePandaPassword
         }
       });
