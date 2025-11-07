@@ -294,14 +294,28 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
     const users = await User.find({
       fortunePandaUsername: { $exists: true, $ne: null },
       fortunePandaPassword: { $exists: true, $ne: null }
-    }).select('fortunePandaUsername fortunePandaPassword');
+    }).select('fortunePandaUsername fortunePandaPassword _id firstName username');
+
+    console.log(`🔄 Starting sync for ${users.length} users from FortunePanda...`);
 
     const results = [];
     const errors = [];
 
     for (const user of users) {
       try {
-        if (!user.fortunePandaUsername || !user.fortunePandaPassword) continue;
+        if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
+          console.log(`⏭️ Skipping user ${user._id} - missing FP credentials`);
+          continue;
+        }
+
+        // Get the actual FP account name (with _GAGame suffix)
+        const fpAccountName = fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername);
+        
+        console.log(`🔍 Syncing user ${user.username || user._id}:`, {
+          dbUsername: user.fortunePandaUsername,
+          fpAccountName,
+          userId: user._id
+        });
 
         const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
         const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
@@ -318,30 +332,61 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
             }
           );
 
+          console.log(`✅ Successfully synced ${user.username || user._id}:`, {
+            fpAccount: fpAccountName,
+            balance: result.data?.userbalance || '0.00'
+          });
+
           results.push({
             userId: user._id,
-            account: user.fortunePandaUsername,
+            username: user.username,
+            dbAccount: user.fortunePandaUsername,
+            fpAccount: fpAccountName,
             balance: result.data?.userbalance || '0.00',
             agentBalance: result.data?.agentBalance || '0.00',
             gameId: result.data?.gameId
           });
         } else {
-          errors.push({
-            account: user.fortunePandaUsername,
+          console.error(`❌ Failed to sync ${user.username || user._id}:`, {
+            dbAccount: user.fortunePandaUsername,
+            fpAccount: fpAccountName,
             error: result.message
+          });
+
+          errors.push({
+            userId: user._id,
+            username: user.username,
+            dbAccount: user.fortunePandaUsername,
+            fpAccount: fpAccountName,
+            error: result.message || 'Account not found in FortunePanda'
           });
         }
       } catch (error: any) {
+        const fpAccountName = user.fortunePandaUsername 
+          ? fortunePandaService.getFortunePandaAccountName(user.fortunePandaUsername)
+          : 'N/A';
+        
+        console.error(`❌ Error syncing user ${user.username || user._id}:`, {
+          dbAccount: user.fortunePandaUsername,
+          fpAccount: fpAccountName,
+          error: error.message
+        });
+
         errors.push({
-          account: user.fortunePandaUsername,
+          userId: user._id,
+          username: user.username,
+          dbAccount: user.fortunePandaUsername,
+          fpAccount: fpAccountName,
           error: error.message || 'Failed to sync'
         });
       }
     }
 
+    console.log(`✅ Sync completed: ${results.length} successful, ${errors.length} failed out of ${users.length} total`);
+
     return res.json({
       success: true,
-      message: `Synced ${results.length} users from FortunePanda`,
+      message: `Synced ${results.length} of ${users.length} users from FortunePanda${errors.length > 0 ? ` (${errors.length} failed)` : ''}`,
       data: {
         synced: results,
         errors: errors,
@@ -351,7 +396,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
       }
     });
   } catch (error) {
-    console.error('Sync users from FortunePanda error:', error);
+    console.error('❌ Sync users from FortunePanda error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'

@@ -13,7 +13,9 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
-  DollarSign
+  DollarSign,
+  Edit,
+  X
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -60,6 +62,8 @@ const AdminDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [agentBalance, setAgentBalance] = useState<string>('0.00');
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [modalAction, setModalAction] = useState<'recharge' | 'redeem' | null>(null);
   
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
@@ -469,29 +473,19 @@ const AdminDashboard: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen pt-16" style={{ 
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-    }}>
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-bold casino-text-primary flex items-center gap-3">
-              <Shield className="w-8 h-8" />
-              Admin Dashboard
-            </h1>
+    <div className="min-h-screen bg-gray-100">
+      {/* Header - FortunePanda Style */}
+      <div className="bg-blue-800 text-white shadow-lg">
+        <div className="max-w-full mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold">FortunePanda (Release) / User Management</h1>
+              <p className="text-sm text-blue-200 mt-1">Balance: ${parseFloat(agentBalance).toFixed(2)}</p>
+            </div>
             <div className="flex items-center gap-4">
-              {/* Agent Balance Display */}
-              <div className="casino-bg-primary px-4 py-2 rounded-lg casino-border">
-                <div className="text-xs casino-text-secondary mb-1">Agent Balance</div>
-                <div className="text-lg font-bold casino-text-primary flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
-                  ${parseFloat(agentBalance).toFixed(2)}
-                </div>
-              </div>
               <button
                 onClick={loadAgentBalance}
-                className="btn-casino-secondary px-3 py-2 rounded-lg flex items-center gap-2"
+                className="px-3 py-2 bg-blue-700 rounded hover:bg-blue-600 transition-colors"
                 title="Refresh agent balance"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -502,7 +496,7 @@ const AdminDashboard: React.FC = () => {
                   toast.success('Logged out successfully');
                   navigate('/adminacers/login');
                 }}
-                className="btn-casino-secondary px-4 py-2 rounded-lg flex items-center gap-2"
+                className="px-4 py-2 bg-blue-700 rounded hover:bg-blue-600 transition-colors flex items-center gap-2"
               >
                 <XCircle className="w-4 h-4" />
                 Logout
@@ -510,152 +504,146 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`px-4 py-2 rounded-lg font-semibold transition-all flex items-center gap-2 ${
-                  activeTab === tab.id
-                    ? 'casino-bg-primary text-white'
-                    : 'casino-bg-secondary casino-text-secondary hover:casino-text-primary'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            );
-          })}
+      <div className="max-w-full mx-auto px-6 py-6">
+        {/* Search and Actions Bar */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex-1 min-w-[300px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="ID, Account or NickName"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const searchInput = document.querySelector('input[placeholder="ID, Account or NickName"]') as HTMLInputElement;
+                if (searchInput) searchInput.focus();
+              }}
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-semibold"
+            >
+              Search
+            </button>
+            <button
+              onClick={syncAllUsersFromFortunePanda}
+              disabled={loading}
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              title="Sync all users from FortunePanda API"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Sync from FP
+            </button>
+            <button
+              onClick={loadUsers}
+              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="casino-bg-secondary rounded-2xl p-6 casino-border shadow-xl">
-          {/* Users Tab */}
-          {activeTab === 'users' && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold casino-text-primary">User List</h2>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 casino-text-secondary" />
-                    <input
-                      type="text"
-                      placeholder="Search users..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 rounded-lg casino-bg-primary casino-text-primary border casino-border w-64"
-                    />
-                  </div>
-                  <button
-                    onClick={syncAllUsersFromFortunePanda}
-                    disabled={loading}
-                    className="btn-casino-primary px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50"
-                    title="Sync all users from FortunePanda API"
-                  >
-                    {loading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    Sync from FP
-                  </button>
-                  <button
-                    onClick={loadUsers}
-                    className="btn-casino-secondary px-4 py-2 rounded-lg flex items-center gap-2"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Refresh
-                  </button>
-                </div>
-              </div>
+        <div className="bg-white rounded-lg shadow-md">
+          <div className="p-6">
 
               {loading ? (
                 <div className="flex justify-center items-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#FFD700' }} />
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b casino-border">
-                        <th className="text-left p-3 casino-text-primary">Username</th>
-                        <th className="text-left p-3 casino-text-primary">Email</th>
-                        <th className="text-left p-3 casino-text-primary">FP Account</th>
-                        <th className="text-left p-3 casino-text-primary">Balance</th>
-                        <th className="text-left p-3 casino-text-primary">Role</th>
-                        <th className="text-left p-3 casino-text-primary">Status</th>
-                        <th className="text-left p-3 casino-text-primary">Actions</th>
+                      <tr className="bg-gray-100 border-b">
+                        <th className="text-left p-3 text-gray-700 font-semibold">ID</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">Account</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">NickName</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">Balance</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">Register date</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">Last Login</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">Manager</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold">Status</th>
+                        <th className="text-left p-3 text-gray-700 font-semibold"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredUsers.map((u) => (
-                        <tr key={u._id} className="border-b casino-border hover:casino-bg-primary/10">
-                          <td className="p-3 casino-text-secondary">{u.username}</td>
-                          <td className="p-3 casino-text-secondary">{u.email}</td>
-                          <td className="p-3 casino-text-secondary" title={`DB: ${u.fortunePandaUsername || 'N/A'}`}>
-                            {getFPAccountName(u.fortunePandaUsername)}
-                          </td>
-                          <td className="p-3 casino-text-secondary">
+                      {filteredUsers.map((u, index) => (
+                        <tr key={u._id} className="border-b hover:bg-gray-50">
+                          <td className="p-3 text-gray-800">{u._id.slice(-6).toUpperCase()}</td>
+                          <td className="p-3 text-gray-800">{getFPAccountName(u.fortunePandaUsername)}</td>
+                          <td className="p-3 text-gray-800">{u.username}</td>
+                          <td className="p-3 text-gray-800 font-semibold">
                             ${u.fortunePandaBalance?.toFixed(2) || '0.00'}
                           </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              u.role === 'admin' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
-                            }`}>
-                              {u.role}
-                            </span>
+                          <td className="p-3 text-gray-600 text-sm">
+                            {new Date(u.createdAt).toLocaleString('en-US', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            })}
                           </td>
+                          <td className="p-3 text-gray-600 text-sm">
+                            {u.lastLogin 
+                              ? new Date(u.lastLogin).toLocaleString('en-US', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit'
+                                })
+                              : 'Never'}
+                          </td>
+                          <td className="p-3 text-gray-800">GAGame</td>
                           <td className="p-3">
                             {u.isActive ? (
-                              <span className="flex items-center gap-1 text-green-400">
-                                <CheckCircle className="w-4 h-4" />
+                              <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800 font-semibold">
                                 Active
                               </span>
                             ) : (
-                              <span className="flex items-center gap-1 text-red-400">
-                                <XCircle className="w-4 h-4" />
+                              <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800 font-semibold">
                                 Inactive
                               </span>
                             )}
                           </td>
                           <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setSelectedUser(u)}
-                                className="btn-casino-primary px-3 py-1 rounded text-sm"
-                              >
-                                Select
-                              </button>
-                              {u.fortunePandaUsername && (
-                                <button
-                                  onClick={() => loadUserFpInfo(u._id)}
-                                  disabled={loading}
-                                  className="btn-casino-secondary px-3 py-1 rounded text-sm flex items-center gap-1"
-                                  title="Fetch from FortunePanda"
-                                >
-                                  <Download className="w-3 h-3" />
-                                  Fetch FP
-                                </button>
-                              )}
-                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedUser(u);
+                                setShowUserModal(true);
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-semibold"
+                            >
+                              Update
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                   {filteredUsers.length === 0 && (
-                    <div className="text-center py-10 casino-text-secondary">
+                    <div className="text-center py-10 text-gray-500">
                       No users found
                     </div>
                   )}
                 </div>
               )}
             </div>
-          )}
 
           {/* Deposit Tab */}
           {activeTab === 'deposit' && (
@@ -1000,6 +988,174 @@ const AdminDashboard: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* User Update Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4">
+            {/* Modal Header */}
+            <div className="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
+              <h3 className="text-xl font-bold">Update User: {selectedUser.username}</h3>
+              <button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setModalAction(null);
+                  setDepositAmount('');
+                  setRedeemAmount('');
+                }}
+                className="text-white hover:text-gray-200 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-600 mb-1">FP Account</p>
+                <p className="text-lg font-semibold text-gray-800">{getFPAccountName(selectedUser.fortunePandaUsername)}</p>
+                <p className="text-sm text-gray-600 mt-2">Current Balance</p>
+                <p className="text-xl font-bold text-blue-600">
+                  ${selectedUser.fortunePandaBalance?.toFixed(2) || '0.00'}
+                </p>
+              </div>
+
+              <div className="flex gap-3 mb-6">
+                <button
+                  onClick={() => {
+                    setModalAction('recharge');
+                    setRedeemAmount('');
+                  }}
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                    modalAction === 'recharge'
+                      ? 'bg-green-600 text-white shadow-lg'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  <ArrowUp className="w-5 h-5 inline mr-2" />
+                  Recharge
+                </button>
+                <button
+                  onClick={() => {
+                    setModalAction('redeem');
+                    setDepositAmount('');
+                  }}
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                    modalAction === 'redeem'
+                      ? 'bg-red-600 text-white shadow-lg'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  <ArrowDown className="w-5 h-5 inline mr-2" />
+                  Redeem
+                </button>
+              </div>
+
+              {/* Recharge Form */}
+              {modalAction === 'recharge' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Recharge Amount (USD)
+                    </label>
+                    <input
+                      type="number"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      placeholder="Enter amount to recharge"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      min="0.01"
+                      step="0.01"
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!depositAmount || parseFloat(depositAmount) <= 0) {
+                        toast.error('Please enter a valid amount');
+                        return;
+                      }
+                      await handleDeposit();
+                      if (!loading) {
+                        setShowUserModal(false);
+                        setModalAction(null);
+                        setDepositAmount('');
+                      }
+                    }}
+                    disabled={loading || !depositAmount || parseFloat(depositAmount) <= 0}
+                    className="w-full py-3 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUp className="w-5 h-5" />
+                        Recharge Account
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Redeem Form */}
+              {modalAction === 'redeem' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Redeem Amount (USD)
+                    </label>
+                    <input
+                      type="number"
+                      value={redeemAmount}
+                      onChange={(e) => setRedeemAmount(e.target.value)}
+                      placeholder="Enter amount to redeem"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      min="0.01"
+                      step="0.01"
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!redeemAmount || parseFloat(redeemAmount) <= 0) {
+                        toast.error('Please enter a valid amount');
+                        return;
+                      }
+                      await handleRedeem();
+                      if (!loading) {
+                        setShowUserModal(false);
+                        setModalAction(null);
+                        setRedeemAmount('');
+                      }
+                    }}
+                    disabled={loading || !redeemAmount || parseFloat(redeemAmount) <= 0}
+                    className="w-full py-3 px-4 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <ArrowDown className="w-5 h-5" />
+                        Redeem from Account
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {!modalAction && (
+                <p className="text-center text-gray-500 py-4">
+                  Select an action above to recharge or redeem funds
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
