@@ -154,6 +154,47 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const syncAllUsersFromFortunePanda = async () => {
+    try {
+      setLoading(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+
+      toast.loading('Syncing all users from FortunePanda...', { id: 'sync-users' });
+
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/users/sync-fortune-panda`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        const { successful, failed, total } = response.data.data;
+        toast.success(
+          `Synced ${successful} of ${total} users from FortunePanda${failed > 0 ? ` (${failed} failed)` : ''}`,
+          { id: 'sync-users' }
+        );
+        // Refresh users list to show updated balances
+        loadUsers();
+        // Refresh agent balance
+        loadAgentBalance();
+      } else {
+        toast.error(response.data.message || 'Failed to sync users', { id: 'sync-users' });
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to sync users from FortunePanda', { id: 'sync-users' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadUsers = async () => {
     try {
       setLoading(true);
@@ -495,8 +536,21 @@ const AdminDashboard: React.FC = () => {
                     />
                   </div>
                   <button
+                    onClick={syncAllUsersFromFortunePanda}
+                    disabled={loading}
+                    className="btn-casino-primary px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50"
+                    title="Sync all users from FortunePanda API"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    Sync from FP
+                  </button>
+                  <button
                     onClick={loadUsers}
-                    className="btn-casino-primary px-4 py-2 rounded-lg flex items-center gap-2"
+                    className="btn-casino-secondary px-4 py-2 rounded-lg flex items-center gap-2"
                   >
                     <RefreshCw className="w-4 h-4" />
                     Refresh

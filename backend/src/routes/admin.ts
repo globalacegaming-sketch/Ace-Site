@@ -81,19 +81,24 @@ router.post('/login', async (req: Request, res: Response) => {
 
     console.log('✅ Credentials verified successfully');
 
-    // Try to login to FortunePanda to verify credentials work (non-blocking)
-    // This is optional - if it fails, we still allow login since credentials match env vars
+    // Perform agent login to FortunePanda API to establish session
+    // This ensures agentKey is cached and ready for all admin operations
     try {
+      console.log('🔐 Performing agent login to FortunePanda API...');
       const loginResult = await agentLoginService.loginAgent();
       if (!loginResult.success) {
-        console.warn('⚠️ FortunePanda API verification failed, but allowing login (credentials match env vars)');
+        console.warn('⚠️ FortunePanda agent login failed:', loginResult.message);
+        // Still allow admin login, but operations may fail
+        console.warn('⚠️ Admin login allowed, but FortunePanda operations may not work until agent login succeeds');
       } else {
-        console.log('✅ FortunePanda API verification successful');
+        console.log('✅ FortunePanda agent login successful - agentKey cached and ready');
+        console.log('✅ Agent session established for admin operations');
       }
     } catch (error) {
       // If login fails, still allow admin access (credentials are correct)
       // This handles cases where API might be temporarily unavailable
-      console.warn('⚠️ FortunePanda API verification error, but allowing login:', error instanceof Error ? error.message : 'Unknown error');
+      console.warn('⚠️ FortunePanda agent login error, but allowing admin login:', error instanceof Error ? error.message : 'Unknown error');
+      console.warn('⚠️ Admin can still access panel, but FortunePanda operations may fail until agent login succeeds');
     }
 
     // Create a simple session token (in production, use JWT)
@@ -249,7 +254,78 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
   }
 });
 
-// Get all users list
+// Sync all users from FortunePanda
+router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => {
+  try {
+    const users = await User.find({
+      fortunePandaUsername: { $exists: true, $ne: null },
+      fortunePandaPassword: { $exists: true, $ne: null }
+    }).select('fortunePandaUsername fortunePandaPassword');
+
+    const results = [];
+    const errors = [];
+
+    for (const user of users) {
+      try {
+        if (!user.fortunePandaUsername || !user.fortunePandaPassword) continue;
+
+        const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+        const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+
+        if (result.success) {
+          // Update user in database
+          await User.updateOne(
+            { _id: user._id },
+            {
+              $set: {
+                fortunePandaBalance: parseFloat(result.data?.userbalance || '0'),
+                fortunePandaLastSync: new Date()
+              }
+            }
+          );
+
+          results.push({
+            userId: user._id,
+            account: user.fortunePandaUsername,
+            balance: result.data?.userbalance || '0.00',
+            agentBalance: result.data?.agentBalance || '0.00',
+            gameId: result.data?.gameId
+          });
+        } else {
+          errors.push({
+            account: user.fortunePandaUsername,
+            error: result.message
+          });
+        }
+      } catch (error: any) {
+        errors.push({
+          account: user.fortunePandaUsername,
+          error: error.message || 'Failed to sync'
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Synced ${results.length} users from FortunePanda`,
+      data: {
+        synced: results,
+        errors: errors,
+        total: users.length,
+        successful: results.length,
+        failed: errors.length
+      }
+    });
+  } catch (error) {
+    console.error('Sync users from FortunePanda error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get all users list (from database, but can be synced with FortunePanda)
 router.get('/users', async (req: Request, res: Response) => {
   try {
     const users = await User.find({})
