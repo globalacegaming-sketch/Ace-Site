@@ -306,6 +306,9 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
+      // Append _GAGame suffix to account name (FortunePanda automatically adds this when creating accounts)
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -315,8 +318,9 @@ class FortunePandaService {
 
       console.log('🔍 FortunePanda queryInfo request:', {
         action: 'queryInfo',
-        account,
-        accountLength: account?.length,
+        dbAccount: account,
+        fortunePandaAccount,
+        accountLength: fortunePandaAccount?.length,
         passwdLength: passwdMd5?.length,
         agentName: this.config.agentName,
         time,
@@ -326,7 +330,7 @@ class FortunePandaService {
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'queryInfo',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
         agentName: this.config.agentName,
           time,
@@ -369,10 +373,13 @@ class FortunePandaService {
           this.agentKeyCache!
         );
 
+        // Use the same FortunePanda account name for retry
+        const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
           params: {
             action: 'queryInfo',
-            account,
+            account: fortunePandaAccount,
             passwd: passwdMd5,
             agentName: this.config.agentName,
             time: retryTime,
@@ -425,6 +432,9 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
+      // Append _GAGame suffix to account name
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -435,7 +445,7 @@ class FortunePandaService {
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'entergame',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
         agentName: this.config.agentName,
         kindId,
@@ -470,10 +480,13 @@ class FortunePandaService {
           this.agentKeyCache!
         );
 
+        // Use the same FortunePanda account name for retry
+        const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
           params: {
             action: 'entergame',
-            account,
+            account: fortunePandaAccount,
             passwd: passwdMd5,
         agentName: this.config.agentName,
             kindId,
@@ -526,12 +539,27 @@ class FortunePandaService {
     return password;
   }
 
+  // Helper method to get the actual FortunePanda username (with _GAGame suffix)
+  // The database stores firstName_Aces9F, but FortunePanda automatically appends _GAGame
+  // So we need to append _GAGame when querying/operating on accounts
+  getFortunePandaAccountName(dbUsername: string): string {
+    // If it already ends with _GAGame, return as is
+    if (dbUsername.endsWith('_GAGame')) {
+      return dbUsername;
+    }
+    // Otherwise append _GAGame
+    return `${dbUsername}_GAGame`;
+  }
+
   // Agent Deposit (Load money to user account)
   async agentDeposit(account: string, passwdMd5: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       if (!this.agentKeyCache) {
         await this.loginAgent();
       }
+
+      // Append _GAGame suffix to account name
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
 
       const time = Date.now();
       const sign = this.generateSignature(
@@ -543,7 +571,7 @@ class FortunePandaService {
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'agentDeposit',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
           agentName: this.config.agentName,
           amount,
@@ -568,10 +596,13 @@ class FortunePandaService {
           this.agentKeyCache!
         );
 
+        // Use the same FortunePanda account name for retry
+        const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
           params: {
             action: 'agentDeposit',
-            account,
+            account: fortunePandaAccount,
             passwd: passwdMd5,
             agentName: this.config.agentName,
             amount,
@@ -614,6 +645,9 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
+      // Append _GAGame suffix to account name
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -624,7 +658,7 @@ class FortunePandaService {
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'agentRedeem',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
           agentName: this.config.agentName,
           amount,
@@ -649,10 +683,13 @@ class FortunePandaService {
           this.agentKeyCache!
         );
 
+        // Use the same FortunePanda account name for retry
+        const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
           params: {
             action: 'agentRedeem',
-            account,
+            account: fortunePandaAccount,
             passwd: passwdMd5,
             agentName: this.config.agentName,
             amount,
@@ -695,6 +732,9 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
+      // Append _GAGame suffix to account name
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -705,7 +745,7 @@ class FortunePandaService {
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'getTradeRecord',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
           agentName: this.config.agentName,
           fromDate,
@@ -731,10 +771,13 @@ class FortunePandaService {
           this.agentKeyCache!
         );
 
+        // Use the same FortunePanda account name for retry
+        const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
         const retryResponse = await axios.post(this.config.baseUrl, null, {
           params: {
             action: 'getTradeRecord',
-            account,
+            account: fortunePandaAccount,
             passwd: passwdMd5,
             agentName: this.config.agentName,
             fromDate,
@@ -778,6 +821,9 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
+      // Append _GAGame suffix to account name
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -788,7 +834,7 @@ class FortunePandaService {
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
           action: 'getJpRecord',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
           agentName: this.config.agentName,
           fromDate,
@@ -817,7 +863,7 @@ class FortunePandaService {
         const retryResponse = await axios.post(this.config.baseUrl, null, {
           params: {
             action: 'getJpRecord',
-            account,
+            account: this.getFortunePandaAccountName(account),
             passwd: passwdMd5,
             agentName: this.config.agentName,
             fromDate,
@@ -861,6 +907,9 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
+      // Append _GAGame suffix to account name
+      const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -870,7 +919,7 @@ class FortunePandaService {
 
       const params: any = {
         action: 'getGameRecord',
-        account,
+        account: fortunePandaAccount,
         passwd: passwdMd5,
         agentName: this.config.agentName,
         fromDate,
@@ -903,9 +952,12 @@ class FortunePandaService {
           this.agentKeyCache!
         );
 
+        // Use the same FortunePanda account name for retry
+        const fortunePandaAccount = this.getFortunePandaAccountName(account);
+
         const retryParams: any = {
           action: 'getGameRecord',
-          account,
+          account: fortunePandaAccount,
           passwd: passwdMd5,
           agentName: this.config.agentName,
           fromDate,

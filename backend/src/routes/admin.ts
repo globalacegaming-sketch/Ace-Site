@@ -416,59 +416,126 @@ router.post('/deposit', async (req: Request, res: Response) => {
   try {
     const { userId, amount } = req.body;
 
+    console.log('💰 Deposit request received:', { userId, amount, userIdType: typeof userId });
+
     if (!userId || !amount) {
+      console.error('❌ Missing required fields:', { hasUserId: !!userId, hasAmount: !!amount });
       return res.status(400).json({
         success: false,
         message: 'userId and amount are required'
       });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
+    // Try to find user by ID
+    let user;
+    try {
+      user = await User.findById(userId);
+    } catch (error: any) {
+      console.error('❌ Error finding user by ID:', error.message);
+      return res.status(400).json({
         success: false,
-        message: 'User not found'
+        message: `Invalid userId format: ${error.message}`
       });
     }
 
+    if (!user) {
+      console.error('❌ User not found in database:', userId);
+      // Check if any user exists with this ID format
+      const allUsers = await User.find({}).select('_id username').limit(5);
+      console.log('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
+      return res.status(404).json({
+        success: false,
+        message: `User not found with ID: ${userId}`,
+        debug: {
+          userId,
+          userIdType: typeof userId,
+          sampleUserIds: allUsers.map(u => u._id.toString())
+        }
+      });
+    }
+
+    console.log('👤 User found:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      hasFPUsername: !!user.fortunePandaUsername,
+      hasFPPassword: !!user.fortunePandaPassword,
+      fpUsername: user.fortunePandaUsername
+    });
+
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
+      console.error('❌ User missing FortunePanda credentials:', {
+        userId: user._id.toString(),
+        hasFPUsername: !!user.fortunePandaUsername,
+        hasFPPassword: !!user.fortunePandaPassword
+      });
       return res.status(400).json({
         success: false,
-        message: 'User does not have FortunePanda account'
+        message: 'User does not have FortunePanda account. Please sync users from FortunePanda first or create an account for this user.',
+        debug: {
+          userId: user._id.toString(),
+          username: user.username,
+          hasFPUsername: !!user.fortunePandaUsername,
+          hasFPPassword: !!user.fortunePandaPassword
+        }
       });
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    
+    console.log('🔐 Calling FortunePanda agentDeposit:', {
+      account: user.fortunePandaUsername,
+      amount: amount.toString(),
+      passwdLength: passwdMd5.length
+    });
+
     const result = await fortunePandaService.agentDeposit(
       user.fortunePandaUsername,
       passwdMd5,
       amount.toString()
     );
 
+    console.log('📥 FortunePanda agentDeposit result:', {
+      success: result.success,
+      message: result.message,
+      hasData: !!result.data
+    });
+
     if (result.success) {
       // Update user balance in database
-      if (result.data?.userbalance) {
-        user.fortunePandaBalance = parseFloat(result.data.userbalance);
+      if (result.data?.userbalance || result.data?.userBalance) {
+        user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
         user.fortunePandaLastSync = new Date();
         await user.save();
+        console.log('✅ User balance updated in database:', user.fortunePandaBalance);
       }
 
       return res.json({
         success: true,
         message: result.message,
-        data: result.data
+        data: {
+          userbalance: result.data?.userbalance || result.data?.userBalance || '0.00',
+          agentBalance: result.data?.agentBalance || result.data?.agentbalance || '0.00',
+          ...result.data
+        }
       });
     } else {
+      console.error('❌ Deposit failed from FortunePanda:', result.message);
       return res.status(400).json({
         success: false,
-        message: result.message
+        message: result.message || 'Deposit failed',
+        debug: {
+          account: user.fortunePandaUsername,
+          amount: amount.toString()
+        }
       });
     }
-  } catch (error) {
-    console.error('Deposit error:', error);
+  } catch (error: any) {
+    console.error('❌ Deposit error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: error.message || 'Internal server error',
+      error: error.message
     });
   }
 });
@@ -478,59 +545,126 @@ router.post('/redeem', async (req: Request, res: Response) => {
   try {
     const { userId, amount } = req.body;
 
+    console.log('💸 Redeem request received:', { userId, amount, userIdType: typeof userId });
+
     if (!userId || !amount) {
+      console.error('❌ Missing required fields:', { hasUserId: !!userId, hasAmount: !!amount });
       return res.status(400).json({
         success: false,
         message: 'userId and amount are required'
       });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
+    // Try to find user by ID
+    let user;
+    try {
+      user = await User.findById(userId);
+    } catch (error: any) {
+      console.error('❌ Error finding user by ID:', error.message);
+      return res.status(400).json({
         success: false,
-        message: 'User not found'
+        message: `Invalid userId format: ${error.message}`
       });
     }
 
+    if (!user) {
+      console.error('❌ User not found in database:', userId);
+      // Check if any user exists with this ID format
+      const allUsers = await User.find({}).select('_id username').limit(5);
+      console.log('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
+      return res.status(404).json({
+        success: false,
+        message: `User not found with ID: ${userId}`,
+        debug: {
+          userId,
+          userIdType: typeof userId,
+          sampleUserIds: allUsers.map(u => u._id.toString())
+        }
+      });
+    }
+
+    console.log('👤 User found:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      hasFPUsername: !!user.fortunePandaUsername,
+      hasFPPassword: !!user.fortunePandaPassword,
+      fpUsername: user.fortunePandaUsername
+    });
+
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
+      console.error('❌ User missing FortunePanda credentials:', {
+        userId: user._id.toString(),
+        hasFPUsername: !!user.fortunePandaUsername,
+        hasFPPassword: !!user.fortunePandaPassword
+      });
       return res.status(400).json({
         success: false,
-        message: 'User does not have FortunePanda account'
+        message: 'User does not have FortunePanda account. Please sync users from FortunePanda first or create an account for this user.',
+        debug: {
+          userId: user._id.toString(),
+          username: user.username,
+          hasFPUsername: !!user.fortunePandaUsername,
+          hasFPPassword: !!user.fortunePandaPassword
+        }
       });
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    
+    console.log('🔐 Calling FortunePanda agentRedeem:', {
+      account: user.fortunePandaUsername,
+      amount: amount.toString(),
+      passwdLength: passwdMd5.length
+    });
+
     const result = await fortunePandaService.agentRedeem(
       user.fortunePandaUsername,
       passwdMd5,
       amount.toString()
     );
 
+    console.log('📥 FortunePanda agentRedeem result:', {
+      success: result.success,
+      message: result.message,
+      hasData: !!result.data
+    });
+
     if (result.success) {
       // Update user balance in database
-      if (result.data?.userbalance) {
-        user.fortunePandaBalance = parseFloat(result.data.userbalance);
+      if (result.data?.userbalance || result.data?.userBalance) {
+        user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
         user.fortunePandaLastSync = new Date();
         await user.save();
+        console.log('✅ User balance updated in database:', user.fortunePandaBalance);
       }
 
       return res.json({
         success: true,
         message: result.message,
-        data: result.data
+        data: {
+          userbalance: result.data?.userbalance || result.data?.userBalance || '0.00',
+          agentBalance: result.data?.agentBalance || result.data?.agentbalance || '0.00',
+          ...result.data
+        }
       });
     } else {
+      console.error('❌ Redeem failed from FortunePanda:', result.message);
       return res.status(400).json({
         success: false,
-        message: result.message
+        message: result.message || 'Redeem failed',
+        debug: {
+          account: user.fortunePandaUsername,
+          amount: amount.toString()
+        }
       });
     }
-  } catch (error) {
-    console.error('Redeem error:', error);
+  } catch (error: any) {
+    console.error('❌ Redeem error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: error.message || 'Internal server error',
+      error: error.message
     });
   }
 });
