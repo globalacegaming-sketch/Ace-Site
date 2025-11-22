@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   User, 
   Camera, 
@@ -8,7 +8,11 @@ import {
   Edit3,
   Mail,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  Shield,
+  Send,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import axios from 'axios';
@@ -16,10 +20,15 @@ import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 
 const ProfilePage = () => {
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, token } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showAvatarOptions, setShowAvatarOptions] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [verificationCodes, setVerificationCodes] = useState(['', '', '', '', '', '']);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [showVerificationInput, setShowVerificationInput] = useState(false);
+  const verificationInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Form states
   const [profileData, setProfileData] = useState({
@@ -104,6 +113,134 @@ const ProfilePage = () => {
 
   const getCurrentAvatar = () => {
     return avatarOptions.find(avatar => avatar.id === selectedAvatar) || avatarOptions[0];
+  };
+
+  const handleResendVerification = async () => {
+    setIsResendingVerification(true);
+    try {
+      const response = await axios.post(`${getApiBaseUrl()}/auth/resend-verification`, {}, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.data.success) {
+        toast.success('Verification code sent! Please check your email.');
+        setShowVerificationInput(true);
+        setVerificationCodes(['', '', '', '', '', '']);
+        // Focus first input after a short delay
+        setTimeout(() => {
+          if (verificationInputRefs.current[0]) {
+            verificationInputRefs.current[0].focus();
+          }
+        }, 100);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to send verification code');
+    } finally {
+      setIsResendingVerification(false);
+    }
+  };
+
+  const handleVerificationCodeChange = (index: number, value: string) => {
+    // Only allow numbers
+    if (value && !/^\d+$/.test(value)) {
+      return;
+    }
+
+    const newCodes = [...verificationCodes];
+    newCodes[index] = value.slice(-1); // Only take the last character
+    setVerificationCodes(newCodes);
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      verificationInputRefs.current[index + 1]?.focus();
+    }
+
+    // Auto-submit when all 6 digits are entered
+    if (newCodes.every(code => code !== '') && value) {
+      handleVerifyCode(newCodes.join(''));
+    }
+  };
+
+  const handleVerificationKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !verificationCodes[index] && index > 0) {
+      verificationInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerificationPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').slice(0, 6);
+    
+    if (/^\d+$/.test(pastedData)) {
+      const newCodes = pastedData.split('').slice(0, 6);
+      const updatedCodes = [...verificationCodes];
+      
+      for (let i = 0; i < 6; i++) {
+        updatedCodes[i] = newCodes[i] || '';
+      }
+      
+      setVerificationCodes(updatedCodes);
+      
+      // Focus the last filled input or submit if all filled
+      const lastFilledIndex = updatedCodes.findIndex(code => !code);
+      if (lastFilledIndex === -1) {
+        handleVerifyCode(updatedCodes.join(''));
+      } else {
+        verificationInputRefs.current[lastFilledIndex]?.focus();
+      }
+    }
+  };
+
+  const handleVerifyCode = async (code?: string) => {
+    const verificationCode = code || verificationCodes.join('');
+    
+    if (verificationCode.length !== 6) {
+      toast.error('Please enter the complete 6-digit code');
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const response = await axios.post(`${getApiBaseUrl()}/auth/verify-email`, {
+        code: verificationCode,
+        email: user?.email
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.data.success) {
+        toast.success('Email verified successfully!');
+        
+        // Update user in store
+        try {
+          const userResponse = await axios.get(`${getApiBaseUrl()}/auth/me`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (userResponse.data.success) {
+            setUser(userResponse.data.data.user);
+            setShowVerificationInput(false);
+            setVerificationCodes(['', '', '', '', '', '']);
+          }
+        } catch (e) {
+          console.error('Failed to update user:', e);
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Invalid verification code');
+      // Clear codes on error
+      setVerificationCodes(['', '', '', '', '', '']);
+      verificationInputRefs.current[0]?.focus();
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   return (
@@ -337,9 +474,97 @@ const ProfilePage = () => {
                 {user?.createdAt ? `${Math.ceil((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30))} months ago` : 'Recently added'}
               </p>
             </div>
-            <button className="btn-casino-primary px-3 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm">
-              + Add Email Address
-            </button>
+          </div>
+
+          {/* Email Verification Status */}
+          <div className="mt-4 sm:mt-6 p-3 sm:p-4 rounded-lg" style={{ 
+            backgroundColor: user?.isEmailVerified ? 'rgba(0, 200, 83, 0.1)' : 'rgba(255, 152, 0, 0.1)',
+            border: `1px solid ${user?.isEmailVerified ? '#00C853' : '#FF9800'}`
+          }}>
+            <div className="flex items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3">
+              <div className="flex items-start sm:items-center gap-3 flex-1">
+                <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0`} style={{ 
+                  backgroundColor: user?.isEmailVerified ? '#00C853' : '#FF9800' 
+                }}>
+                  {user?.isEmailVerified ? (
+                    <Check className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold casino-text-primary text-sm sm:text-base mb-1">
+                    {user?.isEmailVerified ? 'Email Verified' : 'Email Not Verified'}
+                  </p>
+                  <p className="text-xs sm:text-sm casino-text-secondary">
+                    {user?.isEmailVerified 
+                      ? 'Your email address has been verified successfully.' 
+                      : 'Please verify your email address to secure your account and access all features.'}
+                  </p>
+                </div>
+              </div>
+              {!user?.isEmailVerified && (
+                <button
+                  onClick={handleResendVerification}
+                  disabled={isResendingVerification}
+                  className="btn-casino-primary px-3 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm flex items-center gap-2 flex-shrink-0 disabled:opacity-50"
+                >
+                  <Send className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span>{isResendingVerification ? 'Sending...' : 'Resend Code'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Verification Code Input - Only show if not verified */}
+            {!user?.isEmailVerified && (showVerificationInput || verificationCodes.some(code => code !== '')) && (
+              <div className="mt-4 pt-4 border-t" style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+                <label className="block text-sm font-medium casino-text-secondary mb-3">
+                  Enter Verification Code
+                </label>
+                <div className="flex justify-center gap-2 sm:gap-3 mb-4">
+                  {verificationCodes.map((code, index) => (
+                    <input
+                      key={index}
+                      ref={(el) => (verificationInputRefs.current[index] = el)}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={code}
+                      onChange={(e) => handleVerificationCodeChange(index, e.target.value)}
+                      onKeyDown={(e) => handleVerificationKeyDown(index, e)}
+                      onPaste={index === 0 ? handleVerificationPaste : undefined}
+                      disabled={isVerifying}
+                      className="w-10 h-12 sm:w-12 sm:h-14 text-center text-xl sm:text-2xl font-bold casino-bg-primary casino-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 casino-text-primary disabled:opacity-50"
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => handleVerifyCode()}
+                  disabled={isVerifying || verificationCodes.some(code => !code)}
+                  className="btn-casino-primary w-full sm:w-auto px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isVerifying ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify Email'
+                  )}
+                </button>
+                {showVerificationInput && (
+                  <button
+                    onClick={() => {
+                      setShowVerificationInput(false);
+                      setVerificationCodes(['', '', '', '', '', '']);
+                    }}
+                    className="mt-2 text-xs casino-text-secondary hover:casino-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

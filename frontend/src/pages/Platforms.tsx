@@ -55,19 +55,8 @@ const Platforms = () => {
       return;
     }
 
-    // Open Tawk.to chat
-    if (window.Tawk_API?.maximize) {
-      window.Tawk_API.maximize();
-    } else {
-      // If Tawk.to is not loaded yet, wait a bit and try again
-      setTimeout(() => {
-        if (window.Tawk_API?.maximize) {
-          window.Tawk_API.maximize();
-        } else {
-          toast.error('Chat service is not available. Please contact support.');
-        }
-      }, 1000);
-    }
+    toast.success('Redirecting you to support...');
+    navigate('/support');
   };
 
   if (loading) {

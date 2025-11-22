@@ -127,15 +127,7 @@ const Support = () => {
             </p>
             <button
               onClick={() => {
-                if (window.Tawk_API?.maximize) {
-                  window.Tawk_API.maximize();
-                } else {
-                  setTimeout(() => {
-                    if (window.Tawk_API?.maximize) {
-                      window.Tawk_API.maximize();
-                    }
-                  }, 1000);
-                }
+                window.location.href = 'mailto:support@globalacegaming.com';
               }}
               className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
             >

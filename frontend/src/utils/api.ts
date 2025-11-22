@@ -16,3 +16,17 @@ export const getGamesApiUrl = (): string => {
   }
   return gamesUrl;
 };
+
+export const getWsBaseUrl = (): string => {
+  const wsUrl = import.meta.env.VITE_WS_URL;
+  if (wsUrl) {
+    return wsUrl;
+  }
+
+  const apiUrl = getApiBaseUrl();
+  if (apiUrl.startsWith('http')) {
+    return apiUrl.replace(/^http/, 'ws').replace(/\/api$/, '');
+  }
+
+  return 'ws://localhost:3001';
+};

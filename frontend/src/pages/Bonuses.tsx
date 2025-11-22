@@ -72,30 +72,6 @@ const Offers = () => {
       if (claimResponse.data.success) {
         toast.success('Bonus claimed successfully!');
         
-        // Send pre-message via Tawk.to if available
-        const preMessage = claimResponse.data.data?.preMessage;
-        if (preMessage && window.Tawk_API?.maximize) {
-          // Wait a bit for Tawk.to to be ready, then send message
-          setTimeout(() => {
-            if (window.Tawk_API?.maximize) {
-              window.Tawk_API.maximize();
-              // Tawk.to doesn't have a direct API to send messages, but we can use setAttributes
-              // The support team will see the user has claimed a bonus
-              if (window.Tawk_API.setAttributes) {
-                window.Tawk_API.setAttributes({
-                  bonusClaimed: bonus.title,
-                  bonusClaimMessage: preMessage
-                }, () => {
-                  // Message sent to support team
-                });
-              }
-            }
-          }, 500);
-        } else if (preMessage) {
-          // If Tawk.to is not loaded, show the message in a toast
-          toast.success(`Bonus claimed! ${preMessage}`, { duration: 6000 });
-        }
-
         // Reload bonuses to update claimed status
         loadBonuses();
       } else {

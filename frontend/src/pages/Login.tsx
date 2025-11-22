@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -6,6 +6,7 @@ import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
+import { useMusic } from '../contexts/MusicContext';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
@@ -20,6 +21,12 @@ const Login = () => {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { login, setLastRechargeStatus } = useAuthStore();
+  const { stopMusic, startMusic } = useMusic();
+
+  // Stop music on login page
+  useEffect(() => {
+    stopMusic();
+  }, [stopMusic]);
 
   const {
     register,
@@ -106,6 +113,9 @@ const Login = () => {
         
         // Set last recharge status
         setLastRechargeStatus('success');
+
+        // Start music after successful login
+        startMusic();
 
         toast.success('Login successful! Welcome back!');
         navigate('/dashboard');
@@ -247,6 +257,15 @@ const Login = () => {
                   )}
                 </button>
           </form>
+
+              <div className="mt-4 text-center">
+                <Link
+                  to="/forgot-password"
+                  className="text-sm casino-text-secondary hover:casino-text-primary transition-colors duration-200 underline"
+                >
+                  Forgot your password?
+                </Link>
+              </div>
 
               <div className="mt-6 lg:mt-8 text-center">
                 <p className="casino-text-secondary text-sm lg:text-base">

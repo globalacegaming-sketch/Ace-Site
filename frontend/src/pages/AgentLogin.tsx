@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getApiBaseUrl } from '../utils/api';
+import { useMusic } from '../contexts/MusicContext';
 
 const AgentLogin: React.FC = () => {
   const navigate = useNavigate();
   const API_BASE_URL = getApiBaseUrl();
+  const { stopMusic } = useMusic();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Stop music on agent login page
+  useEffect(() => {
+    stopMusic();
+  }, [stopMusic]);
 
   const handleAgentLogin = async (e: React.FormEvent) => {
     e.preventDefault();

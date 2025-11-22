@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -31,10 +32,17 @@ import agentAuthRoutes from './routes/agentAuth';
 import faqRoutes from './routes/faq';
 import noticeRoutes from './routes/notice';
 import contactsRoutes from './routes/contacts';
+import chatRoutes from './routes/chat';
+import adminChatRoutes from './routes/adminChat';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { setSocketServerInstance } from './utils/socketManager';
+import { verifyToken } from './utils/jwt';
+import User from './models/User';
+import { validateAdminSession } from './services/adminSessionService';
+import logger from './utils/logger';
 
 // CORS configuration for multiple origins
 const allowedOrigins = [
@@ -57,6 +65,7 @@ const io = new Server(server, {
     credentials: true
   }
 });
+setSocketServerInstance(io);
 
 // Middleware
 app.use(helmet());
@@ -88,6 +97,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(
+  '/uploads',
+  express.static(path.resolve(__dirname, '../uploads'))
+);
 
 // Request logging middleware
 // Request logging removed for production
@@ -145,9 +158,97 @@ app.use('/api/agent-auth', agentAuthRoutes);
 app.use('/api/faqs', faqRoutes);
 app.use('/api/notices', noticeRoutes);
 app.use('/api/contacts', contactsRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/admin/messages', adminChatRoutes);
 
 // WebSocket connection handling
+io.use(async (socket, next) => {
+  try {
+    const auth = (socket.handshake.auth || {}) as {
+      token?: string;
+      adminToken?: string;
+    };
+
+    const headerAuth = typeof socket.handshake.headers.authorization === 'string'
+      ? socket.handshake.headers.authorization
+      : undefined;
+
+    const bearerToken = headerAuth?.startsWith('Bearer ')
+      ? headerAuth.substring(7)
+      : undefined;
+
+    const queryAdminToken = socket.handshake.query.adminToken;
+    const adminToken =
+      typeof auth.adminToken === 'string'
+        ? auth.adminToken
+        : typeof queryAdminToken === 'string'
+          ? queryAdminToken
+          : undefined;
+
+    if (typeof adminToken === 'string') {
+      const session = validateAdminSession(adminToken);
+      if (!session) {
+        return next(new Error('Unauthorized'));
+      }
+
+      socket.data.role = 'admin';
+      socket.data.adminSession = session;
+      return next();
+    }
+
+    const queryToken = socket.handshake.query.token;
+    const tokenCandidate =
+      typeof auth.token === 'string'
+        ? auth.token
+        : typeof queryToken === 'string'
+          ? queryToken
+          : bearerToken;
+
+    const token = typeof tokenCandidate === 'string' ? tokenCandidate : undefined;
+
+    if (!token || typeof token !== 'string') {
+      return next(new Error('Unauthorized'));
+    }
+
+    const payload = verifyToken(token);
+    const user = await User.findById(payload.userId)
+      .select('username email role isActive')
+      .lean();
+
+    if (!user || !user.isActive) {
+      return next(new Error('Unauthorized'));
+    }
+
+    socket.data.role = user.role === 'admin' ? 'admin' : 'user';
+    socket.data.user = {
+      id: user._id?.toString(),
+      username: user.username,
+      email: user.email,
+      role: user.role
+    };
+
+    next();
+  } catch (error) {
+    next(new Error('Unauthorized'));
+  }
+});
+
 io.on('connection', (socket) => {
+  if (socket.data.role === 'admin') {
+    socket.join('admins');
+    socket.emit('chat:connected', {
+      role: 'admin',
+      agentName: socket.data.adminSession?.agentName
+    });
+  } else if (socket.data.user?.id) {
+    const room = `user:${socket.data.user.id}`;
+    socket.join(room);
+    socket.emit('chat:connected', {
+      role: 'user',
+      userId: socket.data.user.id
+    });
+  }
+
   socket.on('disconnect', () => {
     // Client disconnected
   });
@@ -172,47 +273,47 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const startServer = async () => {
   try {
-    console.log('🔧 Starting server initialization...');
-    console.log(`📊 Environment: ${NODE_ENV}`);
-    console.log(`🔌 Port: ${PORT}`);
+    logger.init('🔧 Starting server initialization...');
+    logger.info(`📊 Environment: ${NODE_ENV}`);
+    logger.info(`🔌 Port: ${PORT}`);
     
     // Connect to MongoDB
-    console.log('🗄️ Connecting to MongoDB...');
+    logger.init('🗄️ Connecting to MongoDB...');
     await connectDB();
-    console.log('✅ MongoDB connected successfully');
+    logger.success('✅ MongoDB connected successfully');
     
     // Start server first
-    console.log('🚀 Starting HTTP server...');
+    logger.init('🚀 Starting HTTP server...');
     server.listen(PORT, () => {
-      console.log(`🚀 Global Ace Gaming Backend Server running on port ${PORT}`);
-      console.log(`🌍 Environment: ${NODE_ENV}`);
-      console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
-      console.log(`📡 WebSocket Server: ws://localhost:${PORT}`);
-      console.log('✅ Server started successfully!');
+      logger.success(`🚀 Global Ace Gaming Backend Server running on port ${PORT}`);
+      logger.info(`🌍 Environment: ${NODE_ENV}`);
+      logger.info(`🔗 API Base URL: http://localhost:${PORT}/api`);
+      logger.info(`📡 WebSocket Server: ws://localhost:${PORT}`);
+      logger.success('✅ Server started successfully!');
     });
     
     // Initialize Agent Login service
-    console.log('🎰 Initializing Agent Login service...');
+    logger.init('🎰 Initializing Agent Login service...');
     try {
       await agentLoginService.initialize();
-      console.log('✅ Agent Login service initialized successfully');
+      // Service logs its own success message
     } catch (error) {
-      console.warn('⚠️ Agent Login service initialization failed, but continuing:', error);
+      logger.warn('⚠️ Agent Login service initialization failed, but continuing:', error);
     }
     
     // Initialize Fortune Panda service
-    console.log('🎰 Initializing Fortune Panda service...');
+    logger.init('🎰 Initializing Fortune Panda service...');
     try {
       await fortunePandaService.initialize();
-      console.log('✅ Fortune Panda service initialized successfully');
+      // Service logs its own success message
     } catch (error) {
-      console.warn('⚠️ Fortune Panda service initialization failed, but continuing:', error);
+      logger.warn('⚠️ Fortune Panda service initialization failed, but continuing:', error);
     }
     
     // Services are now ready for game list fetching
-    console.log('🔄 Services are ready for game list fetching');
+    logger.info('🔄 Services are ready for game list fetching');
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 };
@@ -221,20 +322,20 @@ startServer();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+  logger.info('SIGTERM received, shutting down gracefully');
   agentLoginService.cleanup();
   fortunePandaService.cleanup();
   server.close(() => {
-    console.log('Process terminated');
+    logger.info('Process terminated');
   });
 });
 
 process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
+  logger.info('SIGINT received, shutting down gracefully');
   agentLoginService.cleanup();
   fortunePandaService.cleanup();
   server.close(() => {
-    console.log('Process terminated');
+    logger.info('Process terminated');
   });
 });
 

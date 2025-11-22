@@ -18,6 +18,10 @@ export interface IUser extends Document {
   isActive: boolean;
   role: 'user' | 'admin' | 'moderator';
   lastLogin?: Date;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   fortunePandaUsername?: string;
   fortunePandaPassword?: string;
   fortunePandaBalance?: number;
@@ -139,6 +143,22 @@ const UserSchema = new Schema<IUser>({
   referredBy: {
     type: String,
     trim: true
+  },
+  emailVerificationToken: {
+    type: String,
+    select: false
+  },
+  emailVerificationExpires: {
+    type: Date,
+    select: false
+  },
+  passwordResetToken: {
+    type: String,
+    select: false
+  },
+  passwordResetExpires: {
+    type: Date,
+    select: false
   }
 }, {
   timestamps: true,

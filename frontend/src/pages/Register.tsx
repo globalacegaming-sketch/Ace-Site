@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -7,6 +7,7 @@ import { Eye, EyeOff, UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
+import { useMusic } from '../contexts/MusicContext';
 
 const registerSchema = z.object({
   firstName: z.string().min(2),
@@ -32,6 +33,12 @@ const Register = () => {
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuthStore();
+  const { stopMusic, startMusic } = useMusic();
+
+  // Stop music on register page
+  useEffect(() => {
+    stopMusic();
+  }, [stopMusic]);
 
 
   const {
@@ -65,13 +72,15 @@ const Register = () => {
       const result = await response.json();
 
       if (result.success) {
-        setSuccess(true);
-        toast.success('Account created successfully!');
+        toast.success('Account created successfully! Please check your email for the verification code.');
         login({
           user: result.data.user,
           token: result.data.accessToken,
           expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         });
+
+        // Start music after successful registration
+        startMusic();
 
         if (result.data.fortunePanda) {
           toast.success(
@@ -80,7 +89,8 @@ const Register = () => {
           );
         }
 
-        setTimeout(() => navigate('/dashboard'), 2000);
+        // Redirect to verification code page
+        navigate('/verify-code', { state: { email: result.data.user.email } });
       } else {
         setError(result.message || 'Registration failed');
         toast.error(result.message || 'Registration failed');
@@ -102,8 +112,11 @@ const Register = () => {
               <CheckCircle className="w-8 h-8 text-black" />
             </div>
           <h2 className="text-3xl font-bold casino-text-primary mb-2">Registration Successful!</h2>
-          <p className="casino-text-secondary">
-              Your account has been created successfully. Redirecting to dashboard...
+          <p className="casino-text-secondary mb-4">
+              Your account has been created successfully. We've sent a verification email to your inbox.
+            </p>
+          <p className="text-sm casino-text-secondary">
+              Please check your email and verify your account to access all features. Redirecting to dashboard...
             </p>
         </div>
       </div>

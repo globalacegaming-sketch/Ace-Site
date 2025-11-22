@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { getGamesApiUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
+import { useMusic } from '../contexts/MusicContext';
 
 interface Game {
   kindId: number;
@@ -18,6 +19,14 @@ const Home = () => {
   const [error, setError] = useState<string | null>(null);
   const { isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+  const { stopMusic } = useMusic();
+
+  // Stop music on home page if user is not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      stopMusic();
+    }
+  }, [isAuthenticated, stopMusic]);
 
   useEffect(() => {
     fetchGames();

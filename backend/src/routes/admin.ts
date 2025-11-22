@@ -3,24 +3,12 @@ import fortunePandaService from '../services/fortunePandaService';
 import agentLoginService from '../services/agentLoginService';
 import User from '../models/User';
 import crypto from 'crypto';
+import { createAdminSession } from '../services/adminSessionService';
+import { requireAdminAuth } from '../middleware/adminAuth';
 
 const router = Router();
 
-// Debug endpoint to check env vars (remove in production)
-router.get('/debug/env', (req: Request, res: Response) => {
-  res.json({
-    AGENT_NAME: process.env.AGENT_NAME || 'not set',
-    FORTUNE_PANDA_AGENT_NAME: process.env.FORTUNE_PANDA_AGENT_NAME || 'not set',
-    FORTUNE_AGENT_USER: process.env.FORTUNE_AGENT_USER || 'not set',
-    hasAGENT_PASSWORD: !!process.env.AGENT_PASSWORD,
-    hasFORTUNE_PANDA_AGENT_PASSWORD: !!process.env.FORTUNE_PANDA_AGENT_PASSWORD,
-    hasFORTUNE_AGENT_PASS: !!process.env.FORTUNE_AGENT_PASS,
-    resolvedAgentName: process.env.AGENT_NAME || 
-                      process.env.FORTUNE_PANDA_AGENT_NAME || 
-                      process.env.FORTUNE_AGENT_USER || 
-                      'agent01 (default)',
-  });
-});
+// Debug endpoint removed for production security
 
 // Admin login route (no auth required)
 router.post('/login', async (req: Request, res: Response) => {
@@ -112,7 +100,13 @@ router.post('/login', async (req: Request, res: Response) => {
     console.log('✅ Admin login successful, creating session token');
 
     // Store session (in production, use Redis or database)
-    // For now, we'll return the token and verify it matches on subsequent requests
+    createAdminSession({
+      agentName,
+      token: sessionToken,
+      expiresAt
+    });
+
+    // Return session information to client
     res.json({
       success: true,
       message: 'Admin login successful',
@@ -132,28 +126,8 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// Middleware to verify admin session
-const verifyAdminSession = (req: Request, res: Response, next: any) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      success: false,
-      message: 'Access denied. No admin token provided.'
-    });
-  }
-
-  const token = authHeader.substring(7);
-  
-  // In production, verify token against stored sessions
-  // For now, we'll accept any Bearer token (you can enhance this)
-  // For better security, store sessions in Redis or database
-  
-  next();
-};
-
 // All other admin routes require admin session
-router.use(verifyAdminSession);
+router.use(requireAdminAuth);
 
 // Get agent balance (from FortunePanda)
 router.get('/agent-balance', async (req: Request, res: Response) => {

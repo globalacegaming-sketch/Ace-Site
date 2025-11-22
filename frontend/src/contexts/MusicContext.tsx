@@ -32,7 +32,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const [enabled, setEnabled] = useState(true);
   const [volume, setVolume] = useState(0.5);
   const [currentTrack, setCurrentTrack] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true); // Auto-play enabled by default
+  const [isPlaying, setIsPlaying] = useState(false); // Don't auto-play - only start after user login
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const musicTracks = [

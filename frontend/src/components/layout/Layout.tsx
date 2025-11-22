@@ -13,7 +13,9 @@ import {
   X,
   LogOut,
   Coins,
-  RefreshCw
+  RefreshCw,
+  MessageCircle,
+  Gift
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useBalancePolling } from '../../hooks/useBalancePolling';
@@ -78,7 +80,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Home', href: isAuthenticated ? '/dashboard' : '/', icon: Home },
     { name: 'Games', href: '/games', icon: Gamepad2 },
     { name: 'Platforms', href: '/platforms', icon: Settings },
-    { name: 'Bonuses', href: '/bonuses', icon: Star },
+    { name: 'Bonuses', href: '/bonuses', icon: Gift },
     { name: 'About Us', href: '/about-us', icon: User },
     { name: 'Support', href: '/support', icon: Headphones },
   ];
@@ -87,7 +89,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Home', href: isAuthenticated ? '/dashboard' : '/', icon: Home },
     { name: 'Games', href: '/games', icon: Gamepad2 },
     { name: 'Platforms', href: '/platforms', icon: Settings },
-    { name: 'Bonuses', href: '/bonuses', icon: Star },
+    { name: 'Chat', href: '/chat', icon: MessageCircle },
   ];
 
   return (
@@ -375,9 +377,9 @@ const Layout = ({ children }: LayoutProps) => {
         {/* Main Content */}
         <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
           !isMobile && sidebarCollapsed ? 'ml-16' : !isMobile ? 'ml-64' : 'ml-0'
-        }`}>
+        } ${location.pathname === '/chat' ? 'h-screen overflow-hidden' : ''}`}>
           {/* Main Content Area */}
-          <main className="flex-1 pb-16 sm:pb-20 lg:pb-0">
+          <main className={`flex-1 ${location.pathname === '/chat' ? 'pb-0 h-full overflow-hidden relative' : 'pb-16 sm:pb-20 lg:pb-0'}`}>
             {children}
           </main>
         </div>

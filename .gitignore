@@ -95,3 +95,11 @@ jspm_packages/
 
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
+
+# User uploads
+backend/uploads/
+frontend/uploads/
+
+# Documentation files (keep only essential)
+*.md
+!README.md

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Loader2, Lock, User } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getApiBaseUrl } from '../utils/api';
+import { useMusic } from '../contexts/MusicContext';
 
 const AdminLogin: React.FC = () => {
   const [agentName, setAgentName] = useState('');
@@ -11,6 +12,12 @@ const AdminLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const API_BASE_URL = getApiBaseUrl();
+  const { stopMusic } = useMusic();
+
+  // Stop music on admin login page
+  useEffect(() => {
+    stopMusic();
+  }, [stopMusic]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

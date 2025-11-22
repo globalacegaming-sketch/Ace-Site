@@ -8,6 +8,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { getApiBaseUrl } from '../utils/api';
+import { useMusic } from '../contexts/MusicContext';
 
 // Types
 interface Platform {
@@ -28,7 +29,6 @@ interface Bonus {
   bonusType: 'welcome' | 'deposit' | 'free_spins' | 'cashback' | 'other';
   bonusValue?: string;
   termsAndConditions?: string;
-  preMessage?: string;
   isActive: boolean;
   order: number;
   validFrom?: string;
@@ -73,6 +73,7 @@ type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions'
 const AgentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const API_BASE_URL = getApiBaseUrl();
+  const { stopMusic } = useMusic();
   
   const [activeSection, setActiveSection] = useState<ActiveSection>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -103,7 +104,7 @@ const AgentDashboard: React.FC = () => {
   });
   const [bonusForm, setBonusForm] = useState({
     title: '', description: '', image: '', bonusType: 'other' as Bonus['bonusType'],
-    bonusValue: '', termsAndConditions: '', preMessage: '', order: 0, isActive: true,
+    bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
     validFrom: '', validUntil: ''
   });
   const [faqForm, setFaqForm] = useState({
@@ -112,6 +113,11 @@ const AgentDashboard: React.FC = () => {
   const [noticeForm, setNoticeForm] = useState({
     title: '', message: '', type: 'info' as Notice['type'], isActive: true, priority: 1, expiresAt: ''
   });
+
+  // Stop music when agent dashboard loads
+  useEffect(() => {
+    stopMusic();
+  }, [stopMusic]);
 
   useEffect(() => {
     const session = localStorage.getItem('agent_session');
@@ -373,7 +379,7 @@ const AgentDashboard: React.FC = () => {
                     setEditingBonus(null);
                     setBonusForm({
                       title: '', description: '', image: '', bonusType: 'other',
-                      bonusValue: '', termsAndConditions: '', preMessage: '', order: 0, isActive: true,
+                  bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
                       validFrom: '', validUntil: ''
                     });
                   }}
@@ -599,7 +605,7 @@ const AgentDashboard: React.FC = () => {
             setEditingBonus(null);
             setBonusForm({
               title: '', description: '', image: '', bonusType: 'other',
-              bonusValue: '', termsAndConditions: '', preMessage: '', order: 0, isActive: true,
+              bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
               validFrom: '', validUntil: ''
             });
           }}
@@ -635,7 +641,6 @@ const AgentDashboard: React.FC = () => {
                     bonusType: bonus.bonusType,
                     bonusValue: bonus.bonusValue || '',
                     termsAndConditions: bonus.termsAndConditions || '',
-                    preMessage: bonus.preMessage || '',
                     order: bonus.order,
                     isActive: bonus.isActive,
                     validFrom: bonus.validFrom ? bonus.validFrom.split('T')[0] : '',
@@ -1145,9 +1150,6 @@ const AgentDashboard: React.FC = () => {
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Bonus Value</label>
                   <input type="text" value={bonusForm.bonusValue} onChange={(e) => setBonusForm({...bonusForm, bonusValue: e.target.value})} placeholder="e.g., 100%, $50" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
-              </div>
-              <div><label className="block text-sm font-semibold text-gray-700 mb-2">Pre-Message (for Tawk.to)</label>
-                <textarea value={bonusForm.preMessage} onChange={(e) => setBonusForm({...bonusForm, preMessage: e.target.value})} rows={2} placeholder="Message to send via Tawk.to when user claims" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Terms and Conditions</label>
                 <textarea value={bonusForm.termsAndConditions} onChange={(e) => setBonusForm({...bonusForm, termsAndConditions: e.target.value})} rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />

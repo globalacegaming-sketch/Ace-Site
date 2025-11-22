@@ -175,7 +175,6 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (bonusType) bonus.bonusType = bonusType;
     if (bonusValue !== undefined) bonus.bonusValue = bonusValue;
     if (termsAndConditions !== undefined) bonus.termsAndConditions = termsAndConditions;
-    if (req.body.preMessage !== undefined) bonus.preMessage = req.body.preMessage;
     if (order !== undefined) bonus.order = order;
     if (isActive !== undefined) bonus.isActive = isActive;
     if (validFrom !== undefined) bonus.validFrom = validFrom ? new Date(validFrom) : undefined;
@@ -287,7 +286,6 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
       message: 'Bonus claimed successfully',
       data: {
         bonusId: bonus._id,
-        preMessage: bonus.preMessage || '',
         claimed: true
       }
     });

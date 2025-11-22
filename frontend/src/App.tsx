@@ -4,8 +4,8 @@ import { useAuthStore } from './stores/authStore';
 import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
-import TawkToWidget from './components/TawkToWidget';
 import NoticePopup from './components/NoticePopup';
+import UserChatWidget from './components/chat/UserChatWidget';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -24,6 +24,11 @@ import AdminLogin from './pages/AdminLogin';
 import UserFortunePandaDashboard from './pages/UserFortunePandaDashboard';
 import AgentLogin from './pages/AgentLogin';
 import AgentDashboard from './pages/AgentDashboard';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
+import VerifyCode from './pages/VerifyCode';
+import Chat from './pages/Chat';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -98,6 +103,10 @@ function App() {
           <Route path="/" element={<HomeRoute />} />
           <Route path="/login" element={<Layout><Login /></Layout>} />
           <Route path="/register" element={<Layout><Register /></Layout>} />
+          <Route path="/forgot-password" element={<Layout><ForgotPassword /></Layout>} />
+          <Route path="/reset-password" element={<Layout><ResetPassword /></Layout>} />
+          <Route path="/verify-email" element={<Layout><VerifyEmail /></Layout>} />
+          <Route path="/verify-code" element={<Layout><VerifyCode /></Layout>} />
           
           {/* Protected Routes */}
           <Route path="/dashboard" element={
@@ -108,6 +117,11 @@ function App() {
           
           <Route path="/games" element={<Layout><Games /></Layout>} />
           <Route path="/bonuses" element={<Layout><Bonuses /></Layout>} />
+          <Route path="/chat" element={
+            <ProtectedRoute>
+              <Layout><Chat /></Layout>
+            </ProtectedRoute>
+          } />
           <Route path="/platforms" element={<Layout><Platforms /></Layout>} />
           <Route path="/about-us" element={<Layout><AboutUs /></Layout>} />
           
@@ -160,11 +174,9 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         
-        {/* Tawk.to Widget - Only shows for logged-in users */}
-        <TawkToWidget />
-        
         {/* Notice Popup - Shows active notices for logged-in users */}
         <NoticePopup />
+        <UserChatWidget />
           </div>
         </Router>
       </ClickSoundProvider>

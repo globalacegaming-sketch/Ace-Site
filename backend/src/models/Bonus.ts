@@ -8,7 +8,6 @@ export interface IBonus extends Document {
   bonusType: 'welcome' | 'deposit' | 'free_spins' | 'cashback' | 'other';
   bonusValue?: string; // e.g., "100%", "$50", "50 Free Spins"
   termsAndConditions?: string;
-  preMessage?: string; // Message to send via Tawk.to when user claims
   isActive: boolean;
   order: number; // For sorting/ordering bonuses
   validFrom?: Date;
@@ -49,11 +48,6 @@ const BonusSchema = new Schema<IBonus>({
     type: String,
     trim: true,
     maxlength: [2000, 'Terms and conditions cannot exceed 2000 characters']
-  },
-  preMessage: {
-    type: String,
-    trim: true,
-    maxlength: [500, 'Pre-message cannot exceed 500 characters']
   },
   isActive: {
     type: Boolean,

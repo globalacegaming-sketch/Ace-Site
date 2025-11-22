@@ -1,6 +1,7 @@
 import axios from 'axios';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import logger from '../utils/logger';
 
 // Load environment variables
 dotenv.config();
@@ -77,7 +78,7 @@ class AgentLoginService {
         
         // Calculate exponential backoff delay
         const delay = this.RETRY_DELAY * Math.pow(2, attempt);
-        console.warn(`⚠️ ${operationName} failed (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`, error.message);
+        logger.debug(`⚠️ ${operationName} failed (attempt ${attempt + 1}/${retries + 1}), retrying in ${delay}ms...`, error.message);
         
         await this.sleep(delay);
       }
@@ -90,22 +91,22 @@ class AgentLoginService {
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
     
-    console.log('🎰 Initializing Agent Login Service...');
+    logger.init('🎰 Initializing Agent Login Service...');
     
     try {
       // Auto-login on startup
       const loginResult = await this.loginAgent();
       if (!loginResult.success) {
-        console.warn('⚠️ Agent auto-login failed, but continuing with service setup');
+        logger.warn('⚠️ Agent auto-login failed, but continuing with service setup');
       }
       
       // Set up session refresh
       this.setupSessionRefresh();
       
       this.isInitialized = true;
-      console.log('✅ Agent Login Service initialized successfully');
+      logger.success('✅ Agent Login Service initialized successfully');
     } catch (error) {
-      console.error('❌ Failed to initialize Agent Login Service:', error);
+      logger.error('❌ Failed to initialize Agent Login Service:', error);
       this.isInitialized = true; // Mark as initialized to prevent retries
     }
   }
@@ -114,15 +115,15 @@ class AgentLoginService {
   private setupSessionRefresh(): void {
     this.refreshInterval = setInterval(async () => {
       try {
-        console.log('🔄 Refreshing agent session...');
+        logger.debug('🔄 Refreshing agent session...');
         await this.loginAgent();
-        console.log('✅ Session refreshed successfully');
+        logger.debug('✅ Session refreshed successfully');
       } catch (error) {
-        console.error('❌ Session refresh failed:', error);
+        logger.error('❌ Session refresh failed:', error);
       }
     }, this.REFRESH_INTERVAL);
     
-    console.log(`⏰ Session refresh scheduled every ${this.REFRESH_INTERVAL / 1000 / 60 / 60} hours`);
+    logger.info(`⏰ Session refresh scheduled every ${this.REFRESH_INTERVAL / 1000 / 60 / 60} hours`);
   }
 
   // Cleanup intervals on shutdown
@@ -132,7 +133,7 @@ class AgentLoginService {
       this.refreshInterval = null;
     }
     
-    console.log('🧹 Agent Login Service cleanup completed');
+    logger.debug('🧹 Agent Login Service cleanup completed');
   }
 
   // Generate MD5 hash
@@ -165,7 +166,7 @@ class AgentLoginService {
   // Login agent and get agentKey
   async loginAgent(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      console.log('🔐 Logging into agent...');
+      logger.debug('🔐 Logging into agent...');
       
       const time = this.getCurrentTimestamp();
       const agentPasswdMD5 = this.generateMD5(this.config.agentPassword);
@@ -177,7 +178,7 @@ class AgentLoginService {
         time
       };
       
-      console.log('Agent login params:', { ...params, agentPasswd: '[HIDDEN]' });
+      logger.debug('Agent login params:', { ...params, agentPasswd: '[HIDDEN]' });
       
       // Use retry logic for network/timeout errors, but keep exact API call structure
       const response = await this.retryRequest(
@@ -202,7 +203,7 @@ class AgentLoginService {
         'Agent login'
       );
       
-      console.log('Agent login response:', response.data);
+      logger.debug('Agent login response:', response.data);
       
       if (response.data && response.data.code === '200') {
         const agentKey = response.data.agentkey || response.data.agentKey;
@@ -219,7 +220,7 @@ class AgentLoginService {
           lastUsed: Date.now()
         };
         
-        console.log('✅ Agent login successful, agentKey cached');
+        logger.debug('✅ Agent login successful, agentKey cached');
         
         return {
           success: true,
@@ -234,7 +235,7 @@ class AgentLoginService {
         throw new Error(response.data?.msg || 'Agent login failed');
       }
     } catch (error) {
-      console.error('❌ Agent login error:', error);
+      logger.error('❌ Agent login error:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Agent login failed'
@@ -252,10 +253,10 @@ class AgentLoginService {
 
       // Check if we have a valid session, if not, login
       if (!this.isSessionValid()) {
-        console.log('🔄 Session invalid or expired, attempting re-login...');
+        logger.debug('🔄 Session invalid or expired, attempting re-login...');
         const loginResult = await this.loginAgent();
         if (!loginResult.success) {
-          console.error('❌ Re-login failed:', loginResult.message);
+          logger.error('❌ Re-login failed:', loginResult.message);
         return {
           success: false,
           message: `Failed to authenticate agent: ${loginResult.message}`
@@ -278,7 +279,7 @@ class AgentLoginService {
         sign
       };
 
-      console.log('GetGameList params:', { ...params, sign: '[HIDDEN]' });
+      logger.debug('GetGameList params:', { ...params, sign: '[HIDDEN]' });
 
       const response = await axios.post(this.config.apiUrl, null, {
         params,
@@ -288,11 +289,11 @@ class AgentLoginService {
         }
       });
 
-      console.log('GetGameList response:', response.data);
+      logger.debug('GetGameList response:', response.data);
 
       // Check if the response indicates session issues
       if (response.data && (response.data.code === '201' || response.data.msg?.includes('invalid sign'))) {
-        console.log('🔄 API returned session error, forcing re-login...');
+        logger.debug('🔄 API returned session error, forcing re-login...');
         // Force re-login and retry once
         await this.loginAgent();
         
@@ -332,7 +333,7 @@ class AgentLoginService {
         data: response.data
       };
     } catch (error) {
-      console.error('❌ Get game list error:', error);
+      logger.error('❌ Get game list error:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to get game list'
@@ -351,7 +352,7 @@ class AgentLoginService {
 
   // Force re-login (useful for debugging)
   async forceReLogin(): Promise<{ success: boolean; message: string; data?: any }> {
-    console.log('🔄 Force re-login requested...');
+    logger.debug('🔄 Force re-login requested...');
     this.agentSession = null;
     return await this.loginAgent();
   }
@@ -359,7 +360,7 @@ class AgentLoginService {
   // Logout agent
   logoutAgent(): void {
     this.agentSession = null;
-    console.log('🔓 Agent logged out');
+    logger.debug('🔓 Agent logged out');
   }
 
   // Get agent configuration (without sensitive data)

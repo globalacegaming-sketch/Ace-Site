@@ -1,6 +1,7 @@
 import axios from 'axios';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import logger from '../utils/logger';
 
 // Load environment variables
 dotenv.config();
@@ -29,7 +30,7 @@ class FortunePandaService {
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
     
-    console.log('🎰 Initializing Fortune Panda Service...');
+    logger.init('🎰 Initializing Fortune Panda Service...');
     
     try {
       // Auto-login on startup
@@ -39,9 +40,9 @@ class FortunePandaService {
       this.setupSessionRefresh();
       
       this.isInitialized = true;
-      console.log('✅ Fortune Panda Service initialized successfully');
+      logger.success('✅ Fortune Panda Service initialized successfully');
     } catch (error) {
-      console.error('❌ Failed to initialize Fortune Panda Service:', error);
+      logger.error('❌ Failed to initialize Fortune Panda Service:', error);
       // Don't throw error, just log it and continue
       this.isInitialized = true; // Mark as initialized to prevent retries
     }
@@ -53,15 +54,15 @@ class FortunePandaService {
     
     this.refreshInterval = setInterval(async () => {
       try {
-        console.log('🔄 Auto-refreshing Fortune Panda agent session...');
+        logger.debug('🔄 Auto-refreshing Fortune Panda agent session...');
         await this.loginAgent();
-        console.log('✅ Session refreshed successfully');
+        logger.debug('✅ Session refreshed successfully');
       } catch (error) {
-        console.error('❌ Session refresh failed:', error);
+        logger.error('❌ Session refresh failed:', error);
       }
     }, refreshIntervalMs);
     
-    console.log(`⏰ Session refresh scheduled every 6 hours (background auto-login)`);
+    logger.info(`⏰ Session refresh scheduled every 6 hours (background auto-login)`);
   }
 
   // Cleanup intervals on shutdown
@@ -71,7 +72,7 @@ class FortunePandaService {
       this.refreshInterval = null;
     }
     
-    console.log('🧹 Fortune Panda Service cleanup completed');
+    logger.debug('🧹 Fortune Panda Service cleanup completed');
   }
 
   // Generate MD5 hash
@@ -100,7 +101,7 @@ class FortunePandaService {
   // Login agent and cache agentKey (exact implementation as per specification)
   private async loginAgent(): Promise<void> {
     try {
-      console.log('🔐 Logging into Fortune Panda agent...');
+      logger.debug('🔐 Logging into Fortune Panda agent...');
       
       // Generate fresh timestamp (UNIX timestamp in milliseconds)
       const time = Date.now();
@@ -136,7 +137,7 @@ class FortunePandaService {
         throw new Error(response.data?.msg || 'Agent login failed');
       }
     } catch (error) {
-      console.error('❌ Agent login error:', error);
+      logger.error('❌ Agent login error:', error);
       throw error;
     }
   }
@@ -151,7 +152,7 @@ class FortunePandaService {
 
       // Check if we have a cached agentKey, if not login
       if (!this.agentKeyCache) {
-        console.log('🔄 No cached agentKey, logging in...');
+        logger.debug('🔄 No cached agentKey, logging in...');
         await this.loginAgent();
       }
 
@@ -231,7 +232,7 @@ class FortunePandaService {
         };
       }
     } catch (error) {
-      console.error('❌ Get game list error:', error);
+      logger.error('❌ Get game list error:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to get game list'
@@ -244,7 +245,7 @@ class FortunePandaService {
     try {
       // Check if we have a cached agentKey, if not login
       if (!this.agentKeyCache) {
-        console.log('🔄 No cached agentKey, logging in...');
+        logger.debug('🔄 No cached agentKey, logging in...');
         await this.loginAgent();
       }
 
@@ -289,7 +290,7 @@ class FortunePandaService {
         };
       }
     } catch (error) {
-      console.error('❌ Create Fortune Panda user error:', error);
+      logger.error('❌ Create Fortune Panda user error:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to create Fortune Panda user'
@@ -303,7 +304,7 @@ class FortunePandaService {
     try {
       // Check if we have a cached agentKey, if not login
       if (!this.agentKeyCache) {
-        console.log('🔄 No cached agentKey, logging in...');
+        logger.debug('🔄 No cached agentKey, logging in...');
         await this.loginAgent();
       }
 
@@ -327,7 +328,7 @@ class FortunePandaService {
         sign: sign
       };
 
-      console.log('🔍 FortunePanda queryInfo request:', {
+      logger.debug('🔍 FortunePanda queryInfo request:', {
         ...queryParams,
         passwd: '[HIDDEN]',
         dbAccount: account,
@@ -340,7 +341,7 @@ class FortunePandaService {
         timeout: 30000
       });
 
-      console.log('📥 FortunePanda queryInfo response:', {
+      logger.debug('📥 FortunePanda queryInfo response:', {
         code: response.data?.code,
         msg: response.data?.msg,
         hasUserbalance: !!response.data?.userbalance,
@@ -418,7 +419,7 @@ class FortunePandaService {
         };
       }
     } catch (error) {
-      console.error('❌ Query user info error:', error);
+      logger.error('❌ Query user info error:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to get user info'
@@ -431,7 +432,7 @@ class FortunePandaService {
     try {
       // Check if we have a cached agentKey, if not login
       if (!this.agentKeyCache) {
-        console.log('🔄 No cached agentKey, logging in...');
+        logger.debug('🔄 No cached agentKey, logging in...');
         await this.loginAgent();
       }
 
@@ -524,7 +525,7 @@ class FortunePandaService {
         };
       }
     } catch (error) {
-      console.error('❌ Enter game error:', error);
+      logger.error('❌ Enter game error:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to enter game'
@@ -571,7 +572,7 @@ class FortunePandaService {
         sign: sign
       };
 
-      console.log('💰 FortunePanda recharge request:', {
+      logger.debug('💰 FortunePanda recharge request:', {
         ...queryParams,
         sign: '[HIDDEN]',
         accountLength: fortunePandaAccount?.length
@@ -668,7 +669,7 @@ class FortunePandaService {
         sign: sign
       };
 
-      console.log('💸 FortunePanda redeem request:', {
+      logger.debug('💸 FortunePanda redeem request:', {
         ...queryParams,
         sign: '[HIDDEN]',
         accountLength: fortunePandaAccount?.length
