@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';

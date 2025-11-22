@@ -103,25 +103,6 @@ const Register = () => {
     }
   };
 
-  if (success) {
-    return (
-      <div className="min-h-screen casino-bg-primary flex items-center justify-center pt-16">
-        <div className="casino-bg-secondary rounded-3xl shadow-xl p-10 text-center max-w-md w-full casino-border">
-          <div className="mx-auto w-16 h-16 flex items-center justify-center bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full mb-4 shadow-2xl">
-              <CheckCircle className="w-8 h-8 text-black" />
-            </div>
-          <h2 className="text-3xl font-bold casino-text-primary mb-2">Registration Successful!</h2>
-          <p className="casino-text-secondary mb-4">
-              Your account has been created successfully. We've sent a verification email to your inbox.
-            </p>
-          <p className="text-sm casino-text-secondary">
-              Please check your email and verify your account to access all features. Redirecting to dashboard...
-            </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16">
       {/* Casino-themed background elements */}
