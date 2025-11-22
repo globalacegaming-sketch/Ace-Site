@@ -9,7 +9,6 @@ import {
   Mail,
   Calendar,
   ChevronDown,
-  Shield,
   Send,
   AlertCircle,
   Loader2
@@ -525,7 +524,7 @@ const ProfilePage = () => {
                   {verificationCodes.map((code, index) => (
                     <input
                       key={index}
-                      ref={(el) => (verificationInputRefs.current[index] = el)}
+                      ref={(el) => { verificationInputRefs.current[index] = el; }}
                       type="text"
                       inputMode="numeric"
                       maxLength={1}

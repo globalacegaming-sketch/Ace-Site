@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
@@ -8,7 +8,6 @@ import { useAuthStore } from '../stores/authStore';
 
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { setUser } = useAuthStore();
   const token = searchParams.get('token');
 

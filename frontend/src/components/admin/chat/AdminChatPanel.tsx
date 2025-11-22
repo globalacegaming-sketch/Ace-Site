@@ -258,7 +258,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
   };
 
-  const markMessagesAsRead = async (userId: string, messages: ChatMessage[]) => {
+  const markMessagesAsRead = async (_userId: string, messages: ChatMessage[]) => {
     const unreadMessages = messages.filter(
       (msg) => msg.senderType === 'user' && msg.status === 'unread'
     );

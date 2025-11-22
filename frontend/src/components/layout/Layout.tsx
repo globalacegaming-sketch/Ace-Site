@@ -7,7 +7,6 @@ import {
   Home,
   Settings,
   Headphones,
-  Star,
   Bell,
   User,
   X,
