@@ -24,37 +24,84 @@ class EmailService {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS
         },
+        // Connection timeout settings for Render/cloud environments
+        connectionTimeout: 30000, // 30 seconds
+        greetingTimeout: 30000, // 30 seconds
+        socketTimeout: 30000, // 30 seconds
+        // Retry connection on failure
+        pool: false,
         // Additional options for better compatibility
         tls: {
           // Do not fail on invalid certificates (useful for some SMTP servers)
-          rejectUnauthorized: false
-        }
+          rejectUnauthorized: false,
+          // Additional TLS options for better connection
+          minVersion: 'TLSv1.2'
+        },
+        // Debug mode (set to true for troubleshooting)
+        debug: process.env.NODE_ENV === 'development',
+        logger: process.env.NODE_ENV === 'development'
       });
     } else {
       console.warn('Email service not configured. SMTP credentials missing.');
     }
   }
 
-  async sendEmail(options: EmailOptions): Promise<boolean> {
+  async sendEmail(options: EmailOptions, retries: number = 2): Promise<boolean> {
     if (!this.transporter) {
       console.warn('Email service not available. Email would have been sent:', options);
       return false;
     }
 
-    try {
-      const mailOptions = {
-        from: process.env.SMTP_FROM || process.env.SMTP_USER,
-        to: options.to,
-        subject: options.subject,
-        html: options.html
-      };
+    const mailOptions = {
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: options.to,
+      subject: options.subject,
+      html: options.html
+    };
 
-      await this.transporter.sendMail(mailOptions);
-      return true;
-    } catch (error) {
-      console.error('Error sending email:', error);
-      return false;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Verify connection before sending (helps catch connection issues early)
+        if (attempt === 0) {
+          await this.transporter!.verify();
+        }
+
+        await this.transporter.sendMail(mailOptions);
+        console.log(`Email sent successfully to ${options.to}`);
+        return true;
+      } catch (error: any) {
+        const isConnectionError = 
+          error.code === 'ETIMEDOUT' || 
+          error.code === 'ECONNREFUSED' || 
+          error.code === 'ESOCKETTIMEDOUT' ||
+          error.message?.includes('timeout') ||
+          error.message?.includes('Connection timeout');
+
+        if (isConnectionError && attempt < retries) {
+          const waitTime = (attempt + 1) * 2000; // Exponential backoff: 2s, 4s
+          console.warn(
+            `Email send attempt ${attempt + 1} failed (connection timeout). Retrying in ${waitTime}ms...`,
+            error.message
+          );
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+
+        // Log error details for debugging
+        console.error('Error sending email:', {
+          to: options.to,
+          subject: options.subject,
+          error: error.message,
+          code: error.code,
+          attempt: attempt + 1,
+          totalAttempts: retries + 1
+        });
+        
+        return false;
+      }
     }
+
+    return false;
   }
 
   async sendVerificationEmail(email: string, token: string, firstName?: string): Promise<boolean> {
