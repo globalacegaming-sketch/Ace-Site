@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import * as nodemailer from 'nodemailer';
 
 interface EmailOptions {
   to: string;
@@ -40,7 +40,7 @@ class EmailService {
         // Debug mode (set to true for troubleshooting)
         debug: process.env.NODE_ENV === 'development',
         logger: process.env.NODE_ENV === 'development'
-      });
+      } as any);
     } else {
       console.warn('Email service not configured. SMTP credentials missing.');
     }
@@ -52,23 +52,67 @@ class EmailService {
       return false;
     }
 
+    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
     const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: fromAddress,
       to: options.to,
       subject: options.subject,
       html: options.html
     };
 
+    console.log('Attempting to send email:', {
+      from: fromAddress,
+      to: options.to,
+      subject: options.subject,
+      smtpHost: process.env.SMTP_HOST,
+      smtpUser: process.env.SMTP_USER,
+      smtpFrom: process.env.SMTP_FROM
+    });
+
+    // Warning if sender email might not be verified
+    if (fromAddress && fromAddress !== process.env.SMTP_USER) {
+      console.warn('⚠️  Using custom FROM address. Ensure this email is verified in Brevo:');
+      console.warn(`   - Go to https://app.brevo.com → Settings → Senders`);
+      console.warn(`   - Verify that "${fromAddress}" is added and verified`);
+      console.warn(`   - Unverified senders may cause emails to be queued but not delivered`);
+    }
+
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        // Verify connection before sending (helps catch connection issues early)
-        if (attempt === 0) {
-          await this.transporter!.verify();
+        // Send email and capture response
+        const info = await this.transporter.sendMail(mailOptions);
+        
+        // Log detailed response from SMTP server
+        console.log('Email send response:', {
+          messageId: info.messageId,
+          response: info.response,
+          accepted: info.accepted,
+          rejected: info.rejected,
+          pending: info.pending,
+          to: options.to,
+          from: fromAddress
+        });
+
+        // Check if email was actually accepted by SMTP server
+        if (info.rejected && info.rejected.length > 0) {
+          console.error('Email was rejected by SMTP server:', {
+            to: options.to,
+            rejected: info.rejected,
+            response: info.response
+          });
+          return false;
         }
 
-        await this.transporter.sendMail(mailOptions);
-        console.log(`Email sent successfully to ${options.to}`);
-        return true;
+        if (info.accepted && info.accepted.length > 0) {
+          console.log(`✅ Email accepted by SMTP server for ${options.to}. Message ID: ${info.messageId}`);
+          console.log(`📧 SMTP Response: ${info.response}`);
+          return true;
+        }
+
+        // If neither accepted nor rejected, something is wrong
+        console.warn('Email send returned unexpected response:', info);
+        return false;
+
       } catch (error: any) {
         const isConnectionError = 
           error.code === 'ETIMEDOUT' || 
@@ -88,13 +132,17 @@ class EmailService {
         }
 
         // Log error details for debugging
-        console.error('Error sending email:', {
+        console.error('❌ Error sending email:', {
           to: options.to,
           subject: options.subject,
+          from: fromAddress,
           error: error.message,
           code: error.code,
+          response: error.response,
+          command: error.command,
           attempt: attempt + 1,
-          totalAttempts: retries + 1
+          totalAttempts: retries + 1,
+          stack: error.stack
         });
         
         return false;
