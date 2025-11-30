@@ -13,14 +13,15 @@ import {
   RefreshCw,
   CircleDot,
   X,
-  Menu
+  Menu,
+  Gift
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface ChatMessage {
   id: string;
   userId: string;
-  senderType: 'user' | 'admin';
+  senderType: 'user' | 'admin' | 'system';
   message?: string;
   attachmentUrl?: string;
   attachmentName?: string;
@@ -31,6 +32,14 @@ interface ChatMessage {
   updatedAt: string;
   name?: string;
   email?: string;
+  metadata?: {
+    type?: string;
+    bonusId?: string;
+    bonusTitle?: string;
+    bonusType?: string;
+    bonusValue?: string;
+    isSystemMessage?: boolean;
+  };
 }
 
 interface ConversationSummary {
@@ -795,6 +804,37 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
               ) : (
                 selectedConversationMessages.map((msg) => {
                   const isAdmin = msg.senderType === 'admin';
+                  const isSystem = msg.senderType === 'system';
+                  
+                  // Special rendering for system messages (bonus claims, etc.)
+                  if (isSystem) {
+                    return (
+                      <div key={msg.id} className="flex justify-center my-3">
+                        <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-lg bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-yellow-800">{msg.name || 'User'}</span>
+                            <span className="text-[10px] text-yellow-600">•</span>
+                            <span className="text-[10px] text-yellow-600">{formatTime(msg.createdAt)}</span>
+                          </div>
+                          {msg.message && (
+                            <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{msg.message}</p>
+                          )}
+                          {msg.metadata?.bonusTitle && (
+                            <div className="mt-2 pt-2 border-t border-yellow-300">
+                              <p className="text-xs text-yellow-700">
+                                <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
+                                {msg.metadata.bonusValue && (
+                                  <span className="ml-2">({msg.metadata.bonusValue})</span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                  
                   return (
                     <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                       <div

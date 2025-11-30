@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
 import Bonus, { IBonus } from '../models/Bonus';
+import User from '../models/User';
+import ChatMessage from '../models/ChatMessage';
+import { getSocketServerInstance } from '../utils/socketManager';
 
 const router = Router();
 
@@ -280,6 +283,65 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
     // Add user to claimedBy array
     bonus.claimedBy.push(userId);
     await bonus.save();
+
+    // Send special system message to admin chat about bonus claim
+    try {
+      const user = await User.findById(userId).select('username email firstName lastName');
+      
+      if (user) {
+        const name = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : user.username;
+
+        // Create a special system message that users cannot replicate
+        // This message is marked as 'system' type which users cannot send
+        // But we use the user's actual name so admins know who is claiming
+        const systemMessage = await ChatMessage.create({
+          userId: user._id,
+          senderType: 'system',
+          message: `🎁 BONUS CLAIM REQUEST: User wants to claim "${bonus.title}" (${bonus.bonusType})${bonus.bonusValue ? ` - Value: ${bonus.bonusValue}` : ''}`,
+          status: 'unread',
+          name: name, // Use user's actual name instead of 'System'
+          email: user.email,
+          metadata: {
+            type: 'bonus_claim',
+            bonusId: bonus._id.toString(),
+            bonusTitle: bonus.title,
+            bonusType: bonus.bonusType,
+            bonusValue: bonus.bonusValue,
+            isSystemMessage: true,
+            timestamp: new Date().toISOString()
+          }
+        });
+
+        // Emit to admin chat
+        const io = getSocketServerInstance();
+        const payload = {
+          id: systemMessage._id.toString(),
+          userId: systemMessage.userId.toString(),
+          senderType: 'system',
+          message: systemMessage.message,
+          status: systemMessage.status,
+          name: systemMessage.name,
+          email: systemMessage.email,
+          metadata: systemMessage.metadata,
+          createdAt: systemMessage.createdAt,
+          updatedAt: systemMessage.updatedAt
+        };
+
+        io.to('admins').emit('chat:message:new', payload);
+        io.to(`user:${userId}`).emit('chat:message:new', payload);
+
+        console.log('✅ Bonus claim system message sent to admin chat:', {
+          userId: userId,
+          bonusId: bonus._id.toString(),
+          bonusTitle: bonus.title
+        });
+      }
+    } catch (chatError: any) {
+      // Don't fail the bonus claim if chat message fails
+      console.error('⚠️ Failed to send bonus claim chat message:', chatError.message);
+    }
 
     return res.json({
       success: true,

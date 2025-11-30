@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
 import Notice, { INotice } from '../models/Notice';
+import Notification from '../models/Notification';
+import User from '../models/User';
+import { getSocketServerInstance } from '../utils/socketManager';
 
 const router = Router();
 
@@ -107,6 +110,43 @@ router.post('/', async (req: Request, res: Response) => {
     });
 
     await notice.save();
+
+    // Create notifications for all active users when a notice is created
+    if (isActive !== false) {
+      try {
+        const users = await User.find({ isActive: true }).select('_id');
+        const notifications = users.map(user => ({
+          userId: user._id,
+          title: title,
+          message: message,
+          type: type || 'info',
+          noticeId: notice._id,
+          isRead: false
+        }));
+
+        if (notifications.length > 0) {
+          await Notification.insertMany(notifications);
+          
+          // Emit notification event to all connected users via Socket.IO
+          const io = getSocketServerInstance();
+          const notificationPayload = {
+            title: title,
+            message: message,
+            type: type || 'info',
+            noticeId: notice._id.toString(),
+            createdAt: new Date().toISOString()
+          };
+          
+          // Emit to all users (they can filter on client side)
+          io.emit('notification:new', notificationPayload);
+          
+          console.log(`✅ Created ${notifications.length} notifications for notice: ${title}`);
+        }
+      } catch (notifError: any) {
+        // Don't fail notice creation if notification creation fails
+        console.error('⚠️ Failed to create notifications:', notifError.message);
+      }
+    }
 
     return res.status(201).json({
       success: true,

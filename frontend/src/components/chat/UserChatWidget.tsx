@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Send, Paperclip, X, Loader2, FileText } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 interface ChatMessage {
   id: string;
   userId: string;
-  senderType: 'user' | 'admin';
+  senderType: 'user' | 'admin' | 'system';
   message?: string;
   attachmentUrl?: string;
   attachmentName?: string;
@@ -21,6 +21,14 @@ interface ChatMessage {
   updatedAt: string;
   name?: string;
   email?: string;
+  metadata?: {
+    type?: string;
+    bonusId?: string;
+    bonusTitle?: string;
+    bonusType?: string;
+    bonusValue?: string;
+    isSystemMessage?: boolean;
+  };
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
@@ -350,12 +358,48 @@ const UserChatWidget = () => {
               <>
                 {messages.map((msg) => {
                   const isUser = msg.senderType === 'user';
+                  const isSystem = msg.senderType === 'system';
                   const timestamp = formatTime(msg.createdAt);
                   const displayName = isUser 
                     ? (user?.firstName && user?.lastName 
                         ? `${user.firstName} ${user.lastName}`.trim() 
                         : user?.username || 'You') 
                     : (msg.name || 'Support Team');
+
+                  // Special rendering for system messages (bonus claims, etc.)
+                  if (isSystem) {
+                    const systemDisplayName = isUser 
+                      ? (user?.firstName && user?.lastName 
+                          ? `${user.firstName} ${user.lastName}`.trim() 
+                          : user?.username || 'You') 
+                      : (msg.name || 'User');
+                    
+                    return (
+                      <div key={msg.id} className="flex justify-center my-3">
+                        <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-lg bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-yellow-800">{systemDisplayName}</span>
+                            <span className="text-[10px] text-yellow-600">•</span>
+                            <span className="text-[10px] text-yellow-600">{timestamp}</span>
+                          </div>
+                          {msg.message && (
+                            <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{msg.message}</p>
+                          )}
+                          {msg.metadata?.bonusTitle && (
+                            <div className="mt-2 pt-2 border-t border-yellow-300">
+                              <p className="text-xs text-yellow-700">
+                                <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
+                                {msg.metadata.bonusValue && (
+                                  <span className="ml-2">({msg.metadata.bonusValue})</span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div

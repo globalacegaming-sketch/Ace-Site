@@ -4,7 +4,6 @@ import { useAuthStore } from './stores/authStore';
 import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
-import NoticePopup from './components/NoticePopup';
 import UserChatWidget from './components/chat/UserChatWidget';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -174,8 +173,6 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         
-        {/* Notice Popup - Shows active notices for logged-in users */}
-        <NoticePopup />
         <UserChatWidget />
           </div>
         </Router>

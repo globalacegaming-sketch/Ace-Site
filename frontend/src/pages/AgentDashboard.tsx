@@ -68,7 +68,7 @@ interface Notice {
   expiresAt?: string;
 }
 
-type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notices';
+type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications';
 
 const AgentDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -323,12 +323,12 @@ const AgentDashboard: React.FC = () => {
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3">
                 <Bell className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Notices</span>
+                <span className="text-gray-700">Notifications</span>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    setActiveSection('notices');
+                    setActiveSection('notifications');
                     setShowNoticeModal(true);
                     setEditingNotice(null);
                     setNoticeForm({ title: '', message: '', type: 'info', isActive: true, priority: 1, expiresAt: '' });
@@ -338,7 +338,7 @@ const AgentDashboard: React.FC = () => {
                   Add
                 </button>
                 <button
-                  onClick={() => setActiveSection('notices')}
+                  onClick={() => setActiveSection('notifications')}
                   className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
                 >
                   Change
@@ -680,11 +680,11 @@ const AgentDashboard: React.FC = () => {
     </div>
   );
 
-  // Render Notices Section
-  const renderNotices = () => (
+  // Render Notifications Section
+  const renderNotifications = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Notices</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Notifications</h2>
         <button
           onClick={() => {
             setShowNoticeModal(true);
@@ -785,8 +785,8 @@ const AgentDashboard: React.FC = () => {
         return renderFAQs();
       case 'bonuses':
         return renderBonuses();
-      case 'notices':
-        return renderNotices();
+      case 'notifications':
+        return renderNotifications();
       default:
         return renderDashboard();
     }
@@ -877,7 +877,7 @@ const AgentDashboard: React.FC = () => {
               }`}
             >
               <Bell className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Notices</span>
+              <span className={sidebarOpen ? 'block' : 'hidden'}>Notifications</span>
             </button>
             <button
               onClick={() => setActiveSection('email-promotions')}

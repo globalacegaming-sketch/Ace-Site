@@ -14,13 +14,29 @@ import {
   Coins,
   RefreshCw,
   MessageCircle,
-  Gift
+  Gift,
+  CheckCircle,
+  AlertCircle,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useBalancePolling } from '../../hooks/useBalancePolling';
+import axios from 'axios';
+import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
+import { io, Socket } from 'socket.io-client';
 
 interface LayoutProps {
   children: ReactNode;
+}
+
+interface Notification {
+  _id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  isRead: boolean;
+  createdAt: string;
 }
 
 const Layout = ({ children }: LayoutProps) => {
@@ -28,10 +44,17 @@ const Layout = ({ children }: LayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const { isAuthenticated, user, logout, token } = useAuthStore();
   const { balance, isLoading: balanceLoading, fetchBalance } = useBalancePolling(30000);
   const location = useLocation();
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
 
   // Check if mobile
   useEffect(() => {
@@ -49,22 +72,184 @@ const Layout = ({ children }: LayoutProps) => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Close user menu when clicking outside
+  // Initialize notification sound
+  useEffect(() => {
+    notificationSoundRef.current = new Audio('/sounds/notification.mp3');
+    notificationSoundRef.current.volume = 0.5;
+    
+    // Fallback: create a simple beep sound if file doesn't exist
+    if (!notificationSoundRef.current) {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.1);
+    }
+  }, []);
+
+  // Load notifications
+  const loadNotifications = async () => {
+    if (!isAuthenticated || !token) return;
+    
+    try {
+      setLoadingNotifications(true);
+      const API_BASE_URL = getApiBaseUrl();
+      const [notificationsRes, countRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/notifications?limit=20`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_BASE_URL}/notifications/unread-count`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      if (notificationsRes.data.success) {
+        setNotifications(notificationsRes.data.data || []);
+      }
+      if (countRes.data.success) {
+        setUnreadCount(countRes.data.count || 0);
+      }
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  // Mark notification as read
+  const markAsRead = async (notificationId: string) => {
+    if (!isAuthenticated || !token) return;
+    
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      await axios.put(`${API_BASE_URL}/notifications/${notificationId}/read`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setNotifications(prev => 
+        prev.map(n => n._id === notificationId ? { ...n, isRead: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
+  };
+
+  // Mark all as read
+  const markAllAsRead = async () => {
+    if (!isAuthenticated || !token) return;
+    
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      await axios.put(`${API_BASE_URL}/notifications/read-all`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
+    }
+  };
+
+  // Load notifications on mount and when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadNotifications();
+    }
+  }, [isAuthenticated, token]);
+
+  // Setup Socket.IO for real-time notifications
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+
+    const WS_BASE_URL = getWsBaseUrl();
+    const socket = io(WS_BASE_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('✅ Connected to notification socket');
+    });
+
+    socket.on('notification:new', (data: any) => {
+      const newNotification: Notification = {
+        _id: data._id || `temp-${Date.now()}`,
+        title: data.title,
+        message: data.message,
+        type: data.type || 'info',
+        isRead: false,
+        createdAt: data.createdAt || new Date().toISOString()
+      };
+
+      setNotifications(prev => [newNotification, ...prev]);
+      setUnreadCount(prev => prev + 1);
+
+      // Play notification sound
+      if (notificationSoundRef.current) {
+        notificationSoundRef.current.play().catch(err => {
+          console.log('Could not play notification sound:', err);
+          // Fallback beep
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = 800;
+          oscillator.type = 'sine';
+          
+          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+          
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.1);
+        });
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Disconnected from notification socket');
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isAuthenticated, token]);
+
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
       }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setIsNotificationOpen(false);
+      }
     };
 
-    if (isUserMenuOpen) {
+    if (isUserMenuOpen || isNotificationOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isUserMenuOpen]);
+  }, [isUserMenuOpen, isNotificationOpen]);
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -145,14 +330,130 @@ const Layout = ({ children }: LayoutProps) => {
             </div>
             
             {/* Notification Bell - Smaller on mobile */}
-            <div className="relative">
-              <button className="transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-opacity-20" 
-                      style={{ color: '#B0B0B0', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 text-white text-xs rounded-full w-3 h-3 sm:w-4 sm:h-4 flex items-center justify-center text-xs" 
-                    style={{ backgroundColor: '#E53935' }}>0</span>
-            </div>
+            {isAuthenticated && (
+              <div className="relative" ref={notificationRef}>
+                <button 
+                  onClick={() => {
+                    setIsNotificationOpen(!isNotificationOpen);
+                    if (!isNotificationOpen) {
+                      loadNotifications();
+                    }
+                  }}
+                  className="transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-opacity-20 relative" 
+                  style={{ color: '#B0B0B0', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                >
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 text-white text-[10px] sm:text-xs rounded-full min-w-[16px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center font-semibold animate-pulse" 
+                          style={{ backgroundColor: '#E53935' }}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                
+                {/* Notification Dropdown */}
+                {isNotificationOpen && (
+                  <div className="absolute right-0 top-12 sm:top-14 w-80 sm:w-96 max-h-96 overflow-y-auto rounded-lg shadow-2xl border z-50"
+                       style={{ 
+                         backgroundColor: '#1B1B2F', 
+                         borderColor: '#2C2C3A',
+                         boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+                       }}>
+                    <div className="sticky top-0 px-4 py-3 border-b flex items-center justify-between"
+                         style={{ borderColor: '#2C2C3A', backgroundColor: '#1B1B2F' }}>
+                      <h3 className="font-semibold text-sm sm:text-base" style={{ color: '#F5F5F5' }}>
+                        Notifications {unreadCount > 0 && `(${unreadCount})`}
+                      </h3>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={markAllAsRead}
+                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="max-h-80 overflow-y-auto">
+                      {loadingNotifications ? (
+                        <div className="p-8 text-center" style={{ color: '#B0B0B0' }}>
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                          <p className="text-sm">Loading notifications...</p>
+                        </div>
+                      ) : notifications.length === 0 ? (
+                        <div className="p-8 text-center" style={{ color: '#B0B0B0' }}>
+                          <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No notifications</p>
+                        </div>
+                      ) : (
+                        <div className="divide-y" style={{ borderColor: '#2C2C3A' }}>
+                          {notifications.map((notification) => {
+                            const getIcon = () => {
+                              switch (notification.type) {
+                                case 'info': return <Info className="w-4 h-4" />;
+                                case 'warning': return <AlertTriangle className="w-4 h-4" />;
+                                case 'success': return <CheckCircle className="w-4 h-4" />;
+                                case 'error': return <AlertCircle className="w-4 h-4" />;
+                                default: return <Info className="w-4 h-4" />;
+                              }
+                            };
+                            
+                            const getColor = () => {
+                              switch (notification.type) {
+                                case 'info': return '#3B82F6';
+                                case 'warning': return '#F59E0B';
+                                case 'success': return '#10B981';
+                                case 'error': return '#EF4444';
+                                default: return '#3B82F6';
+                              }
+                            };
+
+                            return (
+                              <div
+                                key={notification._id}
+                                onClick={() => {
+                                  if (!notification.isRead) {
+                                    markAsRead(notification._id);
+                                  }
+                                }}
+                                className={`p-3 sm:p-4 cursor-pointer transition-colors ${
+                                  !notification.isRead ? 'bg-opacity-10' : ''
+                                }`}
+                                style={{
+                                  backgroundColor: !notification.isRead ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+                                }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-shrink-0 mt-0.5" style={{ color: getColor() }}>
+                                    {getIcon()}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <h4 className="font-semibold text-sm sm:text-base" style={{ color: '#F5F5F5' }}>
+                                        {notification.title}
+                                      </h4>
+                                      {!notification.isRead && (
+                                        <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: getColor() }} />
+                                      )}
+                                    </div>
+                                    <p className="text-xs sm:text-sm mt-1" style={{ color: '#B0B0B0' }}>
+                                      {notification.message}
+                                    </p>
+                                    <p className="text-[10px] sm:text-xs mt-2 opacity-70" style={{ color: '#B0B0B0' }}>
+                                      {new Date(notification.createdAt).toLocaleString()}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* Enhanced Balance Display - Responsive */}
             {isAuthenticated && (

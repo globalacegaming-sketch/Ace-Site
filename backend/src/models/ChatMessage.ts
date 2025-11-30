@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type ChatMessageStatus = 'unread' | 'read' | 'resolved';
-export type ChatMessageSender = 'user' | 'admin';
+export type ChatMessageSender = 'user' | 'admin' | 'system';
 
 export interface IChatMessage extends Document {
   userId: Types.ObjectId;
@@ -37,7 +37,7 @@ const ChatMessageSchema = new Schema<IChatMessage>(
     },
     senderType: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: ['user', 'admin', 'system'],
       required: true
     },
     message: {

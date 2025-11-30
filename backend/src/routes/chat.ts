@@ -73,9 +73,11 @@ router.post(
           ? `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim()
           : req.user?.username;
 
+      // Security: Users can only send 'user' type messages, never 'system' or 'admin'
+      // This prevents users from spoofing system messages like bonus claims
       const chatMessage = await ChatMessage.create({
         userId: req.user!._id,
-        senderType: 'user',
+        senderType: 'user', // Always 'user' for user-sent messages
         message,
         attachmentUrl: attachment ? getChatAttachmentUrl(attachment.filename) : undefined,
         attachmentName: attachment?.originalname,
