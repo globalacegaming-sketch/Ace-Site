@@ -75,15 +75,31 @@ const AdminLogin: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ 
+    <div className="min-h-screen flex items-center justify-center overflow-hidden relative" style={{ 
       background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
     }}>
-      <div className="absolute inset-0 -z-10">
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-40 animate-pulse" style={{ backgroundColor: '#6A1B9A' }}></div>
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-35 animate-ping" style={{ backgroundColor: '#00B0FF' }}></div>
+      <div className="absolute inset-0 -z-10 overflow-hidden">
+        <div 
+          className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-40" 
+          style={{ 
+            backgroundColor: '#6A1B9A',
+            animation: 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            willChange: 'opacity',
+            transform: 'translateZ(0)'
+          }}
+        ></div>
+        <div 
+          className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-35" 
+          style={{ 
+            backgroundColor: '#00B0FF',
+            animation: 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            willChange: 'opacity',
+            transform: 'translateZ(0)'
+          }}
+        ></div>
       </div>
 
-      <div className="casino-bg-secondary backdrop-blur-lg rounded-3xl shadow-2xl p-8 md:p-12 w-full max-w-md casino-border">
+      <div className="casino-bg-secondary backdrop-blur-lg rounded-3xl shadow-2xl p-8 md:p-12 w-full max-w-md casino-border relative z-10" style={{ willChange: 'auto' }}>
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <div className="p-4 rounded-full casino-bg-primary">
@@ -129,7 +145,7 @@ const AdminLogin: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full btn-casino-primary py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105"
+            className="w-full btn-casino-primary py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-200"
           >
             {loading ? (
               <>

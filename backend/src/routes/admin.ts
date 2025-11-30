@@ -3,6 +3,7 @@ import fortunePandaService from '../services/fortunePandaService';
 import agentLoginService from '../services/agentLoginService';
 import User from '../models/User';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { createAdminSession } from '../services/adminSessionService';
 import { requireAdminAuth } from '../middleware/adminAuth';
 
@@ -851,6 +852,136 @@ router.get('/game-records', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
+    });
+  }
+});
+
+// Manually verify user email (admin only)
+router.put('/users/:userId/verify-email', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    console.log('✅ Email manually verified by admin:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      verifiedBy: req.adminSession?.agentName
+    });
+
+    return res.json({
+      success: true,
+      message: 'User email verified successfully',
+      data: {
+        userId: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        isEmailVerified: user.isEmailVerified
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ Error verifying user email:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
+// Reset user password (admin only)
+router.put('/users/:userId/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password is required and must be at least 6 characters long'
+      });
+    }
+
+    // Need to explicitly select password field since it has select: false
+    const user = await User.findById(userId).select('+password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Store old password hash for comparison (for debugging)
+    const oldPasswordHash = user.password;
+    
+    // Set the plain password - the pre-save hook will automatically hash it
+    // This ensures consistent hashing with the same salt rounds (12) as registration
+    // We need to set it as plain text so the pre-save hook can detect the change and hash it
+    user.password = newPassword;
+    
+    // Verify password is marked as modified
+    if (!user.isModified('password')) {
+      console.warn('⚠️ Password field not detected as modified, forcing modification');
+      user.markModified('password');
+    }
+    
+    // Clear any password reset tokens
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    
+    // Save will trigger the pre-save hook which hashes the password
+    // The pre-save hook checks isModified('password') and will hash it with salt rounds 12
+    await user.save();
+    
+    // Verify the password was actually changed and hashed
+    const updatedUser = await User.findById(userId).select('+password');
+    const newPasswordHash = updatedUser?.password;
+    
+    console.log('✅ Password reset by admin:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      resetBy: req.adminSession?.agentName,
+      passwordChanged: oldPasswordHash !== newPasswordHash,
+      passwordIsHashed: newPasswordHash && newPasswordHash !== newPassword && newPasswordHash.length > 50
+    });
+
+    console.log('✅ Password reset by admin:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      resetBy: req.adminSession?.agentName
+    });
+
+    return res.json({
+      success: true,
+      message: 'User password reset successfully',
+      data: {
+        userId: user._id.toString(),
+        username: user.username,
+        email: user.email
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ Error resetting user password:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error',
+      error: error.message
     });
   }
 });

@@ -9,7 +9,11 @@ import {
   Loader2,
   XCircle,
   RefreshCw,
-  X
+  X,
+  CheckCircle,
+  Key,
+  Mail,
+  Shield
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -49,9 +53,15 @@ const AdminDashboard: React.FC = () => {
   
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'chat'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'chat' | 'verification'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [verificationSearchQuery, setVerificationSearchQuery] = useState('');
+  const [selectedUserForVerification, setSelectedUserForVerification] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [agentBalance, setAgentBalance] = useState<string>('0.00');
   const [showUserModal, setShowUserModal] = useState(false);
   const [modalAction, setModalAction] = useState<'recharge' | 'redeem' | null>(null);
@@ -114,8 +124,20 @@ const AdminDashboard: React.FC = () => {
   const getAdminToken = () => {
     const session = localStorage.getItem('admin_session');
     if (session) {
-      const parsed = JSON.parse(session);
-      return parsed.token;
+      try {
+        const parsed = JSON.parse(session);
+        // Check if session expired
+        if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+          console.warn('⚠️ Admin session expired');
+          localStorage.removeItem('admin_session');
+          return null;
+        }
+        return parsed.token;
+      } catch (error) {
+        console.error('Error parsing admin session:', error);
+        localStorage.removeItem('admin_session');
+        return null;
+      }
     }
     return null;
   };
@@ -204,6 +226,116 @@ const AdminDashboard: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to load users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyEmail = async (userId: string) => {
+    try {
+      setVerifying(true);
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+
+      const response = await axios.put(
+        `${API_BASE_URL}/admin/users/${userId}/verify-email`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        toast.success('User email verified successfully');
+        loadUsers();
+      } else {
+        toast.error(response.data.message || 'Failed to verify email');
+      }
+    } catch (error: any) {
+      console.error('Failed to verify email:', error);
+      toast.error(error.response?.data?.message || 'Failed to verify email');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUserForVerification) return;
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters long');
+      return;
+    }
+
+    try {
+      setResetting(true);
+      const token = getAdminToken();
+      if (!token) {
+        toast.error('Admin session expired. Please login again.');
+        navigate('/adminacers/login');
+        return;
+      }
+
+      // Check if session is still valid
+      const session = localStorage.getItem('admin_session');
+      if (session) {
+        const parsed = JSON.parse(session);
+        if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+          toast.error('Admin session expired. Please login again.');
+          localStorage.removeItem('admin_session');
+          navigate('/adminacers/login');
+          return;
+        }
+      }
+
+      console.log('🔐 Resetting password:', {
+        userId: selectedUserForVerification._id,
+        tokenPrefix: token.substring(0, 10) + '...',
+        tokenLength: token.length,
+        apiUrl: `${API_BASE_URL}/admin/users/${selectedUserForVerification._id}/reset-password`
+      });
+
+      const response = await axios.put(
+        `${API_BASE_URL}/admin/users/${selectedUserForVerification._id}/reset-password`,
+        { newPassword },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        toast.success('Password reset successfully');
+        setShowPasswordModal(false);
+        setNewPassword('');
+        setSelectedUserForVerification(null);
+      } else {
+        toast.error(response.data.message || 'Failed to reset password');
+      }
+    } catch (error: any) {
+      console.error('Failed to reset password:', error);
+      
+      if (error.response?.status === 401) {
+        // Session expired or invalid
+        const errorMessage = error.response?.data?.message || 'Admin session expired or invalid';
+        toast.error(errorMessage);
+        
+        // If it's a session issue, redirect to login
+        if (errorMessage.includes('session') || errorMessage.includes('token') || errorMessage.includes('Access denied')) {
+          localStorage.removeItem('admin_session');
+          setTimeout(() => {
+            navigate('/adminacers/login');
+          }, 2000);
+        }
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to reset password');
+      }
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -496,6 +628,16 @@ const AdminDashboard: React.FC = () => {
           >
             Support Chat
           </button>
+          <button
+            onClick={() => setActiveTab('verification')}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+              activeTab === 'verification'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            User Verification
+          </button>
         </div>
 
         {activeTab === 'users' ? (
@@ -733,6 +875,111 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </>
+        ) : activeTab === 'verification' ? (
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 border border-gray-100">
+            <div className="mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <Shield className="w-6 h-6 text-indigo-600" />
+                User Verification & Password Reset
+              </h2>
+              <p className="text-sm text-gray-600">Manually verify user emails and reset passwords</p>
+            </div>
+
+            {/* Search Bar */}
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by username, email, or user ID"
+                  value={verificationSearchQuery}
+                  onChange={(e) => setVerificationSearchQuery(e.target.value)}
+                  className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm sm:text-base text-gray-700 placeholder-gray-400"
+                />
+              </div>
+            </div>
+
+            {/* User List */}
+            <div className="space-y-3 max-h-[600px] overflow-y-auto">
+              {users
+                .filter((user) => {
+                  if (!verificationSearchQuery) return true;
+                  const query = verificationSearchQuery.toLowerCase();
+                  return (
+                    user.username.toLowerCase().includes(query) ||
+                    user.email.toLowerCase().includes(query) ||
+                    user._id.toLowerCase().includes(query) ||
+                    (user.firstName && user.firstName.toLowerCase().includes(query)) ||
+                    (user.lastName && user.lastName.toLowerCase().includes(query))
+                  );
+                })
+                .map((user) => (
+                  <div
+                    key={user._id}
+                    className={`p-4 border rounded-lg transition-all ${
+                      selectedUserForVerification?._id === user._id
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-gray-900 truncate">
+                            {user.firstName && user.lastName
+                              ? `${user.firstName} ${user.lastName}`
+                              : user.username}
+                          </h3>
+                          {user.isEmailVerified ? (
+                            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" title="Email Verified" />
+                          ) : (
+                            <Mail className="w-4 h-4 text-red-500 flex-shrink-0" title="Email Not Verified" />
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 truncate">{user.email}</p>
+                        <p className="text-xs text-gray-500">@{user.username} • ID: {user._id.substring(0, 8)}...</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        {!user.isEmailVerified && (
+                          <button
+                            onClick={() => handleVerifyEmail(user._id)}
+                            disabled={verifying}
+                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            {verifying ? 'Verifying...' : 'Verify Email'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedUserForVerification(user);
+                            setShowPasswordModal(true);
+                            setNewPassword('');
+                          }}
+                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-1"
+                        >
+                          <Key className="w-4 h-4" />
+                          Reset Password
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              {users.filter((user) => {
+                if (!verificationSearchQuery) return true;
+                const query = verificationSearchQuery.toLowerCase();
+                return (
+                  user.username.toLowerCase().includes(query) ||
+                  user.email.toLowerCase().includes(query) ||
+                  user._id.toLowerCase().includes(query)
+                );
+              }).length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No users found</p>
+                </div>
+              )}
+            </div>
+          </div>
         ) : activeTab === 'chat' ? (
           adminToken ? (
             <div className="h-[calc(100vh-12rem)] min-h-[600px]">
@@ -1277,6 +1524,87 @@ const AdminDashboard: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Password Reset Modal */}
+      {showPasswordModal && selectedUserForVerification && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Key className="w-5 h-5 text-indigo-600" />
+                Reset Password
+              </h3>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setNewPassword('');
+                  setSelectedUserForVerification(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-1">
+                <span className="font-semibold">User:</span> {selectedUserForVerification.firstName && selectedUserForVerification.lastName
+                  ? `${selectedUserForVerification.firstName} ${selectedUserForVerification.lastName}`
+                  : selectedUserForVerification.username}
+              </p>
+              <p className="text-sm text-gray-600">
+                <span className="font-semibold">Email:</span> {selectedUserForVerification.email}
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                New Password
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password (min 6 characters)"
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-gray-700 placeholder-gray-400"
+                minLength={6}
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setNewPassword('');
+                  setSelectedUserForVerification(null);
+                }}
+                className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetPassword}
+                disabled={resetting || !newPassword || newPassword.length < 6}
+                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {resetting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  <>
+                    <Key className="w-4 h-4" />
+                    Reset Password
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

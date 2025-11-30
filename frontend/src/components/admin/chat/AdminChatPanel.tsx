@@ -61,6 +61,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [endDate, setEndDate] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [showConversations, setShowConversations] = useState(true);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -436,6 +437,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
       setMessageInput('');
       setAttachment(null);
+      setAttachmentPreview(null);
     } catch (error) {
       console.error('Failed to send admin message', error);
       toast.error('Failed to send message.');
@@ -457,23 +459,104 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
 
     try {
-      await Promise.all(
-        unresolved.map((msg) =>
-          axios.put(
-            `${apiBaseUrl}/admin/messages/${msg.id}/status`,
-            { status: 'resolved' },
-            {
-              headers: {
-                Authorization: `Bearer ${adminToken}`
-              }
+      // Use batch endpoint for better performance
+      // Filter out any invalid IDs and ensure they're strings
+      const messageIds = unresolved
+        .map((msg) => msg.id)
+        .filter((id): id is string => {
+          // Validate that ID exists and is a non-empty string
+          if (!id || typeof id !== 'string' || id.trim() === '') {
+            console.warn('Invalid message ID found:', id);
+            return false;
+          }
+          // Basic MongoDB ObjectId format check (24 hex characters)
+          if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+            console.warn('Message ID does not match ObjectId format:', id);
+            return false;
+          }
+          return true;
+        });
+
+      if (messageIds.length === 0) {
+        // Fallback: Try using userId to resolve all unresolved user messages
+        console.warn('No valid message IDs, trying userId approach instead');
+        const response = await axios.put(
+          `${apiBaseUrl}/admin/messages/batch-status`,
+          { userId: selectedUserId, status: 'resolved' },
+          {
+            headers: {
+              Authorization: `Bearer ${adminToken}`
             }
-          )
-        )
+          }
+        );
+
+        if (response.data.success) {
+          // Reload conversation to get updated messages
+          await loadConversation(selectedUserId);
+          toast.success(`Marked conversation as resolved.`);
+          return;
+        } else {
+          throw new Error(response.data.message || 'Failed to resolve messages');
+        }
+      }
+
+      console.log('Resolving messages:', { count: messageIds.length, ids: messageIds });
+
+      const response = await axios.put(
+        `${apiBaseUrl}/admin/messages/batch-status`,
+        { messageIds, status: 'resolved' },
+        {
+          headers: {
+            Authorization: `Bearer ${adminToken}`
+          }
+        }
       );
-      toast.success('Conversation marked as resolved.');
-    } catch (error) {
+
+      if (response.data.success) {
+        // Update local state immediately
+        setConversationMessages((prev) => {
+          const current = prev[selectedUserId] || [];
+          const updated = current.map((msg) =>
+            messageIds.includes(msg.id) && msg.senderType === 'user'
+              ? { ...msg, status: 'resolved' as const }
+              : msg
+          );
+          return {
+            ...prev,
+            [selectedUserId]: updated
+          };
+        });
+
+        // Update conversation summaries
+        setConversationSummaries((prev) =>
+          prev.map((summary) =>
+            summary.userId === selectedUserId
+              ? {
+                  ...summary,
+                  lastMessage:
+                    summary.lastMessage && summary.lastMessage.senderType === 'user'
+                      ? { ...summary.lastMessage, status: 'resolved' as const }
+                      : summary.lastMessage
+                }
+              : summary
+          )
+        );
+
+        toast.success(`Marked ${response.data.data.modifiedCount || unresolved.length} message(s) as resolved.`);
+      } else {
+        throw new Error(response.data.message || 'Failed to resolve messages');
+      }
+    } catch (error: any) {
       console.error('Failed to resolve messages', error);
-      toast.error('Failed to update status.');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update status.';
+      
+      // If it's the "no valid IDs" error, provide more context
+      if (errorMessage.includes('No valid message IDs')) {
+        console.error('Message IDs that were sent:', unresolved.map(m => ({ id: m.id, status: m.status, senderType: m.senderType })));
+        toast.error('Invalid message IDs. Please refresh the page and try again.');
+      } else {
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -509,6 +592,17 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       return;
     }
     setAttachment(file);
+    
+    // Create preview for image files
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAttachmentPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setAttachmentPreview(null);
+    }
   };
 
   return (
@@ -749,17 +843,59 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
             <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
               {attachment && (
-                <div className="flex items-center justify-between text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 bg-indigo-50 text-indigo-700 rounded-lg sm:rounded-xl">
-                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-                    <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                    <span className="truncate">{attachment.name}</span>
-                  </div>
-                  <button
-                    onClick={() => setAttachment(null)}
-                    className="text-indigo-600 hover:text-indigo-800 flex-shrink-0 ml-2 p-1"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                <div className="bg-indigo-50 rounded-lg sm:rounded-xl p-2 sm:p-3">
+                  {attachmentPreview ? (
+                    <div className="space-y-2">
+                      <div className="relative inline-block max-w-full">
+                        <img
+                          src={attachmentPreview}
+                          alt="Preview"
+                          className="max-h-48 max-w-full rounded-lg border border-indigo-200 object-contain"
+                        />
+                        <button
+                          onClick={() => {
+                            setAttachment(null);
+                            setAttachmentPreview(null);
+                          }}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition"
+                          title="Remove attachment"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-indigo-700">
+                        <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <span className="truncate">{attachment.name}</span>
+                        <span className="text-indigo-500">
+                          ({(attachment.size / 1024).toFixed(1)} KB)
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+                        <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 text-indigo-600" />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs sm:text-sm text-indigo-700 font-medium truncate block">
+                            {attachment.name}
+                          </span>
+                          <span className="text-[10px] sm:text-xs text-indigo-500">
+                            {(attachment.size / 1024).toFixed(1)} KB
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setAttachment(null);
+                          setAttachmentPreview(null);
+                        }}
+                        className="text-indigo-600 hover:text-indigo-800 flex-shrink-0 ml-2 p-1"
+                        title="Remove attachment"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <textarea
@@ -767,7 +903,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                 onChange={(e) => setMessageInput(e.target.value)}
                 rows={2}
                 placeholder="Write a reply..."
-                className="w-full rounded-lg sm:rounded-xl border border-gray-200 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                className="w-full rounded-lg sm:rounded-xl border border-gray-200 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
               />
               <div className="flex items-center justify-between gap-2">
                 <label className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 cursor-pointer hover:text-indigo-600 flex-shrink-0">

@@ -17,6 +17,7 @@ export const requireAdminAuth = (req: Request, res: Response, next: NextFunction
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('❌ Admin auth failed: No Bearer token in header');
     res.status(401).json({
       success: false,
       message: 'Access denied. No admin token provided.'
@@ -25,16 +26,20 @@ export const requireAdminAuth = (req: Request, res: Response, next: NextFunction
   }
 
   const token = authHeader.substring(7);
+  console.log('🔍 Validating admin token:', token.substring(0, 10) + '...');
+  
   const session = validateAdminSession(token);
 
   if (!session) {
+    console.log('❌ Admin auth failed: Invalid or expired session');
     res.status(401).json({
       success: false,
-      message: 'Invalid or expired admin session.'
+      message: 'Invalid or expired admin session. Please login again.'
     });
     return;
   }
 
+  console.log('✅ Admin auth successful:', { agentName: session.agentName });
   req.adminSession = session;
   next();
 };
