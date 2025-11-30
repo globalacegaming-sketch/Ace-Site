@@ -142,11 +142,7 @@ function App() {
             </ProtectedRoute>
           } />
           
-          <Route path="/support" element={
-            <ProtectedRoute>
-              <Layout><Support /></Layout>
-            </ProtectedRoute>
-          } />
+          <Route path="/support" element={<Layout><Support /></Layout>} />
           
           <Route path="/game/:id" element={
             <ProtectedRoute>
