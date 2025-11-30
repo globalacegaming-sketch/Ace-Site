@@ -32,6 +32,7 @@ interface User {
   fortunePandaBalance?: number;
   role: string;
   isActive: boolean;
+  isEmailVerified?: boolean;
   createdAt: string;
   lastLogin?: string;
 }
@@ -931,9 +932,13 @@ const AdminDashboard: React.FC = () => {
                               : user.username}
                           </h3>
                           {user.isEmailVerified ? (
-                            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" title="Email Verified" />
+                            <div title="Email Verified">
+                              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                            </div>
                           ) : (
-                            <Mail className="w-4 h-4 text-red-500 flex-shrink-0" title="Email Not Verified" />
+                            <div title="Email Not Verified">
+                              <Mail className="w-4 h-4 text-red-500 flex-shrink-0" />
+                            </div>
                           )}
                         </div>
                         <p className="text-sm text-gray-600 truncate">{user.email}</p>
