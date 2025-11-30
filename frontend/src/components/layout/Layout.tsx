@@ -48,6 +48,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+
   const { isAuthenticated, user, logout, token } = useAuthStore();
   const { balance, isLoading: balanceLoading, fetchBalance } = useBalancePolling(30000);
   const location = useLocation();
@@ -182,7 +183,7 @@ const Layout = ({ children }: LayoutProps) => {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('✅ Connected to notification socket');
+      // Connected to notification socket
     });
 
     socket.on('notification:new', (data: any) => {
@@ -200,8 +201,7 @@ const Layout = ({ children }: LayoutProps) => {
 
       // Play notification sound
       if (notificationSoundRef.current) {
-        notificationSoundRef.current.play().catch(err => {
-          console.log('Could not play notification sound:', err);
+        notificationSoundRef.current.play().catch(() => {
           // Fallback beep
           const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
           const oscillator = audioContext.createOscillator();
@@ -223,7 +223,7 @@ const Layout = ({ children }: LayoutProps) => {
     });
 
     socket.on('disconnect', () => {
-      console.log('❌ Disconnected from notification socket');
+      // Disconnected from notification socket
     });
 
     return () => {
@@ -231,23 +231,44 @@ const Layout = ({ children }: LayoutProps) => {
     };
   }, [isAuthenticated, token]);
 
-  // Close menus when clicking outside
+  // Close menus when clicking outside (supports both mouse and touch)
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+    if (!isNotificationOpen && !isUserMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      
+      // Don't close if clicking on the notification button itself
+      const notificationButton = notificationRef.current?.querySelector('button');
+      if (notificationButton && (notificationButton === target || notificationButton.contains(target))) {
+        return;
+      }
+      
+      // Don't close if clicking on the notification dropdown (it's rendered outside notificationRef)
+      const notificationDropdown = document.querySelector('[data-notification-dropdown]');
+      if (notificationDropdown && (notificationDropdown === target || notificationDropdown.contains(target))) {
+        return;
+      }
+      
+      if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setIsUserMenuOpen(false);
       }
-      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+      if (notificationRef.current && !notificationRef.current.contains(target)) {
         setIsNotificationOpen(false);
       }
     };
 
-    if (isUserMenuOpen || isNotificationOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    // Use a small delay to prevent immediate closing when opening
+    const timeoutId = setTimeout(() => {
+      // Support both mouse and touch events for better mobile compatibility
+      document.addEventListener('mousedown', handleClickOutside, { passive: true });
+      document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    }, 200);
 
     return () => {
+      clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [isUserMenuOpen, isNotificationOpen]);
 
@@ -329,129 +350,62 @@ const Layout = ({ children }: LayoutProps) => {
               </div>
             </div>
             
-            {/* Notification Bell - Smaller on mobile */}
+            {/* Notification Bell - Optimized for mobile */}
             {isAuthenticated && (
-              <div className="relative" ref={notificationRef}>
+              <div className="relative" ref={notificationRef} style={{ zIndex: 100 }}>
                 <button 
-                  onClick={() => {
-                    setIsNotificationOpen(!isNotificationOpen);
-                    if (!isNotificationOpen) {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const newState = !isNotificationOpen;
+                    setIsNotificationOpen(newState);
+                    if (newState) {
                       loadNotifications();
                     }
                   }}
-                  className="transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-opacity-20 relative" 
-                  style={{ color: '#B0B0B0', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const newState = !isNotificationOpen;
+                    setIsNotificationOpen(newState);
+                    if (newState) {
+                      loadNotifications();
+                    }
+                  }}
+                  className="transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-opacity-20 active:scale-95 touch-manipulation relative" 
+                  style={{ 
+                    color: '#B0B0B0', 
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    zIndex: 100,
+                    position: 'relative',
+                    minWidth: '44px',
+                    minHeight: '44px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    outline: 'none'
+                  }}
+                  aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+                  type="button"
                 >
-                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5 pointer-events-none" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 text-white text-[10px] sm:text-xs rounded-full min-w-[16px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center font-semibold animate-pulse" 
+                    <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 text-white text-[10px] sm:text-xs rounded-full min-w-[16px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center font-semibold animate-pulse pointer-events-none" 
                           style={{ backgroundColor: '#E53935' }}>
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
                 </button>
                 
-                {/* Notification Dropdown */}
-                {isNotificationOpen && (
-                  <div className="absolute right-0 top-12 sm:top-14 w-80 sm:w-96 max-h-96 overflow-y-auto rounded-lg shadow-2xl border z-50"
-                       style={{ 
-                         backgroundColor: '#1B1B2F', 
-                         borderColor: '#2C2C3A',
-                         boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
-                       }}>
-                    <div className="sticky top-0 px-4 py-3 border-b flex items-center justify-between"
-                         style={{ borderColor: '#2C2C3A', backgroundColor: '#1B1B2F' }}>
-                      <h3 className="font-semibold text-sm sm:text-base" style={{ color: '#F5F5F5' }}>
-                        Notifications {unreadCount > 0 && `(${unreadCount})`}
-                      </h3>
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={markAllAsRead}
-                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                        >
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-                    
-                    <div className="max-h-80 overflow-y-auto">
-                      {loadingNotifications ? (
-                        <div className="p-8 text-center" style={{ color: '#B0B0B0' }}>
-                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
-                          <p className="text-sm">Loading notifications...</p>
-                        </div>
-                      ) : notifications.length === 0 ? (
-                        <div className="p-8 text-center" style={{ color: '#B0B0B0' }}>
-                          <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No notifications</p>
-                        </div>
-                      ) : (
-                        <div className="divide-y" style={{ borderColor: '#2C2C3A' }}>
-                          {notifications.map((notification) => {
-                            const getIcon = () => {
-                              switch (notification.type) {
-                                case 'info': return <Info className="w-4 h-4" />;
-                                case 'warning': return <AlertTriangle className="w-4 h-4" />;
-                                case 'success': return <CheckCircle className="w-4 h-4" />;
-                                case 'error': return <AlertCircle className="w-4 h-4" />;
-                                default: return <Info className="w-4 h-4" />;
-                              }
-                            };
-                            
-                            const getColor = () => {
-                              switch (notification.type) {
-                                case 'info': return '#3B82F6';
-                                case 'warning': return '#F59E0B';
-                                case 'success': return '#10B981';
-                                case 'error': return '#EF4444';
-                                default: return '#3B82F6';
-                              }
-                            };
-
-                            return (
-                              <div
-                                key={notification._id}
-                                onClick={() => {
-                                  if (!notification.isRead) {
-                                    markAsRead(notification._id);
-                                  }
-                                }}
-                                className={`p-3 sm:p-4 cursor-pointer transition-colors ${
-                                  !notification.isRead ? 'bg-opacity-10' : ''
-                                }`}
-                                style={{
-                                  backgroundColor: !notification.isRead ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
-                                }}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-shrink-0 mt-0.5" style={{ color: getColor() }}>
-                                    {getIcon()}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <h4 className="font-semibold text-sm sm:text-base" style={{ color: '#F5F5F5' }}>
-                                        {notification.title}
-                                      </h4>
-                                      {!notification.isRead && (
-                                        <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: getColor() }} />
-                                      )}
-                                    </div>
-                                    <p className="text-xs sm:text-sm mt-1" style={{ color: '#B0B0B0' }}>
-                                      {notification.message}
-                                    </p>
-                                    <p className="text-[10px] sm:text-xs mt-2 opacity-70" style={{ color: '#B0B0B0' }}>
-                                      {new Date(notification.createdAt).toLocaleString()}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
             
@@ -580,6 +534,191 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
         </div>
       </header>
+
+      {/* Notification Dropdown - Rendered outside header to avoid clipping */}
+      {isNotificationOpen && (
+        <>
+          {/* Mobile Overlay */}
+          {isMobile && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50"
+              onClick={() => {
+                setIsNotificationOpen(false);
+              }}
+              style={{ 
+                top: '48px',
+                zIndex: 9998
+              }}
+            />
+          )}
+          <div 
+            data-notification-dropdown
+            className={`${
+              isMobile 
+                ? 'fixed left-0 right-0 top-12 w-full max-w-none rounded-t-2xl rounded-b-none' 
+                : 'fixed right-4 top-16 w-80 sm:w-96 max-h-[calc(100vh-100px)] rounded-lg'
+            } overflow-hidden shadow-2xl border flex flex-col`}
+            onClick={(e) => e.stopPropagation()}
+            style={{ 
+              backgroundColor: '#1B1B2F', 
+              borderColor: '#2C2C3A',
+              boxShadow: isMobile ? '0 -4px 20px rgba(0, 0, 0, 0.5)' : '0 10px 40px rgba(0, 0, 0, 0.5)',
+              zIndex: 9999,
+              ...(isMobile ? {
+                height: '60vh',
+                maxHeight: '500px',
+                minHeight: '300px'
+              } : {})
+            }}
+          >
+            {/* Header - Sticky on mobile */}
+            <div className={`sticky top-0 px-3 sm:px-4 py-2.5 sm:py-3 border-b flex items-center justify-between flex-shrink-0 ${
+              isMobile ? 'bg-opacity-95 backdrop-blur-sm' : ''
+            }`}
+               style={{ borderColor: '#2C2C3A', backgroundColor: '#1B1B2F' }}>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <h3 className="font-semibold text-sm sm:text-base truncate" style={{ color: '#F5F5F5' }}>
+                  {isMobile ? 'Notifications' : `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+                </h3>
+                {isMobile && unreadCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" 
+                        style={{ backgroundColor: '#E53935', color: '#FFFFFF' }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      markAllAsRead();
+                    }}
+                    className="text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 text-blue-400 hover:text-blue-300 active:scale-95 transition-all touch-manipulation rounded"
+                    style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}
+                  >
+                    {isMobile ? 'Mark all' : 'Mark all read'}
+                  </button>
+                )}
+                {isMobile && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsNotificationOpen(false);
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-opacity-20 active:scale-95 transition-all touch-manipulation"
+                    style={{ 
+                      color: '#B0B0B0', 
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      WebkitTapHighlightColor: 'transparent',
+                      touchAction: 'manipulation',
+                      cursor: 'pointer'
+                    }}
+                    aria-label="Close notifications"
+                    type="button"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* Notifications List - Scrollable */}
+            <div className={`flex-1 overflow-y-auto overscroll-contain ${
+              isMobile ? 'pb-4' : 'max-h-80'
+            }`}
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#2C2C3A #1B1B2F'
+            }}>
+              {loadingNotifications ? (
+                <div className="p-6 sm:p-8 text-center" style={{ color: '#B0B0B0' }}>
+                  <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 animate-spin mx-auto mb-2 sm:mb-3" />
+                  <p className="text-xs sm:text-sm">Loading notifications...</p>
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="p-6 sm:p-8 text-center" style={{ color: '#B0B0B0' }}>
+                  <Bell className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 opacity-50" />
+                  <p className="text-xs sm:text-sm">No notifications</p>
+                  <p className="text-[10px] sm:text-xs mt-1 opacity-70">You're all caught up!</p>
+                </div>
+              ) : (
+                <div className="divide-y" style={{ borderColor: '#2C2C3A' }}>
+                  {notifications.map((notification) => {
+                    const getIcon = () => {
+                      switch (notification.type) {
+                        case 'info': return <Info className="w-4 h-4 sm:w-5 sm:h-5" />;
+                        case 'warning': return <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />;
+                        case 'success': return <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />;
+                        case 'error': return <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />;
+                        default: return <Info className="w-4 h-4 sm:w-5 sm:h-5" />;
+                      }
+                    };
+                    
+                    const getColor = () => {
+                      switch (notification.type) {
+                        case 'info': return '#3B82F6';
+                        case 'warning': return '#F59E0B';
+                        case 'success': return '#10B981';
+                        case 'error': return '#EF4444';
+                        default: return '#3B82F6';
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={notification._id}
+                        onClick={() => {
+                          if (!notification.isRead) {
+                            markAsRead(notification._id);
+                          }
+                        }}
+                        className={`p-3 sm:p-4 cursor-pointer transition-colors active:bg-opacity-20 touch-manipulation ${
+                          !notification.isRead ? 'bg-opacity-10' : 'hover:bg-opacity-5'
+                        }`}
+                        style={{
+                          backgroundColor: !notification.isRead 
+                            ? 'rgba(59, 130, 246, 0.1)' 
+                            : 'transparent'
+                        }}
+                      >
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <div className="flex-shrink-0 mt-0.5 sm:mt-1" style={{ color: getColor() }}>
+                            {getIcon()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="font-semibold text-xs sm:text-sm md:text-base break-words" style={{ color: '#F5F5F5' }}>
+                                {notification.title}
+                              </h4>
+                              {!notification.isRead && (
+                                <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0 mt-1 sm:mt-1.5" style={{ backgroundColor: getColor() }} />
+                              )}
+                            </div>
+                            <p className="text-[11px] sm:text-xs md:text-sm mt-1 sm:mt-1.5 break-words leading-relaxed" style={{ color: '#B0B0B0' }}>
+                              {notification.message}
+                            </p>
+                            <p className="text-[10px] sm:text-xs mt-1.5 sm:mt-2 opacity-70" style={{ color: '#B0B0B0' }}>
+                              {new Date(notification.createdAt).toLocaleString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                ...(isMobile ? {} : { year: 'numeric' })
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="relative z-10 flex">
         {/* Desktop Sidebar */}
