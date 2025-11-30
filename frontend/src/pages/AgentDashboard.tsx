@@ -871,9 +871,9 @@ const AgentDashboard: React.FC = () => {
               <span className={sidebarOpen ? 'block' : 'hidden'}>Faqs</span>
             </button>
             <button
-              onClick={() => setActiveSection('notices')}
+              onClick={() => setActiveSection('notifications')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeSection === 'notices' ? 'bg-blue-600' : 'hover:bg-gray-700'
+                activeSection === 'notifications' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
               <Bell className="w-5 h-5" />
