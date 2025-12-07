@@ -1,17 +1,18 @@
 import { Router, Request, Response } from 'express';
 import agentLoginService from '../services/agentLoginService';
+import logger from '../utils/logger';
 
 const router = Router();
 
 // Get Fortune Panda games using agent login service
 router.get('/fortune-panda', async (req: Request, res: Response) => {
   try {
-    console.log('🎮 Fetching Fortune Panda games...');
+    logger.debug('🎮 Fetching Fortune Panda games...');
     
     const gamesResult = await agentLoginService.getGameList();
     
     if (!gamesResult.success) {
-      console.error('❌ Failed to fetch games:', gamesResult.message);
+      logger.error('❌ Failed to fetch games:', gamesResult.message);
       return res.status(500).json({
         success: false,
         message: 'Failed to fetch games',
@@ -19,7 +20,7 @@ router.get('/fortune-panda', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('✅ Games fetched successfully');
+    logger.info('✅ Games fetched successfully');
     return res.json({
       success: true,
       message: 'Games fetched successfully',

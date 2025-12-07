@@ -192,9 +192,16 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         const messages: ChatMessage[] = response.data.data || [];
         buildConversationSummaries(messages);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load chat messages', error);
-      toast.error('Unable to load chat messages.');
+      // Only show error toast if it's not a 401 (unauthorized) or network error
+      // 401 errors are handled by session management, network errors are usually temporary
+      if (error.response?.status !== 401 && error.code !== 'ERR_NETWORK') {
+        toast.error('Unable to load chat messages.', {
+          id: 'chat-load-error', // Use ID to prevent duplicate toasts
+          duration: 3000
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -217,10 +224,31 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         const unreadCount = msgs.filter(
           (msg) => msg.senderType === 'user' && msg.status === 'unread'
         ).length;
+        
+        // Find a valid user message name (not "GAGame" or empty)
+        // Prefer the most recent user message with a valid name
+        let validName = lastMessage?.name;
+        let validEmail = lastMessage?.email;
+        
+        if (!validName || validName.trim() === '' || validName === 'GAGame') {
+          // Look for a user message with a valid name
+          const userMessage = msgs.find(
+            (msg) => 
+              msg.senderType === 'user' && 
+              msg.name && 
+              msg.name.trim() !== '' && 
+              msg.name !== 'GAGame'
+          );
+          if (userMessage) {
+            validName = userMessage.name;
+            validEmail = userMessage.email || validEmail;
+          }
+        }
+        
         return {
           userId,
-          name: lastMessage?.name,
-          email: lastMessage?.email,
+          name: validName || 'User',
+          email: validEmail || '',
           lastMessage,
           unreadCount
         };
@@ -261,10 +289,50 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
           [userId]: sorted
         }));
         markMessagesAsRead(userId, sorted);
+        
+        // Update conversation summary with user info from API response if available
+        // This ensures the header shows the correct name instead of "GAGame"
+        if (response.data.user) {
+          const userInfo = response.data.user;
+          setConversationSummaries((prev) => {
+            const existing = prev.find((c) => c.userId === userId);
+            if (existing) {
+              return prev.map((c) =>
+                c.userId === userId
+                  ? {
+                      ...c,
+                      name: userInfo.name || c.name,
+                      email: userInfo.email || c.email
+                    }
+                  : c
+              );
+            } else {
+              // If summary doesn't exist yet, create it
+              return [
+                ...prev,
+                {
+                  userId,
+                  name: userInfo.name || 'User',
+                  email: userInfo.email || '',
+                  lastMessage: sorted[sorted.length - 1],
+                  unreadCount: sorted.filter(
+                    (msg) => msg.senderType === 'user' && msg.status === 'unread'
+                  ).length
+                }
+              ];
+            }
+          });
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load conversation', error);
-      toast.error('Unable to load conversation.');
+      // Only show error toast if it's not a 401 (unauthorized) or network error
+      if (error.response?.status !== 401 && error.code !== 'ERR_NETWORK') {
+        toast.error('Unable to load conversation.', {
+          id: 'conversation-load-error', // Use ID to prevent duplicate toasts
+          duration: 3000
+        });
+      }
     }
   };
 
@@ -295,18 +363,25 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   };
 
   useEffect(() => {
-    fetchMessages();
+    // Only fetch messages if we have a valid admin token
+    // This prevents errors when the component mounts but admin isn't logged in
+    if (adminToken) {
+      fetchMessages();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, startDate, endDate]);
 
   useEffect(() => {
+    // Only fetch messages if we have a valid admin token
+    if (!adminToken) return;
+    
     const delayDebounce = setTimeout(() => {
       void fetchMessages();
     }, 300);
 
     return () => clearTimeout(delayDebounce);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, adminToken]);
 
   useEffect(() => {
     const socket = io(wsBaseUrl, {

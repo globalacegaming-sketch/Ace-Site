@@ -3,6 +3,7 @@ import Notice, { INotice } from '../models/Notice';
 import Notification from '../models/Notification';
 import User from '../models/User';
 import { getSocketServerInstance } from '../utils/socketManager';
+import { sanitizeString, sanitizeText } from '../utils/sanitize';
 
 const router = Router();
 
@@ -100,9 +101,13 @@ router.post('/', async (req: Request, res: Response) => {
     // Validate priority (1-3)
     const noticePriority = priority ? Math.max(1, Math.min(3, parseInt(priority))) : 1;
 
+    // Sanitize user inputs to prevent XSS attacks
+    const sanitizedTitle = sanitizeString(title);
+    const sanitizedMessage = sanitizeText(message);
+    
     const notice = new Notice({
-      title,
-      message,
+      title: sanitizedTitle,
+      message: sanitizedMessage,
       type: type || 'info',
       isActive: isActive !== undefined ? isActive : true,
       priority: noticePriority,
@@ -177,8 +182,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    if (title) notice.title = title;
-    if (message) notice.message = message;
+    if (title) notice.title = sanitizeString(title);
+    if (message) notice.message = sanitizeText(message);
     if (type) notice.type = type;
     if (isActive !== undefined) notice.isActive = isActive;
     if (priority !== undefined) notice.priority = Math.max(1, Math.min(3, parseInt(priority)));

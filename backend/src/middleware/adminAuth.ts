@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { validateAdminSession } from '../services/adminSessionService';
+import logger from '../utils/logger';
 
 declare global {
   namespace Express {
@@ -17,7 +18,7 @@ export const requireAdminAuth = (req: Request, res: Response, next: NextFunction
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('❌ Admin auth failed: No Bearer token in header');
+    logger.warn('❌ Admin auth failed: No Bearer token in header');
     res.status(401).json({
       success: false,
       message: 'Access denied. No admin token provided.'
@@ -26,12 +27,12 @@ export const requireAdminAuth = (req: Request, res: Response, next: NextFunction
   }
 
   const token = authHeader.substring(7);
-  console.log('🔍 Validating admin token:', token.substring(0, 10) + '...');
+  logger.debug('🔍 Validating admin token:', token.substring(0, 10) + '...');
   
   const session = validateAdminSession(token);
 
   if (!session) {
-    console.log('❌ Admin auth failed: Invalid or expired session');
+    logger.warn('❌ Admin auth failed: Invalid or expired session');
     res.status(401).json({
       success: false,
       message: 'Invalid or expired admin session. Please login again.'
@@ -39,7 +40,7 @@ export const requireAdminAuth = (req: Request, res: Response, next: NextFunction
     return;
   }
 
-  console.log('✅ Admin auth successful:', { agentName: session.agentName });
+  logger.debug('✅ Admin auth successful:', { agentName: session.agentName });
   req.adminSession = session;
   next();
 };

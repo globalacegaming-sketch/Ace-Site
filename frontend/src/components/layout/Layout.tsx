@@ -308,7 +308,7 @@ const Layout = ({ children }: LayoutProps) => {
       </div>
 
       {/* Full Width Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-sm border-b px-3 sm:px-4 py-2 sm:py-1.5 w-full" 
+      <header className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-sm border-b px-3 sm:px-4 py-2 sm:py-1.5 w-full" 
               style={{ 
                 backgroundColor: 'rgba(27, 27, 47, 0.95)', 
                 borderBottomColor: '#2C2C3A' 
@@ -352,7 +352,7 @@ const Layout = ({ children }: LayoutProps) => {
             
             {/* Notification Bell - Optimized for mobile */}
             {isAuthenticated && (
-              <div className="relative" ref={notificationRef} style={{ zIndex: 100 }}>
+              <div className="relative" ref={notificationRef} style={{ zIndex: 100, position: 'relative' }}>
                 <button 
                   onClick={(e) => {
                     e.preventDefault();
@@ -444,7 +444,7 @@ const Layout = ({ children }: LayoutProps) => {
             )}
             
             {isAuthenticated ? (
-              <div className="flex items-center space-x-1 sm:space-x-2 relative" ref={userMenuRef}>
+              <div className="flex items-center space-x-1 sm:space-x-2 relative" ref={userMenuRef} style={{ zIndex: 100, position: 'relative' }}>
                 <button 
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-transform duration-300 hover:scale-110 text-sm sm:text-lg border-2"
@@ -477,7 +477,7 @@ const Layout = ({ children }: LayoutProps) => {
                 
                 {/* Simplified User Dropdown Menu */}
                 {isUserMenuOpen && (
-                  <div className="absolute right-0 top-8 sm:top-10 w-40 sm:w-48 rounded-md shadow-lg border z-50" 
+                  <div className="absolute right-0 top-8 sm:top-10 w-40 sm:w-48 rounded-md shadow-lg border z-[100]" 
                        style={{ 
                          backgroundColor: '#1B1B2F', 
                          borderColor: '#2C2C3A',
@@ -826,7 +826,8 @@ const Layout = ({ children }: LayoutProps) => {
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 bg-opacity-95 backdrop-blur-sm border-t border-gray-700 shadow-2xl">
+        <div className="fixed bottom-0 left-0 right-0 z-[90] bg-gray-900 bg-opacity-95 backdrop-blur-sm border-t border-gray-700 shadow-2xl"
+             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           <div className="flex items-center justify-around py-1.5 sm:py-2">
             {mobileNavItems.map((item) => {
               const isActive = location.pathname === item.href;

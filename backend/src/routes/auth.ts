@@ -5,6 +5,9 @@ import { generateTokens, verifyRefreshToken } from '../utils/jwt';
 import { authenticate } from '../middleware/auth';
 import fortunePandaService from '../services/fortunePandaService';
 import emailService from '../services/emailService';
+import { authLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
+import logger from '../utils/logger';
+import { sendSuccess, sendError } from '../utils/response';
 
 const router = Router();
 
@@ -13,8 +16,8 @@ router.get('/test', (req, res) => {
   res.json({ message: 'Auth routes working!' });
 });
 
-// Register new user
-router.post('/register', async (req: Request, res: Response) => {
+// Register new user - apply registration rate limiter
+router.post('/register', registerLimiter, async (req: Request, res: Response) => {
   try {
     const { 
       firstName, 
@@ -28,27 +31,18 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Validate required fields
     if (!firstName || !lastName || !username || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'First name, last name, username, email, and password are required'
-      });
+      return sendError(res, 'First name, last name, username, email, and password are required', 400);
     }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please enter a valid email address'
-      });
+      return sendError(res, 'Please enter a valid email address', 400);
     }
 
     // Validate password strength
     if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters long'
-      });
+      return sendError(res, 'Password must be at least 6 characters long', 400);
     }
 
     // Check if user already exists
@@ -57,10 +51,7 @@ router.post('/register', async (req: Request, res: Response) => {
     });
 
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: existingUser.email === email ? 'Email already registered' : 'Username already taken'
-      });
+      return sendError(res, existingUser.email === email ? 'Email already registered' : 'Username already taken', 409);
     }
 
     // Handle referral code if provided
@@ -70,10 +61,7 @@ router.post('/register', async (req: Request, res: Response) => {
       if (referrer) {
         referredBy = (referrer._id as any).toString();
       } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid referral code'
-        });
+        return sendError(res, 'Invalid referral code', 400);
       }
     }
 
@@ -87,12 +75,6 @@ router.post('/register', async (req: Request, res: Response) => {
       return result;
     };
 
-    let userReferralCode = generateReferralCode();
-    // Ensure referral code is unique
-    while (await User.findOne({ referralCode: userReferralCode })) {
-      userReferralCode = generateReferralCode();
-    }
-
     // Generate Fortune Panda credentials using {firstName}_Aces9F format
     const fortunePandaUsername = `${firstName}_Aces9F`;
     const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
@@ -101,120 +83,137 @@ router.post('/register', async (req: Request, res: Response) => {
     const emailVerificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Create new user
-    const user = new User({
-      firstName,
-      lastName,
-      username,
-      email,
-      phone: phoneNumber,
-      password,
-      referralCode: userReferralCode,
-      referredBy,
-      fortunePandaUsername,
-      fortunePandaPassword,
-      emailVerificationToken: emailVerificationCode,
-      emailVerificationExpires,
-      isEmailVerified: false
-    });
+    // Create new user with retry logic for referral code uniqueness
+    // This handles race conditions where multiple users might generate the same code
+    let user: any = null;
+    let userReferralCode = generateReferralCode();
+    const MAX_RETRIES = 10; // Prevent infinite loops
+    let retries = 0;
 
-    await user.save();
+    while (!user && retries < MAX_RETRIES) {
+      try {
+        const newUser = new User({
+          firstName,
+          lastName,
+          username,
+          email,
+          phone: phoneNumber,
+          password,
+          referralCode: userReferralCode,
+          referredBy,
+          fortunePandaUsername,
+          fortunePandaPassword,
+          emailVerificationToken: emailVerificationCode,
+          emailVerificationExpires,
+          isEmailVerified: false
+        });
 
-    // Send verification email with code
-    try {
-      await emailService.sendVerificationCodeEmail(email, emailVerificationCode, firstName);
-    } catch (error) {
-      console.warn('Failed to send verification email:', error);
-      // Continue with registration even if email fails
+        await newUser.save();
+        user = newUser;
+      } catch (error: any) {
+        // Check if it's a duplicate key error for referralCode
+        const isDuplicateReferralCode = 
+          (error.name === 'MongoError' || error.name === 'MongoServerError') && 
+          error.code === 11000 && 
+          error.keyPattern?.referralCode;
+
+        if (isDuplicateReferralCode && retries < MAX_RETRIES - 1) {
+          // Generate a new referral code and retry
+          retries++;
+          userReferralCode = generateReferralCode();
+          continue;
+        } else if (isDuplicateReferralCode) {
+          // Max retries reached, return error
+          return sendError(res, 'Failed to generate unique referral code. Please try again.', 500);
+        } else {
+          // Some other error occurred, throw it
+          throw error;
+        }
+      }
     }
 
-    // Create Fortune Panda account
-    try {
-      const fortunePandaResult = await fortunePandaService.createFortunePandaUser(fortunePandaUsername, fortunePandaPassword);
-      
-      if (!fortunePandaResult.success) {
-        console.warn('Failed to create Fortune Panda account:', fortunePandaResult.message);
+    if (!user) {
+      return sendError(res, 'Failed to create user account. Please try again.', 500);
+    }
+
+    // Generate tokens immediately (don't wait for async operations)
+    const tokens = generateTokens(user);
+
+    // Send verification email with code (fire and forget - don't block response)
+    emailService.sendVerificationCodeEmail(email, emailVerificationCode, firstName).catch((error) => {
+      logger.warn('Failed to send verification email:', error);
+      // Continue with registration even if email fails
+    });
+
+    // Create Fortune Panda account (fire and forget - don't block response)
+    // Use setTimeout to make it truly async and non-blocking
+    setTimeout(async () => {
+      try {
+        const fortunePandaResult = await fortunePandaService.createFortunePandaUser(fortunePandaUsername, fortunePandaPassword);
+        
+        if (!fortunePandaResult.success) {
+        logger.warn('Failed to create Fortune Panda account:', fortunePandaResult.message);
         // Continue with registration even if Fortune Panda account creation fails
       }
     } catch (error) {
-      console.warn('Error creating Fortune Panda account:', error);
-      // Continue with registration even if Fortune Panda account creation fails
-    }
-
-    // Generate tokens
-    const tokens = generateTokens(user);
-
-    return res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          phone: user.phone,
-          role: user.role,
-          isEmailVerified: user.isEmailVerified,
-          referralCode: user.referralCode,
-          createdAt: user.createdAt
-        },
-        fortunePanda: {
-          username: fortunePandaUsername,
-          password: fortunePandaPassword
-        },
-        ...tokens
+      logger.warn('Error creating Fortune Panda account:', error);
+        // Continue with registration even if Fortune Panda account creation fails
       }
-    });
+    }, 0);
+
+    // Return response immediately without waiting for Fortune Panda
+    return sendSuccess(res, 'User registered successfully', {
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        referralCode: user.referralCode,
+        createdAt: user.createdAt
+      },
+      fortunePanda: {
+        username: fortunePandaUsername,
+        password: fortunePandaPassword
+      },
+      ...tokens
+    }, 201);
   } catch (error) {
-    console.error('Registration error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error during registration'
-    });
+    logger.error('Registration error:', error);
+    return sendError(res, 'Internal server error during registration', 500);
   }
 });
 
-// Login user
-router.post('/login', async (req: Request, res: Response) => {
+// Login user - apply authentication rate limiter
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
     // Validate required fields
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and password are required'
-      });
+      return sendError(res, 'Email and password are required', 400);
     }
 
     // Find user by email and include password for comparison
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      return sendError(res, 'Invalid email or password', 401);
     }
 
     // Check if account is active
     if (!user.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is deactivated. Please contact support.'
-      });
+      return sendError(res, 'Account is deactivated. Please contact support.', 401);
     }
 
     // Compare password
     const isPasswordValid = await user.comparePassword(password);
 
     if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      return sendError(res, 'Invalid email or password', 401);
     }
 
     // Update last login
@@ -223,29 +222,22 @@ router.post('/login', async (req: Request, res: Response) => {
     // Generate tokens
     const tokens = generateTokens(user);
 
-    return res.json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role,
-          isEmailVerified: user.isEmailVerified,
-          lastLogin: user.lastLogin
-        },
-        ...tokens
-      }
+    return sendSuccess(res, 'Login successful', {
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        lastLogin: user.lastLogin
+      },
+      ...tokens
     });
   } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error during login'
-    });
+    logger.error('Login error:', error);
+    return sendError(res, 'Internal server error during login', 500);
   }
 });
 
@@ -255,10 +247,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'Refresh token is required'
-      });
+      return sendError(res, 'Refresh token is required', 400);
     }
 
     // Verify refresh token
@@ -268,62 +257,49 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const user = await User.findById(decoded.userId);
 
     if (!user || !user.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid refresh token'
-      });
+      return sendError(res, 'Invalid refresh token', 401);
     }
 
     // Generate new tokens
     const tokens = generateTokens(user);
 
-    return res.json({
-      success: true,
-      message: 'Tokens refreshed successfully',
-      data: tokens
-    });
+    return sendSuccess(res, 'Tokens refreshed successfully', tokens);
   } catch (error) {
-    console.error('Token refresh error:', error);
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired refresh token'
-    });
+    logger.error('Token refresh error:', error);
+    return sendError(res, 'Invalid or expired refresh token', 401);
   }
 });
 
 // Get current user profile
 router.get('/me', authenticate, async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+    const user = req.user;
 
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          phone: user.phone,
-          dateOfBirth: user.dateOfBirth,
-          country: user.country,
-          currency: user.currency,
-          role: user.role,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-          lastLogin: user.lastLogin,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt
-        }
+    return sendSuccess(res, 'Profile retrieved successfully', {
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        dateOfBirth: user.dateOfBirth,
+        country: user.country,
+        currency: user.currency,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        isPhoneVerified: user.isPhoneVerified,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
       }
     });
   } catch (error) {
-    console.error('Get profile error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get profile error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -333,21 +309,15 @@ router.post('/logout', authenticate, async (req: Request, res: Response) => {
     // In a more sophisticated setup, you might want to blacklist the token
     // For now, we'll just return success and let the client handle token removal
     
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
+    return sendSuccess(res, 'Logged out successfully');
   } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Logout error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
-// Forgot password - Request password reset
-router.post('/forgot-password', async (req: Request, res: Response) => {
+// Forgot password - Request password reset - apply password reset rate limiter
+router.post('/forgot-password', passwordResetLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
 
@@ -362,10 +332,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
     // Don't reveal if email exists or not (security best practice)
     if (!user) {
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a password reset link has been sent.'
-      });
+      return sendSuccess(res, 'If an account with that email exists, a password reset link has been sent.');
     }
 
     // Generate reset token
@@ -379,47 +346,32 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     // Send reset email
     try {
       await emailService.sendPasswordResetEmail(user.email, resetToken, user.firstName);
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a password reset link has been sent.'
-      });
+      return sendSuccess(res, 'If an account with that email exists, a password reset link has been sent.');
     } catch (error) {
       // Clear reset token if email fails
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
 
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send reset email. Please try again later.'
-      });
+      return sendError(res, 'Failed to send reset email. Please try again later.', 500);
     }
   } catch (error) {
-    console.error('Forgot password error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Forgot password error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
-// Reset password
-router.post('/reset-password', async (req: Request, res: Response) => {
+// Reset password - apply password reset rate limiter
+router.post('/reset-password', passwordResetLimiter, async (req: Request, res: Response) => {
   try {
     const { token, password } = req.body;
 
     if (!token || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Token and password are required'
-      });
+      return sendError(res, 'Token and password are required', 400);
     }
 
     if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters long'
-      });
+      return sendError(res, 'Password must be at least 6 characters long', 400);
     }
 
     // Find user with valid reset token
@@ -429,10 +381,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     }).select('+passwordResetToken +passwordResetExpires');
 
     if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired reset token'
-      });
+      return sendError(res, 'Invalid or expired reset token', 400);
     }
 
     // Update password and clear reset token
@@ -441,16 +390,10 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     user.passwordResetExpires = undefined;
     await user.save();
 
-    return res.json({
-      success: true,
-      message: 'Password reset successfully. You can now login with your new password.'
-    });
+    return sendSuccess(res, 'Password reset successfully. You can now login with your new password.');
   } catch (error) {
-    console.error('Reset password error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Reset password error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -460,10 +403,7 @@ router.post('/verify-email', async (req: Request, res: Response) => {
     const { code, email } = req.body;
 
     if (!code || !email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Verification code and email are required'
-      });
+      return sendError(res, 'Verification code and email are required', 400);
     }
 
     // Find user with valid verification code
@@ -474,10 +414,7 @@ router.post('/verify-email', async (req: Request, res: Response) => {
     }).select('+emailVerificationToken +emailVerificationExpires');
 
     if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired verification code'
-      });
+      return sendError(res, 'Invalid or expired verification code', 400);
     }
 
     // Verify email and clear token
@@ -486,31 +423,24 @@ router.post('/verify-email', async (req: Request, res: Response) => {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    return res.json({
-      success: true,
-      message: 'Email verified successfully'
-    });
+    return sendSuccess(res, 'Email verified successfully');
   } catch (error) {
-    console.error('Verify email error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Verify email error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
 // Resend verification code
 router.post('/resend-verification', authenticate, async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+    const user = req.user;
 
     // For authenticated users, we can reveal their own verification status
     if (user.isEmailVerified) {
-      return res.json({
-        success: true,
-        message: 'Your email is already verified.',
-        isEmailVerified: true
-      });
+      return sendSuccess(res, 'Your email is already verified.', { isEmailVerified: true });
     }
 
     // Generate new 6-digit verification code
@@ -524,28 +454,18 @@ router.post('/resend-verification', authenticate, async (req: Request, res: Resp
     // Send verification code email
     try {
       await emailService.sendVerificationCodeEmail(user.email, emailVerificationCode, user.firstName);
-      return res.json({
-        success: true,
-        message: 'Verification code sent successfully',
-        isEmailVerified: false
-      });
+      return sendSuccess(res, 'Verification code sent successfully', { isEmailVerified: false });
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send verification code. Please try again later.'
-      });
+      return sendError(res, 'Failed to send verification code. Please try again later.', 500);
     }
   } catch (error) {
-    console.error('Resend verification error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Resend verification error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
-// Resend verification code by email (for unauthenticated users)
-router.post('/resend-verification-code', async (req: Request, res: Response) => {
+// Resend verification code by email (for unauthenticated users) - apply password reset rate limiter
+router.post('/resend-verification-code', passwordResetLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
 
@@ -560,10 +480,7 @@ router.post('/resend-verification-code', async (req: Request, res: Response) => 
 
     if (!user) {
       // Don't reveal if email exists
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a verification code has been sent.'
-      });
+      return sendSuccess(res, 'If an account with that email exists, a verification code has been sent.');
     }
 
     // Don't reveal if email is already verified - return generic success message
@@ -582,25 +499,16 @@ router.post('/resend-verification-code', async (req: Request, res: Response) => 
         await emailService.sendVerificationCodeEmail(user.email, emailVerificationCode, user.firstName);
       } catch (error) {
         // Don't reveal email sending failure - return generic success
-        return res.json({
-          success: true,
-          message: 'If an account with that email exists and is not verified, a verification code has been sent.'
-        });
+        return sendSuccess(res, 'If an account with that email exists and is not verified, a verification code has been sent.');
       }
     }
 
     // Return generic success message regardless of verification status
     // This prevents revealing whether email exists or is verified
-    return res.json({
-      success: true,
-      message: 'If an account with that email exists and is not verified, a verification code has been sent.'
-    });
+    return sendSuccess(res, 'If an account with that email exists and is not verified, a verification code has been sent.');
   } catch (error) {
-    console.error('Resend verification code error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Resend verification code error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 

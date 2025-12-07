@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import fortunePandaService from '../services/fortunePandaService';
 import { authenticate } from '../middleware/auth';
+import logger from '../utils/logger';
+import User from '../models/User';
 
 const router = Router();
 
@@ -22,7 +24,7 @@ router.get('/games', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('❌ Get games error:', error);
+    logger.error('❌ Get games error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -36,7 +38,13 @@ router.use(authenticate);
 // Test endpoint to check authentication
 router.get('/test-auth', async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    const user = req.user;
     res.json({
       success: true,
       message: 'Authentication working',
@@ -49,7 +57,7 @@ router.get('/test-auth', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Test auth error:', error);
+    logger.error('Test auth error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -60,7 +68,13 @@ router.get('/test-auth', async (req: Request, res: Response) => {
 // Get user's Fortune Panda account info
 router.get('/account', async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    const user = req.user;
     
     // Use stored FortunePanda username if available, otherwise construct it
     const fortunePandaUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
@@ -88,7 +102,7 @@ router.get('/account', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('Get account info error:', error);
+    logger.error('Get account info error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -99,7 +113,13 @@ router.get('/account', async (req: Request, res: Response) => {
 // Enter game
 router.post('/games/enter', async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    const user = req.user;
     const { kindId } = req.body;
     
     if (!kindId) {
@@ -109,10 +129,37 @@ router.post('/games/enter', async (req: Request, res: Response) => {
       });
     }
 
+    // Validate kindId format: must be a non-empty string, alphanumeric with hyphens/underscores
+    if (typeof kindId !== 'string' || kindId.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) must be a non-empty string'
+      });
+    }
+
+    const trimmedKindId = kindId.trim();
+    
+    // Validate length (1-50 characters)
+    if (trimmedKindId.length < 1 || trimmedKindId.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) must be between 1 and 50 characters'
+      });
+    }
+
+    // Validate format: alphanumeric, hyphens, underscores only (prevents injection)
+    const kindIdRegex = /^[a-zA-Z0-9_-]+$/;
+    if (!kindIdRegex.test(trimmedKindId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) can only contain letters, numbers, hyphens, and underscores'
+      });
+    }
+
     // Use stored FortunePanda username if available, otherwise construct it
     const fortunePandaUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
-    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, kindId);
+    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
     
     if (result.success) {
       return res.json({
@@ -127,7 +174,7 @@ router.post('/games/enter', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('Enter game error:', error);
+    logger.error('Enter game error:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -138,41 +185,62 @@ router.post('/games/enter', async (req: Request, res: Response) => {
 // Get user balance
 router.get('/balance', async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    const user = req.user;
     
     // Process balance request
     
     // Check if user has Fortune Panda credentials
     if (!user.fortunePandaPassword) {
       // User missing Fortune Panda password, creating account
-      
-      // Try to create Fortune Panda account for existing user
-          const fortunePandaUsername = `${user.firstName}_Aces9F`;
-          const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
+      // Check if account was already created by another concurrent request (race condition prevention)
+      const currentUser = await User.findById(user._id).select('fortunePandaUsername fortunePandaPassword');
+      if (currentUser?.fortunePandaPassword) {
+        // Password was set by another request, refresh user and continue
+        user.fortunePandaPassword = currentUser.fortunePandaPassword;
+        user.fortunePandaUsername = currentUser.fortunePandaUsername || `${user.firstName}_Aces9F`;
+      } else {
+        // Try to create Fortune Panda account for existing user
+        const fortunePandaUsername = `${user.firstName}_Aces9F`;
+        const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
 
-          try {
-            const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, fortunePandaPassword);
-        
-        if (createResult.success) {
-          // Update user with Fortune Panda credentials
-          user.fortunePandaUsername = fortunePandaUsername;
-          user.fortunePandaPassword = fortunePandaPassword;
-          await user.save();
-          
-          // Fortune Panda account created successfully
-        } else {
-          console.log('❌ Failed to create Fortune Panda account:', createResult.message);
+        try {
+          const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, fortunePandaPassword);
+      
+          if (createResult.success) {
+            // Double-check before updating to prevent race condition
+            const userBeforeUpdate = await User.findById(user._id).select('fortunePandaPassword');
+            if (userBeforeUpdate?.fortunePandaPassword) {
+              // Another request already created the account, use existing credentials
+              user.fortunePandaPassword = userBeforeUpdate.fortunePandaPassword;
+              user.fortunePandaUsername = userBeforeUpdate.fortunePandaUsername || fortunePandaUsername;
+            } else {
+              // Update user with Fortune Panda credentials
+              user.fortunePandaUsername = fortunePandaUsername;
+              user.fortunePandaPassword = fortunePandaPassword;
+              await user.save();
+            }
+            
+            // Fortune Panda account created successfully
+          } else {
+            logger.warn('❌ Failed to create Fortune Panda account:', createResult.message);
+            return res.status(400).json({
+              success: false,
+              message: 'Failed to create Fortune Panda account. Please contact support.'
+            });
+          }
+        } catch (error) {
+          logger.error('❌ Error creating Fortune Panda account:', error);
           return res.status(400).json({
             success: false,
             message: 'Failed to create Fortune Panda account. Please contact support.'
           });
         }
-      } catch (error) {
-        console.error('❌ Error creating Fortune Panda account:', error);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to create Fortune Panda account. Please contact support.'
-        });
       }
     }
     
@@ -195,23 +263,60 @@ router.get('/balance', async (req: Request, res: Response) => {
       });
     } else if (result.message?.includes('account does not exist')) {
       // Account doesn't exist, try to create it
-      console.log('🔄 Fortune Panda account does not exist, attempting to create new account...');
+      // Check if account was already created by another concurrent request (race condition prevention)
+      const currentUser = await User.findById(user._id).select('fortunePandaUsername fortunePandaPassword');
+      if (currentUser?.fortunePandaUsername && currentUser.fortunePandaUsername !== fortunePandaUsername) {
+        // Account was created by another request, retry query with the stored username
+        const retryResult = await fortunePandaService.queryUserInfo(currentUser.fortunePandaUsername, passwdMd5);
+        if (retryResult.success) {
+          return res.json({
+            success: true,
+            message: 'Balance retrieved successfully',
+            data: {
+              balance: retryResult.data?.userbalance || '0.00',
+              agentBalance: retryResult.data?.agentBalance || '0.00',
+              fortunePandaUsername: currentUser.fortunePandaUsername
+            }
+          });
+        }
+      }
+      
+      logger.info('🔄 Fortune Panda account does not exist, attempting to create new account...');
       
       try {
         const createResult = await fortunePandaService.createFortunePandaUser(user.firstName, user.fortunePandaPassword || '');
         
         if (createResult.success) {
+          // Double-check before updating to prevent race condition
+          const userBeforeUpdate = await User.findById(user._id).select('fortunePandaUsername');
+          if (userBeforeUpdate?.fortunePandaUsername) {
+            // Another request already created the account, use existing username
+            const existingUsername = userBeforeUpdate.fortunePandaUsername;
+            const retryResult = await fortunePandaService.queryUserInfo(existingUsername, passwdMd5);
+            if (retryResult.success) {
+              return res.json({
+                success: true,
+                message: 'Balance retrieved successfully',
+                data: {
+                  balance: retryResult.data?.userbalance || '0.00',
+                  agentBalance: retryResult.data?.agentBalance || '0.00',
+                  fortunePandaUsername: existingUsername
+                }
+              });
+            }
+          }
+          
           // Update user with new Fortune Panda credentials
           user.fortunePandaUsername = fortunePandaUsername;
           await user.save();
           
-          console.log('✅ Fortune Panda account created successfully, retrying balance query...');
+          logger.info('✅ Fortune Panda account created successfully, retrying balance query...');
           
           // Retry balance query (service will append _GAGame automatically)
           const retryResult = await fortunePandaService.queryUserInfo(fortunePandaUsername, passwdMd5);
           
           if (retryResult.success) {
-            console.log('✅ Balance retrieved successfully after account creation:', retryResult.data);
+            logger.info('✅ Balance retrieved successfully after account creation');
             return res.json({
               success: true,
               message: 'Balance retrieved successfully',
@@ -222,68 +327,47 @@ router.get('/balance', async (req: Request, res: Response) => {
               }
             });
           } else {
-            console.log('❌ Balance retrieval failed after account creation:', retryResult.message);
+            logger.warn('❌ Balance retrieval failed after account creation:', retryResult.message);
             return res.status(400).json({
               success: false,
-              message: retryResult.message,
-              debug: {
-                fortunePandaUsername,
-                accountCreated: true
-              }
+              message: 'Failed to retrieve balance. Please try again or contact support.'
             });
           }
         } else if (createResult.message?.includes('already exists')) {
           // Account exists but password might be wrong, or account was created with different credentials
-          console.error('❌ Account already exists in FortunePanda but query failed. Possible password mismatch.');
+          logger.error('❌ Account already exists in FortunePanda but query failed. Possible password mismatch.');
+          // Don't reveal password mismatch details to user - generic error message
           return res.status(400).json({
             success: false,
-            message: 'FortunePanda account exists but authentication failed. The account password may not match. Please contact support to reset your FortunePanda account password.',
-            debug: {
-              fortunePandaUsername: `${fortunePandaUsername}_GAGame`,
-              accountExists: true,
-              passwordMismatch: true
-            }
+            message: 'Unable to access FortunePanda account. Please contact support for assistance.'
           });
         } else {
-          console.log('❌ Failed to create Fortune Panda account:', createResult.message);
+          logger.warn('❌ Failed to create Fortune Panda account:', createResult.message);
           return res.status(400).json({
             success: false,
-            message: 'Failed to create Fortune Panda account: ' + createResult.message,
-            debug: {
-              fortunePandaUsername,
-              createError: createResult.message
-            }
+            message: 'Failed to create Fortune Panda account. Please contact support.'
           });
         }
       } catch (error) {
-        console.error('❌ Error creating Fortune Panda account:', error);
+        logger.error('❌ Error creating Fortune Panda account:', error);
         return res.status(400).json({
           success: false,
-          message: 'Failed to create Fortune Panda account',
-          debug: {
-            fortunePandaUsername,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }
+          message: 'Failed to create Fortune Panda account. Please contact support.'
         });
       }
     } else {
-      console.log('❌ Balance retrieval failed:', result.message);
+      logger.warn('❌ Balance retrieval failed:', result.message);
       return res.status(400).json({
         success: false,
-        message: result.message || 'Failed to retrieve balance. Please try again.',
-        error: result.message,
-        debug: {
-          fortunePandaUsername,
-          hasPassword: !!user.fortunePandaPassword
-        }
+        message: 'Failed to retrieve balance. Please try again or contact support.'
       });
     }
-  } catch (error: any) {
-    console.error('❌ Get balance error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Get balance error:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error. Please try again.',
-      error: error.message
+      message: errorMessage || 'Internal server error. Please try again.'
     });
   }
 });
@@ -291,10 +375,16 @@ router.get('/balance', async (req: Request, res: Response) => {
 // Enter game
 router.post('/enter-game', async (req: Request, res: Response) => {
   try {
-    const user = req.user!;
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    const user = req.user;
     const { kindId } = req.body;
     
-    console.log('🎮 Game entry request:', {
+    logger.debug('🎮 Game entry request:', {
       userId: user._id,
       username: user.username,
       firstName: user.firstName,
@@ -304,7 +394,7 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     
     // Check if user has Fortune Panda credentials
     if (!user.fortunePandaPassword) {
-      console.error('❌ Fortune Panda password not found for user:', user._id);
+      logger.error('❌ Fortune Panda password not found for user:', user._id);
       return res.status(400).json({
         success: false,
         message: 'Fortune Panda account not found. Please contact support.'
@@ -312,10 +402,37 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     }
     
     if (!kindId) {
-      console.error('❌ kindId missing in request');
+      logger.error('❌ kindId missing in request');
       return res.status(400).json({
         success: false,
         message: 'Game ID (kindId) is required'
+      });
+    }
+
+    // Validate kindId format: must be a non-empty string, alphanumeric with hyphens/underscores
+    if (typeof kindId !== 'string' || kindId.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) must be a non-empty string'
+      });
+    }
+
+    const trimmedKindId = kindId.trim();
+    
+    // Validate length (1-50 characters)
+    if (trimmedKindId.length < 1 || trimmedKindId.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) must be between 1 and 50 characters'
+      });
+    }
+
+    // Validate format: alphanumeric, hyphens, underscores only (prevents injection)
+    const kindIdRegex = /^[a-zA-Z0-9_-]+$/;
+    if (!kindIdRegex.test(trimmedKindId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) can only contain letters, numbers, hyphens, and underscores'
       });
     }
 
@@ -323,17 +440,17 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     const fortunePandaUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
     
-    console.log('🎮 Calling Fortune Panda enterGame API:', {
+    logger.debug('🎮 Calling Fortune Panda enterGame API:', {
       dbUsername: user.fortunePandaUsername,
       constructedUsername: `${user.firstName}_Aces9F`,
       usingUsername: fortunePandaUsername,
-      kindId: kindId
+      kindId: trimmedKindId
     });
     
     // Service will append _GAGame automatically
-    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, kindId);
+    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
     
-    console.log('🎮 Fortune Panda enterGame result:', {
+    logger.debug('🎮 Fortune Panda enterGame result:', {
       success: result.success,
       message: result.message,
       hasData: !!result.data,
@@ -342,7 +459,7 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     
     if (result.success) {
       if (!result.data?.webLoginUrl) {
-        console.warn('⚠️ Game entry successful but no webLoginUrl in response:', result.data);
+        logger.warn('⚠️ Game entry successful but no webLoginUrl in response');
       }
       return res.json({
         success: true,
@@ -350,17 +467,18 @@ router.post('/enter-game', async (req: Request, res: Response) => {
         data: result.data
       });
     } else {
-      console.error('❌ Fortune Panda enterGame failed:', result.message);
+      logger.error('❌ Fortune Panda enterGame failed:', result.message);
       return res.status(400).json({
         success: false,
         message: result.message || 'Failed to enter game. Please try again.'
       });
     }
-  } catch (error: any) {
-    console.error('❌ Enter game error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Enter game error:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error. Please try again or contact support.'
+      message: errorMessage || 'Internal server error. Please try again or contact support.'
     });
   }
 });

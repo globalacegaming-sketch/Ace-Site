@@ -170,8 +170,30 @@ const UserSchema = new Schema<IUser>({
   }
 });
 
-// Index for better query performance (email and username already indexed by unique: true)
+// Indexes for better query performance
+// email and username already indexed by unique: true
+// referralCode already indexed by unique: true (sparse)
+
+// Index for sorting by creation date
 UserSchema.index({ createdAt: -1 });
+
+// Index for referral lookups
+UserSchema.index({ referredBy: 1 });
+
+// Index for Fortune Panda username lookups
+UserSchema.index({ fortunePandaUsername: 1 }, { sparse: true });
+
+// Index for active user filtering
+UserSchema.index({ isActive: 1 });
+
+// Compound index for common queries: active users sorted by creation
+UserSchema.index({ isActive: 1, createdAt: -1 });
+
+// Compound index for email verification lookups
+UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+
+// Compound index for password reset lookups
+UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 
 // Hash password before saving
 UserSchema.pre('save', async function(next) {

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import User from '../models/User';
 import { authenticate } from '../middleware/auth';
+import logger from '../utils/logger';
+import { sendSuccess, sendError } from '../utils/response';
 
 const router = Router();
 
@@ -14,34 +16,28 @@ router.get('/profile', authenticate, async (req: Request, res: Response) => {
   try {
     const user = req.user!;
 
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          phone: user.phone,
-          dateOfBirth: user.dateOfBirth,
-          country: user.country,
-          currency: user.currency,
-          role: user.role,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-          lastLogin: user.lastLogin,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt
-        }
+    return sendSuccess(res, 'Profile retrieved successfully', {
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        dateOfBirth: user.dateOfBirth,
+        country: user.country,
+        currency: user.currency,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        isPhoneVerified: user.isPhoneVerified,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
       }
     });
   } catch (error) {
-    console.error('Get profile error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get profile error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -59,10 +55,7 @@ router.put('/profile', authenticate, async (req: Request, res: Response) => {
       // Check if username is already taken by another user
       const existingUser = await User.findOne({ username, _id: { $ne: userId } });
       if (existingUser) {
-        return res.status(409).json({
-          success: false,
-          message: 'Username already taken'
-        });
+        return sendError(res, 'Username already taken', 409);
       }
       updateData.username = username;
     }
@@ -78,42 +71,32 @@ router.put('/profile', authenticate, async (req: Request, res: Response) => {
     );
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
-    return res.json({
-      success: true,
-      message: 'Profile updated successfully',
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          phone: user.phone,
-          avatar: user.avatar,
-          dateOfBirth: user.dateOfBirth,
-          country: user.country,
-          currency: user.currency,
-          role: user.role,
-          isEmailVerified: user.isEmailVerified,
-          isPhoneVerified: user.isPhoneVerified,
-          lastLogin: user.lastLogin,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt
-        }
+    return sendSuccess(res, 'Profile updated successfully', {
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
+        dateOfBirth: user.dateOfBirth,
+        country: user.country,
+        currency: user.currency,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        isPhoneVerified: user.isPhoneVerified,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
       }
     });
   } catch (error) {
-    console.error('Update profile error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Update profile error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -124,10 +107,7 @@ router.put('/avatar', authenticate, async (req: Request, res: Response) => {
     const { avatar } = req.body;
 
     if (!avatar) {
-      return res.status(400).json({
-        success: false,
-        message: 'Avatar is required'
-      });
+      return sendError(res, 'Avatar is required', 400);
     }
 
     const user = await User.findByIdAndUpdate(
@@ -137,37 +117,27 @@ router.put('/avatar', authenticate, async (req: Request, res: Response) => {
     );
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
-    return res.json({
-      success: true,
-      message: 'Avatar updated successfully',
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          phone: user.phone,
-          avatar: user.avatar,
-          role: user.role,
-          isEmailVerified: user.isEmailVerified,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt
-        }
+    return sendSuccess(res, 'Avatar updated successfully', {
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
       }
     });
   } catch (error) {
-    console.error('Update avatar error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Update avatar error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -178,53 +148,35 @@ router.put('/password', authenticate, async (req: Request, res: Response) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current password and new password are required'
-      });
+      return sendError(res, 'Current password and new password are required', 400);
     }
 
     if (newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 6 characters long'
-      });
+      return sendError(res, 'New password must be at least 6 characters long', 400);
     }
 
     // Get user with password
     const user = await User.findById(userId).select('+password');
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     // Verify current password
     const isCurrentPasswordValid = await user.comparePassword(currentPassword);
 
     if (!isCurrentPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Current password is incorrect'
-      });
+      return sendError(res, 'Current password is incorrect', 401);
     }
 
     // Update password
     user.password = newPassword;
     await user.save();
 
-    return res.json({
-      success: true,
-      message: 'Password changed successfully'
-    });
+    return sendSuccess(res, 'Password changed successfully');
   } catch (error) {
-    console.error('Change password error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Change password error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 

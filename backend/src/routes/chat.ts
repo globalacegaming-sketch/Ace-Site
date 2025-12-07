@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth';
 import ChatMessage, { IChatMessage } from '../models/ChatMessage';
 import { getSocketServerInstance } from '../utils/socketManager';
 import { chatAttachmentUpload, getChatAttachmentUrl } from '../config/chatUploads';
+import { sanitizeText } from '../utils/sanitize';
 
 const router = Router();
 
@@ -25,18 +26,49 @@ router.get('/messages', async (req: Request, res: Response) => {
     const pageNumber = Number(page) || 1;
     const limitNumber = Math.min(Number(limit) || 25, 1000); // Allow up to 1000 messages
 
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    
     const [messages, total] = await Promise.all([
-      ChatMessage.find({ userId: req.user!._id })
+      ChatMessage.find({ userId: req.user._id })
         .sort({ createdAt: -1 })
         .skip((pageNumber - 1) * limitNumber)
         .limit(limitNumber)
         .lean(),
-      ChatMessage.countDocuments({ userId: req.user!._id })
+      ChatMessage.countDocuments({ userId: req.user._id })
     ]);
+
+    // Fix names for user messages that might have incorrect names (e.g., "GAGame")
+    // This ensures existing messages with wrong names are corrected when fetched
+    const fixedMessages = messages.map((msg: any) => {
+      // If it's a user message and the name is "GAGame" or empty, fix it
+      if (msg.senderType === 'user' && (!msg.name || msg.name.trim() === '' || msg.name === 'GAGame')) {
+        // Fetch user data to get correct name
+        // Since we already have req.user, use it for the current user's messages
+        if (msg.userId.toString() === req.user._id.toString()) {
+          let correctedName: string;
+          if (req.user.firstName || req.user.lastName) {
+            correctedName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+          } else if (req.user.username) {
+            correctedName = req.user.username;
+          } else if (req.user.email) {
+            correctedName = req.user.email.split('@')[0];
+          } else {
+            correctedName = 'User';
+          }
+          msg.name = correctedName;
+        }
+      }
+      return msg;
+    });
 
     res.json({
       success: true,
-      data: messages,
+      data: fixedMessages,
       pagination: {
         total,
         page: pageNumber,
@@ -58,6 +90,14 @@ router.post(
   chatAttachmentUpload.single('attachment'),
   async (req: Request, res: Response) => {
     try {
+      // Authentication check must be first before any use of req.user
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not authenticated'
+        });
+      }
+
       const { message } = req.body;
       const attachment = req.file;
 
@@ -68,31 +108,52 @@ router.post(
         });
       }
 
-      const name =
-        req.user?.firstName || req.user?.lastName
-          ? `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim()
-          : req.user?.username;
-
       // Security: Users can only send 'user' type messages, never 'system' or 'admin'
       // This prevents users from spoofing system messages like bonus claims
+      // Sanitize message input to prevent XSS attacks
+      const sanitizedMessage = message ? sanitizeText(message) : undefined;
+      
+      // Construct name with proper fallbacks to ensure we always have a valid name
+      let name: string;
+      if (req.user.firstName || req.user.lastName) {
+        // Use first and last name if available
+        name = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+      } else if (req.user.username) {
+        // Fallback to username
+        name = req.user.username;
+      } else if (req.user.email) {
+        // Fallback to email (extract part before @)
+        name = req.user.email.split('@')[0];
+      } else {
+        // Last resort: use "User" as fallback
+        name = 'User';
+      }
+      
+      // Ensure name is not empty and doesn't contain "GAGame" (which is reserved for admin)
+      if (!name || name.trim() === '' || name === 'GAGame') {
+        name = req.user.email ? req.user.email.split('@')[0] : 'User';
+      }
+      
       const chatMessage = await ChatMessage.create({
-        userId: req.user!._id,
+        userId: req.user._id,
         senderType: 'user', // Always 'user' for user-sent messages
-        message,
+        message: sanitizedMessage,
         attachmentUrl: attachment ? getChatAttachmentUrl(attachment.filename) : undefined,
         attachmentName: attachment?.originalname,
         attachmentType: attachment?.mimetype,
         attachmentSize: attachment?.size,
         status: 'unread',
         name,
-        email: req.user?.email
+        email: req.user.email
       });
 
       const io = getSocketServerInstance();
       const payload = serializeMessage(chatMessage);
 
       io.to('admins').emit('chat:message:new', payload);
-      io.to(`user:${req.user!._id}`).emit('chat:message:new', payload);
+      if (req.user) {
+        io.to(`user:${req.user._id}`).emit('chat:message:new', payload);
+      }
 
       res.status(201).json({
         success: true,

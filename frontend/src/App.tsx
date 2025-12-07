@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
+import { useEffect } from 'react';
 import { useAuthStore } from './stores/authStore';
 import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
@@ -31,9 +32,14 @@ import Chat from './pages/Chat';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, checkSession, logout } = useAuthStore();
   
-  if (!isAuthenticated) {
+  // Check if user is authenticated and session is valid
+  if (!isAuthenticated || !checkSession()) {
+    if (isAuthenticated) {
+      // Session expired, logout and redirect
+      logout();
+    }
     return <Navigate to="/login" replace />;
   }
   
@@ -66,19 +72,121 @@ const HomeRoute = () => {
 //   return <>{children}</>;
 // };
 
+// Session Manager Component - handles session timeout and activity tracking
+const SessionManager = () => {
+  const { isAuthenticated, checkSession, logout, updateActivity, lastActivityTime } = useAuthStore();
+
+  // Immediate check on mount - runs once when component mounts
+  // This handles the case where user opens site after being inactive
+  useEffect(() => {
+    // Use a small timeout to ensure store is fully hydrated from localStorage
+    const checkInitialSession = setTimeout(() => {
+      const state = useAuthStore.getState();
+      if (state.isAuthenticated) {
+        if (!state.checkSession()) {
+          // Session expired
+          state.logout();
+          toast.error('Your session has expired due to inactivity. Please login again.');
+        } else {
+          // Session is valid, update activity time (user just opened the site)
+          state.updateActivity();
+        }
+      }
+    }, 100); // Small delay to ensure localStorage hydration is complete
+
+    return () => clearTimeout(checkInitialSession);
+  }, []); // Run only once on mount
+
+  // Separate effect for initializing activity time (only runs when authentication state changes)
+  useEffect(() => {
+    if (isAuthenticated && !lastActivityTime) {
+      // Use getState() to get the latest updateActivity function
+      useAuthStore.getState().updateActivity();
+    }
+  }, [isAuthenticated, lastActivityTime]); // Depend on isAuthenticated and lastActivityTime to detect when activity needs initialization
+
+  // Main effect for session management and activity tracking
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return; // Don't set up listeners if not authenticated
+    }
+
+    // Check session on mount (additional check after hydration)
+    // Use getState() to get the latest checkSession function
+    const state = useAuthStore.getState();
+    if (!state.checkSession()) {
+      state.logout();
+      // Show toast notification
+      toast.error('Your session has expired due to inactivity. Please login again.');
+      return;
+    }
+
+    // Set up activity tracking
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    const handleActivity = () => {
+      // Use getState() to always get the latest functions and state
+      const currentState = useAuthStore.getState();
+      if (currentState.isAuthenticated) {
+        currentState.updateActivity();
+      }
+    };
+
+    // Add event listeners for activity tracking
+    activityEvents.forEach(event => {
+      document.addEventListener(event, handleActivity, { passive: true });
+    });
+
+    // Set up periodic session check (every minute)
+    const sessionCheckInterval = setInterval(() => {
+      // Use getState() to always get the latest functions and state
+      const currentState = useAuthStore.getState();
+      if (currentState.isAuthenticated && !currentState.checkSession()) {
+        currentState.logout();
+        toast.error('Your session has expired due to inactivity. Please login again.');
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      // Cleanup event listeners
+      activityEvents.forEach(event => {
+        document.removeEventListener(event, handleActivity);
+      });
+      clearInterval(sessionCheckInterval);
+    };
+  }, [isAuthenticated]); // Only depend on isAuthenticated - use getState() for functions to avoid re-creating intervals
+
+  return null;
+};
+
 function App() {
   return (
     <MusicProvider>
       <ClickSoundProvider>
         <Router>
           <div className="App">
+          <SessionManager />
           <Toaster 
             position="top-right"
+            containerStyle={{
+              top: 20,
+              right: 20,
+              // Ensure toasts don't block important UI elements on mobile
+              zIndex: 9999,
+              maxHeight: 'calc(100vh - 120px)', // Prevent toasts from stacking too high (account for header)
+            }}
+            gutter={8}
+            containerClassName="!z-[9999] md:!top-5 md:!right-5 !top-16 !right-2"
+            limit={3}
             toastOptions={{
-              duration: 4000,
+              duration: 3000, // Reduced from 4000 to prevent blocking
               style: {
                 background: '#363636',
                 color: '#fff',
+                maxWidth: 'calc(100vw - 40px)', // Prevent toasts from being too wide on mobile
+                margin: '0 auto',
+                fontSize: '14px',
+                padding: '12px 16px',
+                wordBreak: 'break-word', // Prevent text overflow on mobile
               },
               success: {
                 duration: 3000,
@@ -88,7 +196,7 @@ function App() {
                 },
               },
               error: {
-                duration: 5000,
+                duration: 3000, // Shorter duration for errors to prevent blocking UI
                 iconTheme: {
                   primary: '#ef4444',
                   secondary: '#fff',

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import FAQ, { IFAQ } from '../models/FAQ';
+import { sanitizeString, sanitizeText } from '../utils/sanitize';
 
 const router = Router();
 
@@ -86,10 +87,15 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
+    // Sanitize user inputs to prevent XSS attacks
+    const sanitizedQuestion = sanitizeString(question);
+    const sanitizedAnswer = sanitizeText(answer);
+    const sanitizedCategory = sanitizeString(category || 'general');
+    
     const faq = new FAQ({
-      question,
-      answer,
-      category: category || 'general',
+      question: sanitizedQuestion,
+      answer: sanitizedAnswer,
+      category: sanitizedCategory,
       order: order || 0,
       isActive: isActive !== undefined ? isActive : true
     });
@@ -125,9 +131,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    if (question) faq.question = question;
-    if (answer) faq.answer = answer;
-    if (category) faq.category = category;
+    if (question) faq.question = sanitizeString(question);
+    if (answer) faq.answer = sanitizeText(answer);
+    if (category) faq.category = sanitizeString(category);
     if (order !== undefined) faq.order = order;
     if (isActive !== undefined) faq.isActive = isActive;
 

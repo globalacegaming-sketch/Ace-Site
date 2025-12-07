@@ -6,6 +6,8 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { createAdminSession } from '../services/adminSessionService';
 import { requireAdminAuth } from '../middleware/adminAuth';
+import logger from '../utils/logger';
+import { sendSuccess, sendError } from '../utils/response';
 
 const router = Router();
 
@@ -16,13 +18,10 @@ router.post('/login', async (req: Request, res: Response) => {
   try {
     const { agentName, agentPassword } = req.body;
 
-    console.log('🔐 Admin login attempt:', { agentName, hasPassword: !!agentPassword });
+    logger.debug('🔐 Admin login attempt:', { agentName, hasPassword: !!agentPassword });
 
     if (!agentName || !agentPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'agentName and agentPassword are required'
-      });
+      return sendError(res, 'agentName and agentPassword are required', 400);
     }
 
     // Verify credentials against environment variables
@@ -36,69 +35,60 @@ router.post('/login', async (req: Request, res: Response) => {
                             process.env.FORTUNE_AGENT_PASS || 
                             '123456';
 
-    console.log('🔍 Checking credentials:', { 
+    logger.debug('🔍 Checking credentials:', { 
       providedName: agentName, 
       envName: envAgentName,
       nameMatch: agentName === envAgentName 
     });
 
     if (agentName !== envAgentName) {
-      console.log('❌ Agent name mismatch');
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid agent name'
-      });
+      logger.warn('❌ Agent name mismatch');
+      return sendError(res, 'Invalid agent name', 401);
     }
 
     // Compare password (MD5 hash)
     const providedPasswordMd5 = crypto.createHash('md5').update(agentPassword).digest('hex');
     const envPasswordMd5 = crypto.createHash('md5').update(envAgentPassword).digest('hex');
 
-    console.log('🔍 Password check:', { 
-      providedHash: providedPasswordMd5.substring(0, 8) + '...',
-      envHash: envPasswordMd5.substring(0, 8) + '...',
-      passwordMatch: providedPasswordMd5 === envPasswordMd5 
-    });
-
+    // Don't log password hashes - security best practice
     if (providedPasswordMd5 !== envPasswordMd5) {
-      console.log('❌ Password mismatch');
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid agent password'
-      });
+      // Log failed attempt without password details
+      logger.warn('❌ Admin login failed: Invalid credentials');
+      return sendError(res, 'Invalid agent password', 401);
     }
 
-    console.log('✅ Credentials verified successfully');
+    logger.info('✅ Credentials verified successfully');
 
     // Perform agent login to FortunePanda API to establish session
     // This ensures agentKey is cached and ready for all admin operations
     let agentBalance = '0.00';
     try {
-      console.log('🔐 Performing agent login to FortunePanda API...');
+      logger.debug('🔐 Performing agent login to FortunePanda API...');
       const loginResult = await agentLoginService.loginAgent();
       if (!loginResult.success) {
-        console.warn('⚠️ FortunePanda agent login failed:', loginResult.message);
+        logger.warn('⚠️ FortunePanda agent login failed:', loginResult.message);
         // Still allow admin login, but operations may fail
-        console.warn('⚠️ Admin login allowed, but FortunePanda operations may not work until agent login succeeds');
+        logger.warn('⚠️ Admin login allowed, but FortunePanda operations may not work until agent login succeeds');
       } else {
-        console.log('✅ FortunePanda agent login successful - agentKey cached and ready');
-        console.log('✅ Agent session established for admin operations');
+        logger.info('✅ FortunePanda agent login successful - agentKey cached and ready');
+        logger.info('✅ Agent session established for admin operations');
         // Capture agent balance from login response
         agentBalance = loginResult.data?.balance || loginResult.data?.Balance || '0.00';
-        console.log('💰 Agent balance from login:', agentBalance);
+        logger.debug('💰 Agent balance from login:', agentBalance);
       }
     } catch (error) {
       // If login fails, still allow admin access (credentials are correct)
       // This handles cases where API might be temporarily unavailable
-      console.warn('⚠️ FortunePanda agent login error, but allowing admin login:', error instanceof Error ? error.message : 'Unknown error');
-      console.warn('⚠️ Admin can still access panel, but FortunePanda operations may fail until agent login succeeds');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️ FortunePanda agent login error, but allowing admin login:', errorMessage);
+      logger.warn('⚠️ Admin can still access panel, but FortunePanda operations may fail until agent login succeeds');
     }
 
     // Create a simple session token (in production, use JWT)
     const sessionToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
-    console.log('✅ Admin login successful, creating session token');
+    logger.info('✅ Admin login successful, creating session token');
 
     // Store session (in production, use Redis or database)
     createAdminSession({
@@ -108,22 +98,16 @@ router.post('/login', async (req: Request, res: Response) => {
     });
 
     // Return session information to client
-    res.json({
-      success: true,
-      message: 'Admin login successful',
-      data: {
-        token: sessionToken,
-        expiresAt,
-        agentName,
-        agentBalance
-      }
+    return sendSuccess(res, 'Admin login successful', {
+      token: sessionToken,
+      expiresAt,
+      agentName,
+      agentBalance
     });
-  } catch (error) {
-    console.error('Admin login error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('Admin login error:', errorMessage);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -142,37 +126,24 @@ router.get('/agent-balance', async (req: Request, res: Response) => {
     }).select('fortunePandaUsername fortunePandaPassword');
 
     if (!user || !user.fortunePandaUsername || !user.fortunePandaPassword) {
-      return res.status(404).json({
-        success: false,
-        message: 'No FortunePanda user found to query agent balance'
-      });
+      return sendError(res, 'No FortunePanda user found to query agent balance', 404);
     }
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
     const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
 
     if (result.success) {
-      return res.json({
-        success: true,
-        message: 'Agent balance retrieved successfully',
-        data: {
-          agentBalance: result.data?.agentBalance || '0.00',
-          userBalance: result.data?.userbalance || '0.00',
-          account: user.fortunePandaUsername
-        }
+      return sendSuccess(res, 'Agent balance retrieved successfully', {
+        agentBalance: result.data?.agentBalance || '0.00',
+        userBalance: result.data?.userbalance || '0.00',
+        account: user.fortunePandaUsername
       });
     } else {
-      return res.status(400).json({
-        success: false,
-        message: result.message || 'Failed to get agent balance'
-      });
+      return sendError(res, result.message || 'Failed to get agent balance', 400);
     }
   } catch (error) {
-    console.error('Get agent balance error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get agent balance error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -183,10 +154,7 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
@@ -198,7 +166,7 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
 
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
     
-    console.log('🔍 Querying user info from FortunePanda:', {
+    logger.debug('🔍 Querying user info from FortunePanda:', {
       account: user.fortunePandaUsername,
       accountLength: user.fortunePandaUsername?.length,
       hasPassword: !!user.fortunePandaPassword,
@@ -207,7 +175,7 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
     
     const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
 
-    console.log('📥 FortunePanda queryUserInfo result:', {
+    logger.debug('📥 FortunePanda queryUserInfo result:', {
       success: result.success,
       message: result.message,
       hasData: !!result.data,
@@ -238,7 +206,7 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
     } else {
       // Check if it's an account not found error
       const errorMsg = result.message || 'Failed to get user info';
-      console.error('❌ Failed to get user info:', {
+      logger.error('❌ Failed to get user info:', {
         account: user.fortunePandaUsername,
         error: errorMsg,
         code: result.data?.code
@@ -255,11 +223,8 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
       });
     }
   } catch (error) {
-    console.error('Get user FortunePanda info error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get user FortunePanda info error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -271,7 +236,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
       fortunePandaUsername: { $exists: true, $ne: null }
     }).select('fortunePandaUsername fortunePandaPassword _id firstName username');
 
-    console.log(`🔄 Starting sync for ${users.length} users from FortunePanda...`);
+    logger.info(`🔄 Starting sync for ${users.length} users from FortunePanda...`);
 
     const results = [];
     const errors = [];
@@ -279,14 +244,14 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
     for (const user of users) {
       try {
         if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
-          console.log(`⏭️ Skipping user ${user._id} - missing FP credentials`);
+          logger.debug(`⏭️ Skipping user ${user._id} - missing FP credentials`);
           continue;
         }
 
         // Use FP account name as stored in database
         const fpAccountName = user.fortunePandaUsername || 'N/A';
         
-        console.log(`🔍 Syncing user ${user.username || user._id}:`, {
+        logger.debug(`🔍 Syncing user ${user.username || user._id}:`, {
           dbUsername: user.fortunePandaUsername,
           fpAccountName,
           userId: user._id
@@ -307,7 +272,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
             }
           );
 
-          console.log(`✅ Successfully synced ${user.username || user._id}:`, {
+          logger.info(`✅ Successfully synced ${user.username || user._id}:`, {
             fpAccount: fpAccountName,
             balance: result.data?.userbalance || '0.00'
           });
@@ -322,7 +287,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
             gameId: result.data?.gameId
           });
         } else {
-          console.error(`❌ Failed to sync ${user.username || user._id}:`, {
+          logger.error(`❌ Failed to sync ${user.username || user._id}:`, {
             dbAccount: user.fortunePandaUsername,
             fpAccount: fpAccountName,
             error: result.message
@@ -336,15 +301,16 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
             error: result.message || 'Account not found in FortunePanda'
           });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         const fpAccountName = user.fortunePandaUsername 
           ? user.fortunePandaUsername
           : 'N/A';
         
-        console.error(`❌ Error syncing user ${user.username || user._id}:`, {
+        logger.error(`❌ Error syncing user ${user.username || user._id}:`, {
           dbAccount: user.fortunePandaUsername,
           fpAccount: fpAccountName,
-          error: error.message
+          error: errorMessage
         });
 
         errors.push({
@@ -352,12 +318,12 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
           username: user.username,
           dbAccount: user.fortunePandaUsername,
           fpAccount: fpAccountName,
-          error: error.message || 'Failed to sync'
+          error: errorMessage || 'Failed to sync'
         });
       }
     }
 
-    console.log(`✅ Sync completed: ${results.length} successful, ${errors.length} failed out of ${users.length} total`);
+    logger.info(`✅ Sync completed: ${results.length} successful, ${errors.length} failed out of ${users.length} total`);
 
     return res.json({
       success: true,
@@ -371,11 +337,8 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
       }
     });
   } catch (error) {
-    console.error('❌ Sync users from FortunePanda error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('❌ Sync users from FortunePanda error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -394,11 +357,8 @@ router.get('/users', async (req: Request, res: Response) => {
       count: users.length
     });
   } catch (error) {
-    console.error('Get users error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get users error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -411,10 +371,7 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
       .lean();
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     return res.json({
@@ -423,11 +380,8 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
       data: user
     });
   } catch (error) {
-    console.error('Get user error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get user error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -436,33 +390,54 @@ router.post('/deposit', async (req: Request, res: Response) => {
   try {
     const { userId, amount } = req.body;
 
-    console.log('💰 Deposit request received:', { userId, amount, userIdType: typeof userId });
+    logger.debug('💰 Deposit request received:', { userId, amount, userIdType: typeof userId });
 
-    if (!userId || !amount) {
-      console.error('❌ Missing required fields:', { hasUserId: !!userId, hasAmount: !!amount });
+    if (!userId || amount === undefined || amount === null) {
+      logger.error('❌ Missing required fields:', { hasUserId: !!userId, hasAmount: amount !== undefined && amount !== null });
       return res.status(400).json({
         success: false,
         message: 'userId and amount are required'
       });
     }
 
+    // Validate amount: must be a valid positive number
+    const amountNum = typeof amount === 'string' ? parseFloat(amount) : Number(amount);
+    
+    if (isNaN(amountNum) || !isFinite(amountNum)) {
+      return sendError(res, 'Amount must be a valid number', 400);
+    }
+
+    if (amountNum <= 0) {
+      return sendError(res, 'Amount must be a positive number greater than zero', 400);
+    }
+
+    // Prevent extremely large amounts (max 1 billion to prevent overflow)
+    const MAX_AMOUNT = 1000000000;
+    if (amountNum > MAX_AMOUNT) {
+      return sendError(res, `Amount cannot exceed ${MAX_AMOUNT.toLocaleString()}`, 400);
+    }
+
+    // Round to 2 decimal places for currency
+    const validatedAmount = Math.round(amountNum * 100) / 100;
+
     // Try to find user by ID
     let user;
     try {
       user = await User.findById(userId);
     } catch (error: any) {
-      console.error('❌ Error finding user by ID:', error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('❌ Error finding user by ID:', errorMessage);
       return res.status(400).json({
         success: false,
-        message: `Invalid userId format: ${error.message}`
+        message: `Invalid userId format: ${errorMessage}`
       });
     }
 
     if (!user) {
-      console.error('❌ User not found in database:', userId);
+      logger.error('❌ User not found in database:', userId);
       // Check if any user exists with this ID format
       const allUsers = await User.find({}).select('_id username').limit(5);
-      console.log('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
+      logger.debug('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
       return res.status(404).json({
         success: false,
         message: `User not found with ID: ${userId}`,
@@ -474,7 +449,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('👤 User found:', {
+    logger.debug('👤 User found:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
@@ -484,7 +459,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
     });
 
     if (!user.fortunePandaUsername) {
-      console.error('❌ User missing FortunePanda username:', {
+      logger.error('❌ User missing FortunePanda username:', {
         userId: user._id.toString(),
         username: user.username
       });
@@ -502,19 +477,19 @@ router.post('/deposit', async (req: Request, res: Response) => {
     // Use FP account name as stored in database
     const fpAccountName = user.fortunePandaUsername || 'N/A';
     
-    console.log('🔐 Calling FortunePanda recharge:', {
+    logger.debug('🔐 Calling FortunePanda recharge:', {
       dbAccount: user.fortunePandaUsername,
       fpAccount: fpAccountName,
-      amount: amount.toString()
+      amount: validatedAmount.toString()
     });
 
     // Call recharge API directly (no password needed, uses agent authentication via sign)
     const result = await fortunePandaService.agentDeposit(
       user.fortunePandaUsername, // Use account name directly as stored
-      amount.toString()
+      validatedAmount.toString()
     );
 
-    console.log('📥 FortunePanda agentDeposit result:', {
+    logger.debug('📥 FortunePanda agentDeposit result:', {
       success: result.success,
       message: result.message,
       hasData: !!result.data
@@ -526,7 +501,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
         user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
         user.fortunePandaLastSync = new Date();
         await user.save();
-        console.log('✅ User balance updated in database:', user.fortunePandaBalance);
+        logger.info('✅ User balance updated in database:', user.fortunePandaBalance);
       }
 
       return res.json({
@@ -539,22 +514,22 @@ router.post('/deposit', async (req: Request, res: Response) => {
         }
       });
     } else {
-      console.error('❌ Deposit failed from FortunePanda:', result.message);
+      logger.error('❌ Deposit failed from FortunePanda:', result.message);
       return res.status(400).json({
         success: false,
         message: result.message || 'Deposit failed',
         debug: {
           account: user.fortunePandaUsername,
-          amount: amount.toString()
+          amount: validatedAmount.toString()
         }
       });
     }
-  } catch (error: any) {
-    console.error('❌ Deposit error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Deposit error:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
-      error: error.message
+      message: errorMessage
     });
   }
 });
@@ -564,33 +539,54 @@ router.post('/redeem', async (req: Request, res: Response) => {
   try {
     const { userId, amount } = req.body;
 
-    console.log('💸 Redeem request received:', { userId, amount, userIdType: typeof userId });
+    logger.debug('💸 Redeem request received:', { userId, amount, userIdType: typeof userId });
 
-    if (!userId || !amount) {
-      console.error('❌ Missing required fields:', { hasUserId: !!userId, hasAmount: !!amount });
+    if (!userId || amount === undefined || amount === null) {
+      logger.error('❌ Missing required fields:', { hasUserId: !!userId, hasAmount: amount !== undefined && amount !== null });
       return res.status(400).json({
         success: false,
         message: 'userId and amount are required'
       });
     }
 
+    // Validate amount: must be a valid positive number
+    const amountNum = typeof amount === 'string' ? parseFloat(amount) : Number(amount);
+    
+    if (isNaN(amountNum) || !isFinite(amountNum)) {
+      return sendError(res, 'Amount must be a valid number', 400);
+    }
+
+    if (amountNum <= 0) {
+      return sendError(res, 'Amount must be a positive number greater than zero', 400);
+    }
+
+    // Prevent extremely large amounts (max 1 billion to prevent overflow)
+    const MAX_AMOUNT = 1000000000;
+    if (amountNum > MAX_AMOUNT) {
+      return sendError(res, `Amount cannot exceed ${MAX_AMOUNT.toLocaleString()}`, 400);
+    }
+
+    // Round to 2 decimal places for currency
+    const validatedAmount = Math.round(amountNum * 100) / 100;
+
     // Try to find user by ID
     let user;
     try {
       user = await User.findById(userId);
     } catch (error: any) {
-      console.error('❌ Error finding user by ID:', error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('❌ Error finding user by ID:', errorMessage);
       return res.status(400).json({
         success: false,
-        message: `Invalid userId format: ${error.message}`
+        message: `Invalid userId format: ${errorMessage}`
       });
     }
 
     if (!user) {
-      console.error('❌ User not found in database:', userId);
+      logger.error('❌ User not found in database:', userId);
       // Check if any user exists with this ID format
       const allUsers = await User.find({}).select('_id username').limit(5);
-      console.log('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
+      logger.debug('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
       return res.status(404).json({
         success: false,
         message: `User not found with ID: ${userId}`,
@@ -602,7 +598,7 @@ router.post('/redeem', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('👤 User found:', {
+    logger.debug('👤 User found:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
@@ -612,7 +608,7 @@ router.post('/redeem', async (req: Request, res: Response) => {
     });
 
     if (!user.fortunePandaUsername) {
-      console.error('❌ User missing FortunePanda username:', {
+      logger.error('❌ User missing FortunePanda username:', {
         userId: user._id.toString(),
         username: user.username
       });
@@ -630,19 +626,19 @@ router.post('/redeem', async (req: Request, res: Response) => {
     // Use FP account name as stored in database
     const fpAccountName = user.fortunePandaUsername || 'N/A';
     
-    console.log('🔐 Calling FortunePanda redeem:', {
+    logger.debug('🔐 Calling FortunePanda redeem:', {
       dbAccount: user.fortunePandaUsername,
       fpAccount: fpAccountName,
-      amount: amount.toString()
+      amount: validatedAmount.toString()
     });
 
     // Call redeem API directly (no password needed, uses agent authentication via sign)
     const result = await fortunePandaService.agentRedeem(
       user.fortunePandaUsername, // Use account name directly as stored
-      amount.toString()
+      validatedAmount.toString()
     );
 
-    console.log('📥 FortunePanda agentRedeem result:', {
+    logger.debug('📥 FortunePanda agentRedeem result:', {
       success: result.success,
       message: result.message,
       hasData: !!result.data
@@ -654,7 +650,7 @@ router.post('/redeem', async (req: Request, res: Response) => {
         user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
         user.fortunePandaLastSync = new Date();
         await user.save();
-        console.log('✅ User balance updated in database:', user.fortunePandaBalance);
+        logger.info('✅ User balance updated in database:', user.fortunePandaBalance);
       }
 
       return res.json({
@@ -667,22 +663,22 @@ router.post('/redeem', async (req: Request, res: Response) => {
         }
       });
     } else {
-      console.error('❌ Redeem failed from FortunePanda:', result.message);
+      logger.error('❌ Redeem failed from FortunePanda:', result.message);
       return res.status(400).json({
         success: false,
         message: result.message || 'Redeem failed',
         debug: {
           account: user.fortunePandaUsername,
-          amount: amount.toString()
+          amount: validatedAmount.toString()
         }
       });
     }
-  } catch (error: any) {
-    console.error('❌ Redeem error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Redeem error:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
-      error: error.message
+      message: errorMessage
     });
   }
 });
@@ -701,10 +697,7 @@ router.get('/trades', async (req: Request, res: Response) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
@@ -735,11 +728,8 @@ router.get('/trades', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('Get trade records error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get trade records error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -757,10 +747,7 @@ router.get('/jackpots', async (req: Request, res: Response) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
@@ -791,11 +778,8 @@ router.get('/jackpots', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('Get JP records error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get JP records error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -813,10 +797,7 @@ router.get('/game-records', async (req: Request, res: Response) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
@@ -826,13 +807,45 @@ router.get('/game-records', async (req: Request, res: Response) => {
       });
     }
 
+    // Validate kindId if provided (optional parameter)
+    let validatedKindId: string | undefined = undefined;
+    if (kindId) {
+      if (typeof kindId !== 'string' || kindId.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Game ID (kindId) must be a non-empty string if provided'
+        });
+      }
+
+      const trimmedKindId = kindId.trim();
+      
+      // Validate length (1-50 characters)
+      if (trimmedKindId.length < 1 || trimmedKindId.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: 'Game ID (kindId) must be between 1 and 50 characters'
+        });
+      }
+
+      // Validate format: alphanumeric, hyphens, underscores only (prevents injection)
+      const kindIdRegex = /^[a-zA-Z0-9_-]+$/;
+      if (!kindIdRegex.test(trimmedKindId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Game ID (kindId) can only contain letters, numbers, hyphens, and underscores'
+        });
+      }
+
+      validatedKindId = trimmedKindId;
+    }
+
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
     const result = await fortunePandaService.getGameRecord(
       user.fortunePandaUsername,
       passwdMd5,
       fromDate as string,
       toDate as string,
-      kindId as string | undefined
+      validatedKindId
     );
 
     if (result.success) {
@@ -848,11 +861,8 @@ router.get('/game-records', async (req: Request, res: Response) => {
       });
     }
   } catch (error) {
-    console.error('Get game records error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    logger.error('Get game records error:', error);
+    return sendError(res, 'Internal server error', 500);
   }
 });
 
@@ -864,10 +874,7 @@ router.put('/users/:userId/verify-email', async (req: Request, res: Response) =>
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     user.isEmailVerified = true;
@@ -875,7 +882,7 @@ router.put('/users/:userId/verify-email', async (req: Request, res: Response) =>
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    console.log('✅ Email manually verified by admin:', {
+    logger.info('✅ Email manually verified by admin:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
@@ -892,12 +899,12 @@ router.put('/users/:userId/verify-email', async (req: Request, res: Response) =>
         isEmailVerified: user.isEmailVerified
       }
     });
-  } catch (error: any) {
-    console.error('❌ Error verifying user email:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Error verifying user email:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
-      error: error.message
+      message: errorMessage
     });
   }
 });
@@ -919,10 +926,7 @@ router.put('/users/:userId/reset-password', async (req: Request, res: Response) 
     const user = await User.findById(userId).select('+password');
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     // Store old password hash for comparison (for debugging)
@@ -935,7 +939,7 @@ router.put('/users/:userId/reset-password', async (req: Request, res: Response) 
     
     // Verify password is marked as modified
     if (!user.isModified('password')) {
-      console.warn('⚠️ Password field not detected as modified, forcing modification');
+      logger.warn('⚠️ Password field not detected as modified, forcing modification');
       user.markModified('password');
     }
     
@@ -951,7 +955,7 @@ router.put('/users/:userId/reset-password', async (req: Request, res: Response) 
     const updatedUser = await User.findById(userId).select('+password');
     const newPasswordHash = updatedUser?.password;
     
-    console.log('✅ Password reset by admin:', {
+    logger.info('✅ Password reset by admin:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
@@ -960,7 +964,7 @@ router.put('/users/:userId/reset-password', async (req: Request, res: Response) 
       passwordIsHashed: newPasswordHash && newPasswordHash !== newPassword && newPasswordHash.length > 50
     });
 
-    console.log('✅ Password reset by admin:', {
+    logger.info('✅ Password reset by admin:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
@@ -976,12 +980,12 @@ router.put('/users/:userId/reset-password', async (req: Request, res: Response) 
         email: user.email
       }
     });
-  } catch (error: any) {
-    console.error('❌ Error resetting user password:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Error resetting user password:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
-      error: error.message
+      message: errorMessage
     });
   }
 });
@@ -1002,10 +1006,7 @@ router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Re
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return sendError(res, 'User not found', 404);
     }
 
     if (!user.fortunePandaUsername) {
@@ -1019,7 +1020,7 @@ router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Re
     user.fortunePandaPassword = password;
     await user.save();
 
-    console.log('✅ FortunePanda password updated for user:', {
+    logger.info('✅ FortunePanda password updated for user:', {
       userId: user._id.toString(),
       username: user.username,
       fpUsername: user.fortunePandaUsername
@@ -1034,12 +1035,12 @@ router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Re
         fortunePandaUsername: user.fortunePandaUsername
       }
     });
-  } catch (error: any) {
-    console.error('❌ Error updating FortunePanda password:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Error updating FortunePanda password:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
-      error: error.message
+      message: errorMessage
     });
   }
 });

@@ -5,6 +5,7 @@ import User from '../models/User';
 import { requireAdminAuth } from '../middleware/adminAuth';
 import { chatAttachmentUpload, getChatAttachmentUrl } from '../config/chatUploads';
 import { getSocketServerInstance } from '../utils/socketManager';
+import { sanitizeText } from '../utils/sanitize';
 
 const router = Router();
 
@@ -46,6 +47,43 @@ const buildSearchFilter = (search?: string) => {
       { message: regex }
     ]
   };
+};
+
+// Helper function to fix user message names (corrects "GAGame" or empty names)
+const fixUserMessageName = async (msg: any): Promise<void> => {
+  if (msg.senderType === 'user' && (!msg.name || msg.name.trim() === '' || msg.name === 'GAGame')) {
+    let user: any = null;
+    
+    // Check if userId is populated (object) or needs to be fetched
+    if (msg.userId && typeof msg.userId === 'object' && msg.userId._id) {
+      // User data is already populated
+      user = msg.userId;
+      // Convert userId to string for consistency
+      msg.userId = msg.userId._id.toString();
+    } else if (msg.userId) {
+      // userId is a string, need to fetch user data
+      const userIdStr = typeof msg.userId === 'string' ? msg.userId : msg.userId.toString();
+      user = await User.findById(userIdStr).select('firstName lastName username email').lean();
+    }
+    
+    // Fix the name if we have user data
+    if (user) {
+      let correctedName: string;
+      if (user.firstName || user.lastName) {
+        correctedName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      } else if (user.username) {
+        correctedName = user.username;
+      } else if (user.email) {
+        correctedName = user.email.split('@')[0];
+      } else {
+        correctedName = 'User';
+      }
+      msg.name = correctedName;
+    }
+  } else if (msg.userId && typeof msg.userId === 'object' && msg.userId._id) {
+    // Convert userId to string for consistency even if name doesn't need fixing
+    msg.userId = msg.userId._id.toString();
+  }
 };
 
 router.use(requireAdminAuth);
@@ -106,13 +144,55 @@ router.get('/', async (req: Request, res: Response) => {
         .sort({ createdAt: -1 })
         .skip((pageNumber - 1) * limitNumber)
         .limit(limitNumber)
+        .populate('userId', 'firstName lastName username email')
         .lean(),
       ChatMessage.countDocuments(finalFilter)
     ]);
 
+    // Fix names for user messages that might have incorrect names (e.g., "GAGame")
+    // This ensures existing messages with wrong names are corrected when fetched
+    const fixedMessages = await Promise.all(
+      messages.map(async (msg: any) => {
+        await fixUserMessageName(msg);
+        return msg;
+      })
+    );
+
+    // If filtering by userId, also include user information for the header
+    let userInfo = null;
+    if (userId && typeof userId === 'string' && mongoose.Types.ObjectId.isValid(userId)) {
+      const user = await User.findById(userId)
+        .select('firstName lastName username email')
+        .lean();
+      
+      if (user) {
+        // Construct the user's display name using the same logic as messages
+        let displayName: string;
+        if (user.firstName || user.lastName) {
+          displayName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        } else if (user.username) {
+          displayName = user.username;
+        } else if (user.email) {
+          displayName = user.email.split('@')[0];
+        } else {
+          displayName = 'User';
+        }
+        
+        userInfo = {
+          id: user._id.toString(),
+          name: displayName,
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          username: user.username || '',
+          email: user.email || ''
+        };
+      }
+    }
+
     res.json({
       success: true,
-      data: messages,
+      data: fixedMessages,
+      user: userInfo, // Include user info when filtering by userId
       pagination: {
         total,
         page: pageNumber,
@@ -167,10 +247,13 @@ router.post(
         });
       }
 
+      // Sanitize message input to prevent XSS attacks
+      const sanitizedMessage = message ? sanitizeText(message) : undefined;
+      
       const chatMessage = await ChatMessage.create({
         userId,
         senderType: 'admin',
-        message,
+        message: sanitizedMessage,
         attachmentUrl: attachment ? getChatAttachmentUrl(attachment.filename) : undefined,
         attachmentName: attachment?.originalname,
         attachmentType: attachment?.mimetype,

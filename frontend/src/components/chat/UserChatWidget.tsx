@@ -34,7 +34,7 @@ interface ChatMessage {
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
 const UserChatWidget = () => {
-  const { isAuthenticated, token, user } = useAuthStore();
+  const { isAuthenticated, token, user, checkSession, logout } = useAuthStore();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -222,6 +222,12 @@ const UserChatWidget = () => {
   const loadMessages = async () => {
     if (!token) return;
 
+    // Check if session is still valid before making request
+    if (!checkSession()) {
+      // Session expired, don't try to load messages
+      return;
+    }
+
     try {
       setIsLoading(true);
       // Load all messages with a high limit
@@ -244,20 +250,44 @@ const UserChatWidget = () => {
           );
         setMessages(sorted);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load chat messages', error);
-      toast.error('Unable to load chat history right now.');
+      
+      // Handle 401 (unauthorized) - session expired
+      if (error.response?.status === 401) {
+        // Don't show toast for 401, session manager will handle it
+        // Just silently fail
+        return;
+      } else {
+        // Only show error if widget is open or user is on chat page
+        // Don't spam errors on every page
+        if (isOpen || location.pathname === '/chat') {
+          toast.error('Unable to load chat history right now.', {
+            duration: 3000,
+            position: 'bottom-right' // Move to bottom-right to avoid blocking header
+          });
+        }
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   // Load messages when authenticated, not just when widget opens
+  // But only if not on admin/agent pages and session is valid
   useEffect(() => {
-    if (isAuthenticated && token && messages.length === 0 && !isLoading) {
+    if (
+      isAuthenticated && 
+      token && 
+      !isAdminOrAgentPage && 
+      !isAdminUser &&
+      messages.length === 0 && 
+      !isLoading &&
+      checkSession() // Only load if session is valid
+    ) {
       void loadMessages();
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, isAdminOrAgentPage, isAdminUser]);
 
   const handleToggle = () => {
     if (!isAuthenticated) {
@@ -286,6 +316,13 @@ const UserChatWidget = () => {
   const handleSendMessage = async () => {
     if (!token || sending) return;
 
+    // Check if session is still valid before sending
+    if (!checkSession()) {
+      logout();
+      toast.error('Your session has expired. Please login again to send messages.');
+      return;
+    }
+
     if (!inputValue.trim() && !attachment) {
       toast.error('Please enter a message or attach a file.');
       return;
@@ -312,9 +349,23 @@ const UserChatWidget = () => {
       setInputValue('');
       setAttachment(null);
       toast.success('Message sent');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send chat message', error);
-      toast.error('Failed to send message. Please try again.');
+      
+      // Handle 401 (unauthorized) - session expired
+      if (error.response?.status === 401) {
+        logout();
+        // Don't show toast here, session manager will handle it
+        return;
+      } else {
+        // Only show error if widget is open or user is on chat page
+        if (isOpen || location.pathname === '/chat') {
+          toast.error('Failed to send message. Please try again.', {
+            duration: 3000,
+            position: 'bottom-right' // Move to bottom-right to avoid blocking header
+          });
+        }
+      }
     } finally {
       setSending(false);
     }

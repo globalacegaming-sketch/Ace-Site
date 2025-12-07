@@ -117,7 +117,34 @@ router.post('/games/enter', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await fortunePandaService.enterGame(account, passwdMd5, kindId);
+    // Validate kindId format: must be a non-empty string, alphanumeric with hyphens/underscores
+    if (typeof kindId !== 'string' || kindId.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) must be a non-empty string'
+      });
+    }
+
+    const trimmedKindId = kindId.trim();
+    
+    // Validate length (1-50 characters)
+    if (trimmedKindId.length < 1 || trimmedKindId.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) must be between 1 and 50 characters'
+      });
+    }
+
+    // Validate format: alphanumeric, hyphens, underscores only (prevents injection)
+    const kindIdRegex = /^[a-zA-Z0-9_-]+$/;
+    if (!kindIdRegex.test(trimmedKindId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID (kindId) can only contain letters, numbers, hyphens, and underscores'
+      });
+    }
+
+    const result = await fortunePandaService.enterGame(account, passwdMd5, trimmedKindId);
     
     if (result.success) {
       res.json({

@@ -64,11 +64,17 @@ const Register = () => {
         body: JSON.stringify(data),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Try to parse response as JSON
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        // If response is not JSON, handle as network error
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+        throw new Error('Invalid response from server');
       }
-
-      const result = await response.json();
 
       if (result.success) {
         toast.success('Account created successfully! Please check your email for the verification code.');
@@ -91,11 +97,22 @@ const Register = () => {
         // Redirect to verification code page
         navigate('/verify-code', { state: { email: result.data.user.email } });
       } else {
-        setError(result.message || 'Registration failed');
-        toast.error(result.message || 'Registration failed');
+        const errorMessage = result.message || 'Registration failed';
+        setError(errorMessage);
+        toast.error(errorMessage);
       }
-    } catch {
-      const errorMessage = 'Network error. Please try again.';
+    } catch (error) {
+      // Handle different types of errors
+      let errorMessage = 'Network error. Please check your connection and try again.';
+      
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        // Network connectivity issue
+        errorMessage = 'Unable to connect to server. Please check your internet connection.';
+      } else if (error instanceof Error) {
+        // Use the error message if available
+        errorMessage = error.message;
+      }
+      
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {

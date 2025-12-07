@@ -40,23 +40,38 @@ import supportTicketRoutes from './routes/supportTicket';
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { requestIdMiddleware } from './middleware/requestId';
 import { setSocketServerInstance } from './utils/socketManager';
 import { verifyToken } from './utils/jwt';
 import User from './models/User';
 import { validateAdminSession } from './services/adminSessionService';
 import logger from './utils/logger';
+import timeout from 'connect-timeout';
 
 // CORS configuration for multiple origins
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000", 
-  "https://ace-site-rouge.vercel.app",
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Base allowed origins - always allowed
+const baseAllowedOrigins = [
   "https://www.globalacegaming.com",
   "https://globalacegaming.com",
   process.env.FRONTEND_URL,
   process.env.VITE_FRONTEND_URL,
   process.env.PRODUCTION_FRONTEND_URL
 ].filter(Boolean); // Remove any undefined values
+
+// Development origins - only allowed in non-production
+const devAllowedOrigins = isProduction ? [] : [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000"
+];
+
+// Note: Vercel preview URLs are handled dynamically in the CORS callback function
+// (lines 128-151) based on environment and ALLOW_VERCEL_PREVIEWS config
+
+const allowedOrigins = [...baseAllowedOrigins, ...devAllowedOrigins];
 
 const app = express();
 const server = createServer(app);
@@ -72,30 +87,149 @@ setSocketServerInstance(io);
 // Middleware
 app.use(helmet());
 
+// Request timeout middleware (30 seconds default, configurable via env)
+const requestTimeout = process.env.REQUEST_TIMEOUT || '30s';
+app.use(timeout(requestTimeout));
+
+// Request ID middleware for tracing
+app.use(requestIdMiddleware);
+
+// Track rejected origins to avoid spam logging
+const rejectedOrigins = new Set<string>();
+const lastLogTime = new Map<string, number>();
+const LOG_THROTTLE_MS = 60000; // Only log each unique origin once per minute
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    // In production, reject requests with no origin (except for specific cases)
+    if (!origin) {
+      // Allow no-origin requests only in development or for specific internal services
+      if (!isProduction || process.env.ALLOW_NO_ORIGIN === 'true') {
+        return callback(null, true);
+      }
+      // Throttle logging for no-origin requests
+      const now = Date.now();
+      const lastLog = lastLogTime.get('no-origin') || 0;
+      if (now - lastLog > LOG_THROTTLE_MS) {
+        logger.warn('CORS: Rejected request with no origin', { 
+          isProduction,
+          allowNoOrigin: process.env.ALLOW_NO_ORIGIN 
+        });
+        lastLogTime.set('no-origin', now);
+      }
+      return callback(new Error('Not allowed by CORS - origin required in production'));
+    }
     
+    // Check exact match first
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     
-    // Allow any Vercel preview URLs
-    if (origin && origin.includes('.vercel.app')) {
-      return callback(null, true);
+    // In development, allow localhost variations
+    if (!isProduction && origin.includes('localhost')) {
+      // Validate it's actually localhost (not malicious subdomain)
+      try {
+        const url = new URL(origin);
+        if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+          return callback(null, true);
+        }
+        // Explicitly reject if hostname doesn't match (e.g., fake-localhost.example.com)
+        // This prevents malicious origins from bypassing validation
+        if (!rejectedOrigins.has(origin)) {
+          logger.warn('CORS: Rejected localhost-like origin with invalid hostname', { 
+            origin, 
+            hostname: url.hostname 
+          });
+          rejectedOrigins.add(origin);
+        }
+        return callback(new Error('Not allowed by CORS - invalid localhost hostname'));
+      } catch (e) {
+        // Throttle logging
+        if (!rejectedOrigins.has(origin)) {
+          logger.warn('CORS: Invalid localhost origin format', { origin });
+          rejectedOrigins.add(origin);
+        }
+        return callback(new Error('Invalid origin format'));
+      }
     }
     
-    // Allow any localhost development
-    if (origin && origin.includes('localhost')) {
-      return callback(null, true);
+    // In development, allow Vercel preview URLs (but validate format)
+    if (!isProduction && origin.includes('.vercel.app')) {
+      // Validate it's a proper Vercel preview URL
+      try {
+        const url = new URL(origin);
+        if (url.hostname.endsWith('.vercel.app') && url.protocol === 'https:') {
+          return callback(null, true);
+        }
+        // Explicitly reject if hostname doesn't end with .vercel.app or protocol isn't https
+        // This prevents malicious origins from bypassing validation
+        if (!rejectedOrigins.has(origin)) {
+          logger.warn('CORS: Rejected Vercel-like origin with invalid format', { 
+            origin, 
+            hostname: url.hostname,
+            protocol: url.protocol
+          });
+          rejectedOrigins.add(origin);
+        }
+        return callback(new Error('Not allowed by CORS - invalid Vercel origin format'));
+      } catch (e) {
+        // Throttle logging
+        if (!rejectedOrigins.has(origin)) {
+          logger.warn('CORS: Invalid Vercel origin format', { origin });
+          rejectedOrigins.add(origin);
+        }
+        return callback(new Error('Invalid origin format'));
+      }
+    }
+    
+    // In production with explicit permission, allow specific Vercel previews
+    if (isProduction && process.env.ALLOW_VERCEL_PREVIEWS === 'true' && origin.includes('.vercel.app')) {
+      try {
+        const url = new URL(origin);
+        if (url.hostname.endsWith('.vercel.app') && url.protocol === 'https:') {
+          return callback(null, true);
+        }
+        // Explicitly reject if hostname doesn't end with .vercel.app or protocol isn't https
+        // This prevents malicious origins from bypassing validation
+        if (!rejectedOrigins.has(origin)) {
+          logger.warn('CORS: Rejected Vercel-like origin with invalid format', { 
+            origin, 
+            hostname: url.hostname,
+            protocol: url.protocol
+          });
+          rejectedOrigins.add(origin);
+        }
+        return callback(new Error('Not allowed by CORS - invalid Vercel origin format'));
+      } catch (e) {
+        // Throttle logging
+        if (!rejectedOrigins.has(origin)) {
+          logger.warn('CORS: Invalid Vercel origin format', { origin });
+          rejectedOrigins.add(origin);
+        }
+        return callback(new Error('Invalid origin format'));
+      }
+    }
+    
+    // Throttle logging for rejected origins (only log once per minute per unique origin)
+    const now = Date.now();
+    const lastLog = lastLogTime.get(origin) || 0;
+    if (now - lastLog > LOG_THROTTLE_MS) {
+      logger.warn('CORS: Rejected origin', { 
+        origin,
+        allowedOrigins: allowedOrigins.slice(0, 3), // Log first 3 for reference
+        isProduction 
+      });
+      lastLogTime.set(origin, now);
+      rejectedOrigins.add(origin);
     }
     
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

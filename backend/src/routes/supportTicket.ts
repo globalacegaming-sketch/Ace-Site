@@ -152,7 +152,13 @@ router.get('/my-tickets', authenticate, async (req: Request, res: Response) => {
     const pageNumber = Number(page) || 1;
     const limitNumber = Math.min(Number(limit) || 20, 100);
 
-    const query: any = { userId: req.user!._id };
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+    const query: any = { userId: req.user._id };
     if (status && ['pending', 'in_progress', 'resolved', 'closed'].includes(status as string)) {
       query.status = status;
     }

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import User from '../models/User';
+import logger from '../utils/logger';
 
 const router = Router();
 
@@ -31,12 +32,12 @@ router.get('/', async (req: Request, res: Response) => {
       data: contacts,
       count: contacts.length
     });
-  } catch (error: any) {
-    console.error('Get contacts error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Get contacts error:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch contacts',
-      error: error.message
+      message: 'Failed to fetch contacts'
     });
   }
 });
@@ -73,12 +74,12 @@ router.get('/:id', async (req: Request, res: Response) => {
       message: 'Contact retrieved successfully',
       data: contact
     });
-  } catch (error: any) {
-    console.error('Get contact error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Get contact error:', errorMessage);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch contact',
-      error: error.message
+      message: 'Failed to fetch contact'
     });
   }
 });
