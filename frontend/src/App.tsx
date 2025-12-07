@@ -74,7 +74,7 @@ const HomeRoute = () => {
 
 // Session Manager Component - handles session timeout and activity tracking
 const SessionManager = () => {
-  const { isAuthenticated, checkSession, logout, updateActivity, lastActivityTime } = useAuthStore();
+  const { isAuthenticated, lastActivityTime } = useAuthStore();
 
   // Immediate check on mount - runs once when component mounts
   // This handles the case where user opens site after being inactive
@@ -176,7 +176,6 @@ function App() {
             }}
             gutter={8}
             containerClassName="!z-[9999] md:!top-5 md:!right-5 !top-16 !right-2"
-            limit={3}
             toastOptions={{
               duration: 3000, // Reduced from 4000 to prevent blocking
               style: {
