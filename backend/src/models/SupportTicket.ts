@@ -131,16 +131,47 @@ SupportTicketSchema.index({ email: 1, createdAt: -1 });
 // Generate unique ticket number before saving
 SupportTicketSchema.pre('save', async function(next) {
   if (!this.ticketNumber) {
-    const timestamp = Date.now().toString().slice(-8);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    this.ticketNumber = `TKT-${timestamp}-${random}`;
-    
-    // Ensure uniqueness
-    const existing = await mongoose.model('SupportTicket').findOne({ ticketNumber: this.ticketNumber });
-    if (existing) {
-      // If duplicate, regenerate
-      const newRandom = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-      this.ticketNumber = `TKT-${timestamp}-${newRandom}`;
+    try {
+      // Use mongoose.models to access the registered model
+      const SupportTicketModel = mongoose.models.SupportTicket || mongoose.model('SupportTicket');
+      let isUnique = false;
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (!isUnique && attempts < maxAttempts) {
+        const timestamp = Date.now().toString().slice(-8);
+        const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        this.ticketNumber = `TKT-${timestamp}-${random}`;
+        
+        // Check for uniqueness
+        try {
+          const existing = await SupportTicketModel.findOne({ ticketNumber: this.ticketNumber });
+          if (!existing) {
+            isUnique = true;
+          } else {
+            attempts++;
+            // Small delay to ensure different timestamp if regenerating quickly
+            if (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
+          }
+        } catch (checkError) {
+          // If there's an error checking, proceed anyway - the unique index will catch duplicates
+          isUnique = true;
+        }
+      }
+      
+      // If we still don't have a unique ticket number after max attempts, use a longer random string
+      if (!isUnique) {
+        const timestamp = Date.now().toString();
+        const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+        this.ticketNumber = `TKT-${timestamp}-${random}`;
+      }
+    } catch (error) {
+      // Fallback: generate a simple ticket number if model lookup fails
+      const timestamp = Date.now().toString().slice(-8);
+      const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      this.ticketNumber = `TKT-${timestamp}-${random}`;
     }
   }
   next();

@@ -19,7 +19,7 @@ router.all('/', async (req: Request, res: Response) => {
     }
 
     // Build the Fortune Panda API URL
-    const baseUrl = process.env.FORTUNE_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx';
+    const baseUrl = process.env.FORTUNE_PANDA_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx';
     const url = `${baseUrl}?action=${action}&${new URLSearchParams(params as Record<string, string>).toString()}`;
     
     logger.debug('🔍 Proxy URL:', url);

@@ -25,15 +25,9 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Verify credentials against environment variables
-    // Check multiple possible env var names
-    const envAgentName = process.env.AGENT_NAME || 
-                        process.env.FORTUNE_PANDA_AGENT_NAME || 
-                        process.env.FORTUNE_AGENT_USER || 
-                        'agent01';
-    const envAgentPassword = process.env.AGENT_PASSWORD || 
-                            process.env.FORTUNE_PANDA_AGENT_PASSWORD || 
-                            process.env.FORTUNE_AGENT_PASS || 
-                            '123456';
+    // Use standardized Fortune Panda environment variables
+    const envAgentName = process.env.FORTUNE_PANDA_AGENT_NAME || 'agent01';
+    const envAgentPassword = process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456';
 
     logger.debug('🔍 Checking credentials:', { 
       providedName: agentName, 

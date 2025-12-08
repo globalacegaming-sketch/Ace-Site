@@ -20,21 +20,31 @@ services:
           property: connectionString
       - key: FORTUNE_PANDA_AGENT_NAME
         sync: false
+      - key: FORTUNE_PANDA_AGENT_PASSWORD
+        sync: false
       - key: FORTUNE_PANDA_AGENT_KEY
         sync: false
       - key: FORTUNE_PANDA_API_URL
         sync: false
-      - key: SMTP_HOST
+      - key: AGENT_USERNAME
         sync: false
-      - key: SMTP_PORT
+      - key: AGENT_PASSWORD
         sync: false
-      - key: SMTP_SECURE
+      - key: AGENT_JWT_SECRET
         sync: false
-      - key: SMTP_USER
+      - key: BREVO_API_KEY
         sync: false
-      - key: SMTP_PASS
+      - key: BREVO_FROM_EMAIL
         sync: false
-      - key: SMTP_FROM
+      - key: BREVO_FROM_NAME
+        sync: false
+      - key: BREVO_REPLY_TO
+        sync: false
+      - key: JWT_EXPIRES_IN
+        sync: false
+      - key: JWT_REFRESH_EXPIRES_IN
+        sync: false
+      - key: PRODUCTION_FRONTEND_URL
         sync: false
 
 databases:

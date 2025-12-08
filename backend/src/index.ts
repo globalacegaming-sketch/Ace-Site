@@ -56,7 +56,6 @@ const baseAllowedOrigins = [
   "https://www.globalacegaming.com",
   "https://globalacegaming.com",
   process.env.FRONTEND_URL,
-  process.env.VITE_FRONTEND_URL,
   process.env.PRODUCTION_FRONTEND_URL
 ].filter(Boolean); // Remove any undefined values
 

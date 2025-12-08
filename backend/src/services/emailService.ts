@@ -1,4 +1,4 @@
-import * as nodemailer from 'nodemailer';
+import * as SibApiV3Sdk from 'sib-api-v3-sdk';
 
 interface EmailOptions {
   to: string;
@@ -7,142 +7,156 @@ interface EmailOptions {
 }
 
 class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
+  private apiInstance: SibApiV3Sdk.TransactionalEmailsApi | null = null;
+  private apiKey: string | null = null;
+  private fromEmail: string | null = null;
+  private fromName: string | null = null;
 
   constructor() {
-    // Initialize transporter based on environment
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-      const port = parseInt(process.env.SMTP_PORT || '587');
-      // Port 465 requires SSL/TLS (secure: true), port 587 uses STARTTLS (secure: false)
-      const secure = port === 465 || process.env.SMTP_SECURE === 'true';
+    // Initialize Brevo API client
+    const apiKey = process.env.BREVO_API_KEY;
+    
+    if (apiKey) {
+      this.apiKey = apiKey;
       
-      this.transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: port,
-        secure: secure,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        },
-        // Connection timeout settings for Render/cloud environments
-        connectionTimeout: 30000, // 30 seconds
-        greetingTimeout: 30000, // 30 seconds
-        socketTimeout: 30000, // 30 seconds
-        // Retry connection on failure
-        pool: false,
-        // Additional options for better compatibility
-        tls: {
-          // Do not fail on invalid certificates (useful for some SMTP servers)
-          rejectUnauthorized: false,
-          // Additional TLS options for better connection
-          minVersion: 'TLSv1.2'
-        },
-        // Debug mode (set to true for troubleshooting)
-        debug: process.env.NODE_ENV === 'development',
-        logger: process.env.NODE_ENV === 'development'
-      } as any);
+      // Configure default client
+      const defaultClient = SibApiV3Sdk.ApiClient.instance;
+      const apiKeyAuth = defaultClient.authentications['api-key'];
+      apiKeyAuth.apiKey = apiKey;
+      
+      // Initialize transactional emails API instance
+      this.apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+      
+      // Set sender email and name from environment variables
+      if (!process.env.BREVO_FROM_EMAIL) {
+        console.warn('⚠️  BREVO_FROM_EMAIL not set. Please configure it in your environment variables.');
+      }
+      this.fromEmail = process.env.BREVO_FROM_EMAIL || 'noreply@globalacegaming.com';
+      this.fromName = process.env.BREVO_FROM_NAME || 'Global Ace Gaming';
+      
+      console.log('✅ Brevo email service initialized');
+      console.log(`   From: ${this.fromName} <${this.fromEmail}>`);
     } else {
-      console.warn('Email service not configured. SMTP credentials missing.');
+      console.warn('⚠️  Brevo email service not configured. BREVO_API_KEY environment variable is missing.');
     }
   }
 
   async sendEmail(options: EmailOptions, retries: number = 2): Promise<boolean> {
-    if (!this.transporter) {
-      console.warn('Email service not available. Email would have been sent:', options);
+    if (!this.apiInstance || !this.apiKey) {
+      console.warn('Email service not available. Email would have been sent:', {
+        to: options.to,
+        subject: options.subject
+      });
       return false;
     }
 
-    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
-    const mailOptions = {
-      from: fromAddress,
-      to: options.to,
-      subject: options.subject,
-      html: options.html
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+
+    // Set sender (must be verified in Brevo dashboard)
+    sendSmtpEmail.sender = {
+      name: this.fromName || 'Global Ace Gaming',
+      email: this.fromEmail || 'noreply@globalacegaming.com'
     };
 
-    console.log('Attempting to send email:', {
-      from: fromAddress,
+    // Set recipient
+    sendSmtpEmail.to = [{ email: options.to }];
+
+    // Set email content
+    sendSmtpEmail.subject = options.subject;
+    sendSmtpEmail.htmlContent = options.html;
+
+    // Set reply-to if configured
+    if (process.env.BREVO_REPLY_TO) {
+      sendSmtpEmail.replyTo = {
+        email: process.env.BREVO_REPLY_TO
+      };
+    }
+
+    // Add tags for tracking (optional)
+    sendSmtpEmail.tags = ['transactional'];
+
+    console.log('Attempting to send email via Brevo:', {
       to: options.to,
       subject: options.subject,
-      smtpHost: process.env.SMTP_HOST,
-      smtpUser: process.env.SMTP_USER,
-      smtpFrom: process.env.SMTP_FROM
+      from: `${sendSmtpEmail.sender.name} <${sendSmtpEmail.sender.email}>`
     });
-
-    // Warning if sender email might not be verified
-    if (fromAddress && fromAddress !== process.env.SMTP_USER) {
-      console.warn('⚠️  Using custom FROM address. Ensure this email is verified in Brevo:');
-      console.warn(`   - Go to https://app.brevo.com → Settings → Senders`);
-      console.warn(`   - Verify that "${fromAddress}" is added and verified`);
-      console.warn(`   - Unverified senders may cause emails to be queued but not delivered`);
-    }
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        // Send email and capture response
-        const info = await this.transporter.sendMail(mailOptions);
+        const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
         
-        // Log detailed response from SMTP server
-        console.log('Email send response:', {
-          messageId: info.messageId,
-          response: info.response,
-          accepted: info.accepted,
-          rejected: info.rejected,
-          pending: info.pending,
+        console.log('✅ Email sent successfully via Brevo:', {
           to: options.to,
-          from: fromAddress
+          subject: options.subject,
+          messageId: result.messageId
         });
 
-        // Check if email was actually accepted by SMTP server
-        if (info.rejected && info.rejected.length > 0) {
-          console.error('Email was rejected by SMTP server:', {
+        // Additional logging for debugging delivery issues
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📧 Email details:', {
+            from: `${sendSmtpEmail.sender.name} <${sendSmtpEmail.sender.email}>`,
             to: options.to,
-            rejected: info.rejected,
-            response: info.response
+            subject: options.subject,
+            messageId: result.messageId,
+            note: 'If email not received, check: 1) Sender email is verified in Brevo, 2) Check spam folder, 3) Check Brevo dashboard for delivery status'
           });
+        }
+        
+        return true;
+
+      } catch (error: any) {
+        // Extract detailed error information from Brevo API
+        const errorMessage = error.message || error.response?.body?.message || 'Unknown error';
+        const errorStatus = error.status || error.statusCode;
+        const errorBody = error.response?.body;
+        const errorCode = error.body?.code || error.response?.body?.code;
+
+        // Check for common Brevo API errors
+        if (errorStatus === 401) {
+          console.error('❌ Brevo API Authentication Error: Invalid API key');
+          console.error('   Please check your BREVO_API_KEY environment variable');
+        } else if (errorStatus === 400) {
+          console.error('❌ Brevo API Request Error:', errorMessage);
+          if (errorBody) {
+            console.error('   Error details:', JSON.stringify(errorBody, null, 2));
+          }
+          // Don't retry on 400 errors (bad request)
+          return false;
+        } else if (errorStatus === 403) {
+          console.error('❌ Brevo API Forbidden Error: Sender email not verified');
+          console.error(`   Please verify "${this.fromEmail}" in Brevo dashboard:`);
+          console.error('   https://app.brevo.com → Settings → Senders');
+          // Don't retry on 403 errors (sender not verified)
           return false;
         }
 
-        if (info.accepted && info.accepted.length > 0) {
-          console.log(`✅ Email accepted by SMTP server for ${options.to}. Message ID: ${info.messageId}`);
-          console.log(`📧 SMTP Response: ${info.response}`);
-          return true;
-        }
-
-        // If neither accepted nor rejected, something is wrong
-        console.warn('Email send returned unexpected response:', info);
-        return false;
-
-      } catch (error: any) {
-        const isConnectionError = 
+        const isRetryableError = 
           error.code === 'ETIMEDOUT' || 
           error.code === 'ECONNREFUSED' || 
           error.code === 'ESOCKETTIMEDOUT' ||
-          error.message?.includes('timeout') ||
-          error.message?.includes('Connection timeout');
+          errorStatus === 429 || // Rate limit
+          errorStatus >= 500; // Server errors
 
-        if (isConnectionError && attempt < retries) {
+        if (isRetryableError && attempt < retries) {
           const waitTime = (attempt + 1) * 2000; // Exponential backoff: 2s, 4s
           console.warn(
-            `Email send attempt ${attempt + 1} failed (connection timeout). Retrying in ${waitTime}ms...`,
-            error.message
+            `Email send attempt ${attempt + 1} failed. Retrying in ${waitTime}ms...`,
+            errorMessage
           );
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }
 
         // Log error details for debugging
-        console.error('❌ Error sending email:', {
+        console.error('❌ Error sending email via Brevo:', {
           to: options.to,
           subject: options.subject,
-          from: fromAddress,
-          error: error.message,
-          code: error.code,
-          response: error.response,
-          command: error.command,
+          error: errorMessage,
+          status: errorStatus,
+          code: errorCode,
+          response: errorBody,
           attempt: attempt + 1,
-          totalAttempts: retries + 1,
-          stack: error.stack
+          totalAttempts: retries + 1
         });
         
         return false;
@@ -153,7 +167,7 @@ class EmailService {
   }
 
   async sendVerificationEmail(email: string, token: string, firstName?: string): Promise<boolean> {
-    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const verificationUrl = `${frontendUrl}/verify-email?token=${token}`;
 
     const html = `
@@ -226,7 +240,7 @@ class EmailService {
   }
 
   async sendPasswordResetEmail(email: string, token: string, firstName?: string): Promise<boolean> {
-    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
     const html = `
@@ -265,4 +279,3 @@ class EmailService {
 }
 
 export default new EmailService();
-

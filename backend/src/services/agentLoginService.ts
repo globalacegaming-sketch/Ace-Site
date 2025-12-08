@@ -31,9 +31,9 @@ class AgentLoginService {
 
   constructor() {
     this.config = {
-      agentName: process.env.AGENT_NAME || process.env.FORTUNE_PANDA_AGENT_NAME || 'agent01',
-      agentPassword: process.env.AGENT_PASSWORD || process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456',
-      apiUrl: process.env.AGENT_API_URL || process.env.FORTUNE_PANDA_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx'
+      agentName: process.env.FORTUNE_PANDA_AGENT_NAME || 'agent01',
+      agentPassword: process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456',
+      apiUrl: process.env.FORTUNE_PANDA_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx'
     };
   }
 
