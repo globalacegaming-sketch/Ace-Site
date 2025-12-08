@@ -47,9 +47,17 @@ const SupportTicketSchema = new Schema<ISupportTicket>({
   },
   ticketNumber: {
     type: String,
-    required: true,
+    // Pre-save hook will always generate this value before validation
+    // Not using required: true to avoid validation errors before pre-save runs
     unique: true,
-    index: true
+    index: true,
+    validate: {
+      validator: function(v: string) {
+        // Custom validator ensures ticketNumber is present after pre-save hook
+        return v != null && typeof v === 'string' && v.trim().length > 0;
+      },
+      message: 'Ticket number must be generated'
+    }
   },
   category: {
     type: String,
@@ -128,9 +136,11 @@ SupportTicketSchema.index({ status: 1, createdAt: -1 });
 SupportTicketSchema.index({ category: 1, status: 1 });
 SupportTicketSchema.index({ email: 1, createdAt: -1 });
 
-// Generate unique ticket number before saving
+// Generate unique ticket number before saving (runs before validation)
 SupportTicketSchema.pre('save', async function(next) {
-  if (!this.ticketNumber) {
+  // Always generate ticket number if it's missing, empty, or undefined
+  // This runs before Mongoose validation, so we can set the value here
+  if (!this.ticketNumber || (typeof this.ticketNumber === 'string' && this.ticketNumber.trim().length === 0)) {
     try {
       // Use mongoose.models to access the registered model
       const SupportTicketModel = mongoose.models.SupportTicket || mongoose.model('SupportTicket');
@@ -174,6 +184,14 @@ SupportTicketSchema.pre('save', async function(next) {
       this.ticketNumber = `TKT-${timestamp}-${random}`;
     }
   }
+  
+  // Final safety check: ensure ticketNumber is always set
+  if (!this.ticketNumber || (typeof this.ticketNumber !== 'string') || this.ticketNumber.trim().length === 0) {
+    const timestamp = Date.now().toString();
+    const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    this.ticketNumber = `TKT-${timestamp}-${random}`;
+  }
+  
   next();
 });
 
