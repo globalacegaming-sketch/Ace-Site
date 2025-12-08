@@ -184,7 +184,21 @@ const Support = () => {
       }
     } catch (error: any) {
       console.error('Error submitting ticket:', error);
-      toast.error(error.response?.data?.message || 'Failed to submit ticket. Please try again.');
+      
+      // Show detailed validation errors if available
+      if (error.response?.data?.errors) {
+        const errors = error.response.data.errors;
+        const errorMessages = Object.values(errors);
+        if (errorMessages.length > 0) {
+          toast.error(Array.isArray(errorMessages) ? errorMessages[0] as string : errorMessages[0] as string);
+        } else {
+          toast.error(error.response?.data?.message || 'Failed to submit ticket. Please try again.');
+        }
+      } else if (error.response?.data?.errorDetails && Array.isArray(error.response.data.errorDetails)) {
+        toast.error(error.response.data.errorDetails[0] || 'Failed to submit ticket. Please try again.');
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to submit ticket. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
