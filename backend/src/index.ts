@@ -59,8 +59,10 @@ const baseAllowedOrigins = [
   process.env.PRODUCTION_FRONTEND_URL
 ].filter(Boolean); // Remove any undefined values
 
-// Development origins - only allowed in non-production
-const devAllowedOrigins = isProduction ? [] : [
+// Development origins - only allowed in non-production or when explicitly allowed
+// Also allow localhost if ALLOW_LOCALHOST_IN_PROD is set to 'true' (useful for local dev with production-like setup)
+const allowLocalhostInProd = process.env.ALLOW_LOCALHOST_IN_PROD === 'true';
+const devAllowedOrigins = (isProduction && !allowLocalhostInProd) ? [] : [
   "http://localhost:5173",
   "http://localhost:3000",
   "http://127.0.0.1:5173",
@@ -84,7 +86,11 @@ const io = new Server(server, {
 setSocketServerInstance(io);
 
 // Middleware
-app.use(helmet());
+// Configure helmet to allow CORS
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false
+}));
 
 // Request timeout middleware (30 seconds default, configurable via env)
 const requestTimeout = process.env.REQUEST_TIMEOUT || '30s';
@@ -124,8 +130,8 @@ app.use(cors({
       return callback(null, true);
     }
     
-    // In development, allow localhost variations
-    if (!isProduction && origin.includes('localhost')) {
+    // In development or when explicitly allowed, allow localhost variations
+    if ((!isProduction || allowLocalhostInProd) && origin.includes('localhost')) {
       // Validate it's actually localhost (not malicious subdomain)
       try {
         const url = new URL(origin);

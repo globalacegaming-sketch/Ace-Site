@@ -14,7 +14,8 @@ import {
   CircleDot,
   X,
   Menu,
-  Gift
+  Gift,
+  ChevronUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -57,23 +58,29 @@ interface AdminChatPanelProps {
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const INITIAL_MESSAGE_LIMIT = 50; // Increased initial load for better UX
+const LOAD_MORE_LIMIT = 50; // Load more messages at once
 
 const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelProps) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
   const [conversationMessages, setConversationMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [hasMoreMessages, setHasMoreMessages] = useState<Record<string, boolean>>({});
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'resolved'>('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [showConversations, setShowConversations] = useState(true);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const selectedUserIdRef = useRef<string | null>(null);
+  const playNotificationSoundRef = useRef<() => void>(() => {});
 
   const httpBaseUrl = useMemo(() => apiBaseUrl.replace(/\/api$/, ''), [apiBaseUrl]);
 
@@ -162,6 +169,25 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatFullTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Decode HTML entities (like &#x27; for apostrophe) for display
+  // This safely decodes entities that were escaped by the backend sanitization
+  const decodeHtmlEntities = (text: string): string => {
+    if (!text) return text;
+    // Create a temporary textarea to decode HTML entities safely
+    // This is safe because we're only decoding text that came from our own sanitized backend
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    const decoded = textarea.value;
+    // Clean up
+    textarea.remove();
+    return decoded;
+  };
+
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -172,33 +198,31 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     scrollToBottom();
   }, [selectedUserId, conversationMessages]);
 
-  const fetchMessages = async () => {
+  const fetchConversations = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${apiBaseUrl}/admin/messages`, {
+      // Use the new conversations endpoint that returns summaries directly
+      const response = await axios.get(`${apiBaseUrl}/admin/messages/conversations`, {
         headers: {
           Authorization: `Bearer ${adminToken}`
         },
         params: {
-          limit: 500,
           ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-          ...(startDate ? { startDate } : {}),
-          ...(endDate ? { endDate } : {}),
           ...(searchQuery ? { search: searchQuery } : {})
         }
       });
 
       if (response.data.success) {
-        const messages: ChatMessage[] = response.data.data || [];
-        buildConversationSummaries(messages);
+        const summaries: ConversationSummary[] = response.data.data || [];
+        setConversationSummaries(summaries);
       }
     } catch (error: any) {
-      console.error('Failed to load chat messages', error);
+      console.error('Failed to load conversations', error);
       // Only show error toast if it's not a 401 (unauthorized) or network error
       // 401 errors are handled by session management, network errors are usually temporary
       if (error.response?.status !== 401 && error.code !== 'ERR_NETWORK') {
-        toast.error('Unable to load chat messages.', {
-          id: 'chat-load-error', // Use ID to prevent duplicate toasts
+        toast.error('Unable to load conversations.', {
+          id: 'chat-load-error',
           duration: 3000
         });
       }
@@ -207,74 +231,29 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
   };
 
-  const buildConversationSummaries = (messages: ChatMessage[]) => {
-    const grouped = new Map<string, ChatMessage[]>();
-    messages.forEach((message) => {
-      const list = grouped.get(message.userId) || [];
-      list.push(message);
-      grouped.set(message.userId, list);
-    });
-
-    const summaries: ConversationSummary[] = Array.from(grouped.entries()).map(
-      ([userId, msgs]) => {
-        msgs.sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        const lastMessage = msgs[0];
-        const unreadCount = msgs.filter(
-          (msg) => msg.senderType === 'user' && msg.status === 'unread'
-        ).length;
-        
-        // Find a valid user message name (not "GAGame" or empty)
-        // Prefer the most recent user message with a valid name
-        let validName = lastMessage?.name;
-        let validEmail = lastMessage?.email;
-        
-        if (!validName || validName.trim() === '' || validName === 'GAGame') {
-          // Look for a user message with a valid name
-          const userMessage = msgs.find(
-            (msg) => 
-              msg.senderType === 'user' && 
-              msg.name && 
-              msg.name.trim() !== '' && 
-              msg.name !== 'GAGame'
-          );
-          if (userMessage) {
-            validName = userMessage.name;
-            validEmail = userMessage.email || validEmail;
-          }
-        }
-        
-        return {
-          userId,
-          name: validName || 'User',
-          email: validEmail || '',
-          lastMessage,
-          unreadCount
-        };
-      }
-    );
-
-    summaries.sort((a, b) => {
-      const dateA = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
-      const dateB = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
-      return dateB - dateA;
-    });
-
-    setConversationSummaries(summaries);
-  };
-
-  const loadConversation = async (userId: string) => {
+  const loadConversation = async (userId: string, loadOlder: boolean = false) => {
     if (!userId) return;
+    
     try {
+      const currentMessages = conversationMessages[userId] || [];
+      const params: Record<string, any> = {
+        userId,
+        limit: loadOlder ? LOAD_MORE_LIMIT : INITIAL_MESSAGE_LIMIT
+      };
+
+      // If loading older messages, use the oldest message's createdAt as 'before' parameter
+      if (loadOlder && currentMessages.length > 0) {
+        const oldestMessage = currentMessages[0]; // Messages are sorted oldest first
+        // Use ISO string format for the date
+        params.before = new Date(oldestMessage.createdAt).toISOString();
+      }
+
+      setLoadingMore(loadOlder);
       const response = await axios.get(`${apiBaseUrl}/admin/messages`, {
         headers: {
           Authorization: `Bearer ${adminToken}`
         },
-        params: {
-          userId,
-          limit: 200
-        }
+        params
       });
 
       if (response.data.success) {
@@ -284,15 +263,52 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
           .sort(
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
-        setConversationMessages((prev) => ({
-          ...prev,
-          [userId]: sorted
-        }));
-        markMessagesAsRead(userId, sorted);
+
+        if (loadOlder) {
+          // Prepend older messages to the beginning
+          // Calculate hasMore inside setState callback to use actual merged count
+          // This prevents stale closure issues if socket events add messages before state updates
+          const totalMessages = response.data.pagination?.total || 0;
+          setConversationMessages((prev) => {
+            const prevMessages = prev[userId] || [];
+            const updatedMessages = [...sorted, ...prevMessages];
+            // Use the actual merged count from the state update, not the captured value
+            const updatedMessagesCount = updatedMessages.length;
+            const hasMore = sorted.length >= LOAD_MORE_LIMIT && 
+                           (totalMessages === 0 || updatedMessagesCount < totalMessages);
+            // Update hasMoreMessages state using the actual merged count
+            setHasMoreMessages((prevHasMore) => ({
+              ...prevHasMore,
+              [userId]: hasMore
+            }));
+            return {
+              ...prev,
+              [userId]: updatedMessages
+            };
+          });
+        } else {
+          // Initial load - replace all messages
+          setConversationMessages((prev) => ({
+            ...prev,
+            [userId]: sorted
+          }));
+          markMessagesAsRead(userId, sorted);
+          // Check if there are more messages based on:
+          // 1. Total count from pagination (most reliable)
+          // 2. If we got exactly the limit, assume there might be more
+          const totalMessages = response.data.pagination?.total || 0;
+          const hasMore = totalMessages > 0 
+            ? sorted.length < totalMessages 
+            : sorted.length >= INITIAL_MESSAGE_LIMIT;
+          
+          setHasMoreMessages((prev) => ({
+            ...prev,
+            [userId]: hasMore
+          }));
+        }
         
         // Update conversation summary with user info from API response if available
-        // This ensures the header shows the correct name instead of "GAGame"
-        if (response.data.user) {
+        if (response.data.user && !loadOlder) {
           const userInfo = response.data.user;
           setConversationSummaries((prev) => {
             const existing = prev.find((c) => c.userId === userId);
@@ -329,10 +345,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       // Only show error toast if it's not a 401 (unauthorized) or network error
       if (error.response?.status !== 401 && error.code !== 'ERR_NETWORK') {
         toast.error('Unable to load conversation.', {
-          id: 'conversation-load-error', // Use ID to prevent duplicate toasts
+          id: 'conversation-load-error',
           duration: 3000
         });
       }
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -347,7 +365,35 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
     try {
       // Use batch update for better performance
-      const messageIds = unreadMessages.map((msg) => msg.id);
+      // Filter out invalid IDs and ensure they're strings
+      const messageIds = unreadMessages
+        .map((msg) => msg.id)
+        .filter((id): id is string => {
+          // Validate that ID exists and is a non-empty string
+          if (!id || typeof id !== 'string' || id.trim() === '') {
+            return false;
+          }
+          // Basic MongoDB ObjectId format check (24 hex characters)
+          if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+            return false;
+          }
+          return true;
+        });
+
+      // If no valid IDs, try using userId approach instead
+      if (messageIds.length === 0) {
+        await axios.put(
+          `${apiBaseUrl}/admin/messages/batch-status`,
+          { userId: _userId, status: 'read' },
+          {
+            headers: {
+              Authorization: `Bearer ${adminToken}`
+            }
+          }
+        );
+        return;
+      }
+
       await axios.put(
         `${apiBaseUrl}/admin/messages/batch-status`,
         { messageIds, status: 'read' },
@@ -357,31 +403,39 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
           }
         }
       );
-    } catch (error) {
-      console.error('Failed to mark messages as read', error);
+    } catch (error: any) {
+      // Don't show error toast for this - it's not critical if marking as read fails
+      // The messages will still be visible, just not marked as read
+      console.error('Failed to mark messages as read', error?.response?.data || error?.message || error);
     }
   };
 
   useEffect(() => {
-    // Only fetch messages if we have a valid admin token
+    // Only fetch conversations if we have a valid admin token
     // This prevents errors when the component mounts but admin isn't logged in
     if (adminToken) {
-      fetchMessages();
+      fetchConversations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, startDate, endDate]);
+  }, [statusFilter, adminToken]);
 
   useEffect(() => {
-    // Only fetch messages if we have a valid admin token
+    // Only fetch conversations if we have a valid admin token
     if (!adminToken) return;
     
     const delayDebounce = setTimeout(() => {
-      void fetchMessages();
+      void fetchConversations();
     }, 300);
 
     return () => clearTimeout(delayDebounce);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, adminToken]);
+
+  // Keep refs in sync with current values for socket event handlers
+  useEffect(() => {
+    selectedUserIdRef.current = selectedUserId;
+    playNotificationSoundRef.current = playNotificationSound;
+  }, [selectedUserId, playNotificationSound]);
 
   useEffect(() => {
     const socket = io(wsBaseUrl, {
@@ -394,23 +448,38 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       setConversationMessages((prev) => {
         const current = prev[message.userId] || [];
         const exists = current.some((item) => item.id === message.id);
-        const updated = exists ? current : [...current, message].sort(
+        if (exists) {
+          // Duplicate found - don't add to messages
+          return prev;
+        }
+        
+        // Not a duplicate - add message
+        const updated = [...current, message].sort(
           (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
         
         // Play notification sound if message is from user
+        // Use ref to avoid socket reconnection when callback changes
         if (message.senderType === 'user') {
-          // Use setTimeout to ensure sound plays after state update
           setTimeout(() => {
-            playNotificationSound();
+            playNotificationSoundRef.current();
           }, 100);
         }
         
         return { ...prev, [message.userId]: updated };
       });
 
-      setConversationSummaries((prev) => {
-        const map = new Map(prev.map((summary) => [summary.userId, summary] as const));
+      // Only update summaries if this message is not a duplicate
+      // Check if the message ID already exists in the conversation summary's lastMessage
+      setConversationSummaries((prevSummaries) => {
+        const existingSummary = prevSummaries.find(s => s.userId === message.userId);
+        
+        // If the last message has the same ID, it's a duplicate - don't update
+        if (existingSummary?.lastMessage?.id === message.id) {
+          return prevSummaries;
+        }
+        
+        const map = new Map(prevSummaries.map((summary) => [summary.userId, summary] as const));
         const existing = map.get(message.userId);
         const unreadIncrement =
           message.senderType === 'user' && message.status === 'unread' ? 1 : 0;
@@ -437,6 +506,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         });
         return sorted;
       });
+
+      // Auto-scroll to bottom if viewing this conversation
+      // Use ref to get current selectedUserId without causing socket reconnection
+      if (selectedUserIdRef.current === message.userId) {
+        setTimeout(() => scrollToBottom(), 100);
+      }
     });
 
     socket.on('chat:message:status', (message: ChatMessage) => {
@@ -476,6 +551,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       socket.disconnect();
       socketRef.current = null;
     };
+    // Only reconnect socket when wsBaseUrl or adminToken changes
+    // selectedUserId and playNotificationSound don't require socket reconnection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsBaseUrl, adminToken]);
 
   const handleSelectConversation = (userId: string) => {
@@ -483,6 +561,11 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     // Close conversations sidebar on mobile when selecting a conversation
     setShowConversations(false);
     if (!conversationMessages[userId]) {
+      // Initialize hasMoreMessages as undefined (unknown) when starting to load
+      setHasMoreMessages((prev) => ({
+        ...prev,
+        [userId]: undefined as any
+      }));
       void loadConversation(userId);
     } else {
       void markMessagesAsRead(userId, conversationMessages[userId]);
@@ -530,6 +613,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
   };
 
+  // Handle Enter key to send message (Shift+Enter for new line)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const handleResolveMessages = async () => {
     if (!selectedUserId) return;
     const messages = conversationMessages[selectedUserId] || [];
@@ -544,16 +635,13 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
     try {
       // Use batch endpoint for better performance
-      // Filter out any invalid IDs and ensure they're strings
       const messageIds = unresolved
         .map((msg) => msg.id)
         .filter((id): id is string => {
-          // Validate that ID exists and is a non-empty string
           if (!id || typeof id !== 'string' || id.trim() === '') {
             console.warn('Invalid message ID found:', id);
             return false;
           }
-          // Basic MongoDB ObjectId format check (24 hex characters)
           if (!/^[0-9a-fA-F]{24}$/.test(id)) {
             console.warn('Message ID does not match ObjectId format:', id);
             return false;
@@ -562,7 +650,6 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         });
 
       if (messageIds.length === 0) {
-        // Fallback: Try using userId to resolve all unresolved user messages
         console.warn('No valid message IDs, trying userId approach instead');
         const response = await axios.put(
           `${apiBaseUrl}/admin/messages/batch-status`,
@@ -575,7 +662,6 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         );
 
         if (response.data.success) {
-          // Reload conversation to get updated messages
           await loadConversation(selectedUserId);
           toast.success(`Marked conversation as resolved.`);
           return;
@@ -583,8 +669,6 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
           throw new Error(response.data.message || 'Failed to resolve messages');
         }
       }
-
-      console.log('Resolving messages:', { count: messageIds.length, ids: messageIds });
 
       const response = await axios.put(
         `${apiBaseUrl}/admin/messages/batch-status`,
@@ -634,7 +718,6 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       console.error('Failed to resolve messages', error);
       const errorMessage = error.response?.data?.message || error.message || 'Failed to update status.';
       
-      // If it's the "no valid IDs" error, provide more context
       if (errorMessage.includes('No valid message IDs')) {
         console.error('Message IDs that were sent:', unresolved.map(m => ({ id: m.id, status: m.status, senderType: m.senderType })));
         toast.error('Invalid message IDs. Please refresh the page and try again.');
@@ -692,45 +775,48 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   return (
     <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6">
       {/* Conversations Sidebar */}
-      <div className={`bg-white rounded-2xl border border-gray-100 shadow-md flex flex-col transition-all duration-300 ${
+      <div className={`bg-white rounded-2xl border border-gray-200 shadow-lg flex flex-col transition-all duration-300 ${
         showConversations ? 'flex' : 'hidden'
       } lg:flex lg:w-1/3`}>
-        <div className="p-3 sm:p-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2 mb-3 sm:mb-4">
-            <MessageCircle className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Conversations</h2>
+        <div className="p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
+          <div className="flex items-center gap-3 mb-4">
             <button
-              onClick={() => void fetchMessages()}
-              className="ml-auto text-indigo-600 hover:text-indigo-800 p-1"
+              onClick={() => void fetchConversations()}
+              className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition"
               title="Refresh conversations"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowConversations(false)}
-              className="lg:hidden text-gray-500 hover:text-gray-700 p-1"
+              className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition"
               title="Close conversations"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
           <div className="relative mb-3">
+            <label htmlFor="conversation-search" className="sr-only">
+              Search by user or email
+            </label>
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
+              id="conversation-search"
+              name="conversation-search"
               type="text"
-              placeholder="Search by user or email"
+              placeholder="Search by user or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+              className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white text-gray-900 placeholder-gray-400"
             />
           </div>
           <div className="flex flex-wrap gap-2 mb-3">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
                 statusFilter === 'all'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
               }`}
             >
               <Filter className="w-3 h-3" />
@@ -738,57 +824,40 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
             </button>
             <button
               onClick={() => setStatusFilter('unread')}
-              className={`px-3 py-1 rounded-full text-xs font-medium ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                 statusFilter === 'unread'
-                  ? 'bg-red-100 text-red-600'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-red-100 text-red-700 border border-red-200'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
               }`}
             >
               Unread
             </button>
             <button
               onClick={() => setStatusFilter('resolved')}
-              className={`px-3 py-1 rounded-full text-xs font-medium ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                 statusFilter === 'resolved'
-                  ? 'bg-green-100 text-green-600'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-green-100 text-green-700 border border-green-200'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
               }`}
             >
               Resolved
             </button>
           </div>
-          <div className="hidden sm:flex gap-2 text-xs text-gray-500">
-            <div className="flex-1">
-              <label className="block mb-1">From</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-2 py-1 rounded-lg border border-gray-200 text-xs"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block mb-1">To</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-2 py-1 rounded-lg border border-gray-200 text-xs"
-              />
-            </div>
-          </div>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
-            <div className="flex justify-center items-center py-10 text-gray-500">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              Loading...
+            <div className="flex justify-center items-center py-12 text-gray-500">
+              <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              <span>Loading conversations...</span>
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              <p className="font-medium">No conversations yet.</p>
-              <p className="text-sm">
-                Messages from players will appear here in real time.
+            <div className="p-8 text-center text-gray-500">
+              <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="font-medium text-gray-700">No conversations found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {searchQuery || statusFilter !== 'all' 
+                  ? 'Try adjusting your search or filters.'
+                  : 'Messages from players will appear here in real time.'}
               </p>
             </div>
           ) : (
@@ -799,30 +868,34 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   <li key={conversation.userId}>
                     <button
                       onClick={() => handleSelectConversation(conversation.userId)}
-                      className={`w-full text-left px-4 py-3 transition ${
-                        isActive ? 'bg-indigo-50' : 'hover:bg-gray-50'
+                      className={`w-full text-left px-4 py-4 transition-all ${
+                        isActive 
+                          ? 'bg-indigo-50 border-l-4 border-indigo-600' 
+                          : 'hover:bg-gray-50 border-l-4 border-transparent'
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-gray-900">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
                               {conversation.name || 'Unknown User'}
                             </p>
                             {conversation.unreadCount > 0 && (
-                              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-600">
+                              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[20px]">
                                 {conversation.unreadCount}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500">{conversation.email}</p>
-                          <p className="text-xs text-gray-600 line-clamp-2 mt-1">
-                            {conversation.lastMessage?.message ||
-                              conversation.lastMessage?.attachmentName ||
-                              '(Attachment)'}
+                          <p className="text-xs text-gray-500 truncate mb-1.5">{conversation.email}</p>
+                          <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">
+                            {conversation.lastMessage?.message 
+                              ? decodeHtmlEntities(conversation.lastMessage.message)
+                              : conversation.lastMessage?.attachmentName 
+                              ? conversation.lastMessage.attachmentName
+                              : '(Attachment)'}
                           </p>
                         </div>
-                        <div className="text-[10px] text-gray-400">
+                        <div className="text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0">
                           {conversation.lastMessage
                             ? formatTime(conversation.lastMessage.createdAt)
                             : ''}
@@ -838,148 +911,188 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       </div>
 
       {/* Chat Area */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-md flex flex-col flex-1 min-h-0 lg:w-2/3">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-lg flex flex-col flex-1 min-h-0 lg:w-2/3">
         {selectedUserId ? (
           <>
-            <div className="p-3 sm:p-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
                 <button
                   onClick={() => setShowConversations(true)}
-                  className="lg:hidden text-gray-500 hover:text-gray-700 p-1 flex-shrink-0"
+                  className="lg:hidden p-2 text-gray-500 hover:bg-white rounded-lg transition flex-shrink-0"
                   title="Show conversations"
                 >
                   <Menu className="w-5 h-5" />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
+                  <h3 className="text-lg font-bold text-gray-900 truncate">
                     {conversationSummaries.find((c) => c.userId === selectedUserId)?.name || 'User'}
                   </h3>
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">
+                  <p className="text-sm text-gray-500 truncate">
                     {conversationSummaries.find((c) => c.userId === selectedUserId)?.email || 'No email on file'}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={handleResolveMessages}
-                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg sm:rounded-xl transition"
-                >
-                  <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Mark Resolved</span>
-                  <span className="sm:hidden">Resolve</span>
-                </button>
-              </div>
+              <button
+                onClick={handleResolveMessages}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span className="hidden sm:inline">Mark Resolved</span>
+                <span className="sm:hidden">Resolve</span>
+              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-gray-50 min-h-0">
-              {selectedConversationMessages.length === 0 ? (
-                <div className="text-center text-gray-500 py-10">
-                  <p>No messages in this conversation yet.</p>
+            <div 
+              ref={messagesContainerRef}
+              className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 min-h-0 relative"
+            >
+              {selectedConversationMessages.length === 0 && !loadingMore ? (
+                <div className="text-center text-gray-500 py-12">
+                  <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No messages yet</p>
+                  <p className="text-sm mt-1">Start the conversation...</p>
                 </div>
               ) : (
-                selectedConversationMessages.map((msg) => {
-                  const isAdmin = msg.senderType === 'admin';
-                  const isSystem = msg.senderType === 'system';
-                  
-                  // Special rendering for system messages (bonus claims, etc.)
-                  if (isSystem) {
+                <>
+                  {/* Load More Button - Sticky at top when there are more messages */}
+                  {hasMoreMessages[selectedUserId] === true && (
+                    <div className="sticky top-0 z-10 flex justify-center py-3 mb-4 bg-gray-50 -mx-4 px-4 border-b border-gray-200 shadow-sm">
+                      <button
+                        ref={loadMoreButtonRef}
+                        onClick={() => loadConversation(selectedUserId, true)}
+                        disabled={loadingMore}
+                        className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                      >
+                        {loadingMore ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Loading older messages...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ChevronUp className="w-4 h-4" />
+                            <span>Load Older Messages</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                  {selectedConversationMessages.map((msg) => {
+                    const isAdmin = msg.senderType === 'admin';
+                    const isSystem = msg.senderType === 'system';
+                    
+                    // Special rendering for system messages (bonus claims, etc.)
+                    if (isSystem) {
+                      return (
+                        <div key={msg.id} className="flex justify-center my-4">
+                          <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-md bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                              <span className="text-xs font-semibold text-yellow-800">{msg.name || 'User'}</span>
+                              <span className="text-[10px] text-yellow-600">•</span>
+                              <span className="text-[10px] text-yellow-600" title={formatFullTime(msg.createdAt)}>
+                                {formatTime(msg.createdAt)}
+                              </span>
+                            </div>
+                            {msg.message && (
+                              <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">
+                                {decodeHtmlEntities(msg.message)}
+                              </p>
+                            )}
+                            {msg.metadata?.bonusTitle && (
+                              <div className="mt-2 pt-2 border-t border-yellow-300">
+                                <p className="text-xs text-yellow-700">
+                                  <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
+                                  {msg.metadata.bonusValue && (
+                                    <span className="ml-2">({msg.metadata.bonusValue})</span>
+                                  )}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
                     return (
-                      <div key={msg.id} className="flex justify-center my-3">
-                        <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-lg bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-yellow-800">{msg.name || 'User'}</span>
-                            <span className="text-[10px] text-yellow-600">•</span>
-                            <span className="text-[10px] text-yellow-600">{formatTime(msg.createdAt)}</span>
+                      <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className={`max-w-[80%] sm:max-w-[70%] px-4 py-3 rounded-2xl shadow-sm ${
+                            isAdmin
+                              ? 'bg-indigo-600 text-white rounded-br-sm'
+                              : 'bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 text-xs mb-2 opacity-90 flex-wrap">
+                            <CircleDot className="w-3 h-3 flex-shrink-0" />
+                            <span className="font-medium truncate">
+                              {isAdmin ? (msg.name || 'Support Team') : (msg.name || 'User')}
+                            </span>
+                            <span>•</span>
+                            <span className="text-[11px]" title={formatFullTime(msg.createdAt)}>
+                              {formatTime(msg.createdAt)}
+                            </span>
                           </div>
                           {msg.message && (
-                            <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{msg.message}</p>
+                            <p className={`text-sm whitespace-pre-wrap break-words leading-relaxed ${
+                              isAdmin ? 'text-white' : 'text-gray-900'
+                            }`}>
+                              {decodeHtmlEntities(msg.message)}
+                            </p>
                           )}
-                          {msg.metadata?.bonusTitle && (
-                            <div className="mt-2 pt-2 border-t border-yellow-300">
-                              <p className="text-xs text-yellow-700">
-                                <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
-                                {msg.metadata.bonusValue && (
-                                  <span className="ml-2">({msg.metadata.bonusValue})</span>
-                                )}
-                              </p>
-                            </div>
+                          {msg.attachmentUrl && (
+                            <a
+                              href={`${httpBaseUrl}${msg.attachmentUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`mt-3 inline-flex items-center gap-2 text-xs font-semibold underline transition ${
+                                isAdmin ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                              }`}
+                            >
+                              <FileText className="w-4 h-4" />
+                              <span>{msg.attachmentName || 'Download attachment'}</span>
+                            </a>
                           )}
+                          <div
+                            className={`mt-2 text-[11px] capitalize ${
+                              isAdmin ? 'text-indigo-100' : 'text-gray-500'
+                            } flex items-center gap-2`}
+                          >
+                            <span>Status: {msg.status}</span>
+                          </div>
                         </div>
                       </div>
                     );
-                  }
-                  
-                  return (
-                    <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`max-w-[85%] sm:max-w-[75%] px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow ${
-                          isAdmin
-                            ? 'bg-indigo-600 text-white rounded-br-sm'
-                            : 'bg-white text-gray-900 border border-gray-100 rounded-bl-sm'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs mb-1 opacity-80 flex-wrap">
-                          <CircleDot className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0" />
-                          <span className="truncate">{isAdmin ? (msg.name || 'Support Team') : (msg.name || 'User')}</span>
-                          <span className="hidden sm:inline">•</span>
-                          <span className="text-[10px] sm:text-xs">{formatTime(msg.createdAt)}</span>
-                        </div>
-                        {msg.message && (
-                          <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{msg.message}</p>
-                        )}
-                        {msg.attachmentUrl && (
-                          <a
-                            href={`${httpBaseUrl}${msg.attachmentUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`mt-2 sm:mt-3 inline-flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-semibold underline ${
-                              isAdmin ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
-                            }`}
-                          >
-                            <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="truncate max-w-[120px] sm:max-w-none">{msg.attachmentName || 'Download attachment'}</span>
-                          </a>
-                        )}
-                        <div
-                          className={`mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] ${
-                            isAdmin ? 'text-indigo-100' : 'text-gray-500'
-                          } flex items-center gap-2`}
-                        >
-                          <span>Status: {msg.status}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                  })}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
+            <div className="border-t border-gray-200 bg-white p-4 space-y-3 flex-shrink-0">
               {attachment && (
-                <div className="bg-indigo-50 rounded-lg sm:rounded-xl p-2 sm:p-3">
+                <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-200">
                   {attachmentPreview ? (
                     <div className="space-y-2">
                       <div className="relative inline-block max-w-full">
                         <img
                           src={attachmentPreview}
                           alt="Preview"
-                          className="max-h-48 max-w-full rounded-lg border border-indigo-200 object-contain"
+                          className="max-h-48 max-w-full rounded-lg border border-indigo-300 object-contain"
                         />
                         <button
                           onClick={() => {
                             setAttachment(null);
                             setAttachmentPreview(null);
                           }}
-                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition"
+                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 transition shadow-lg"
                           title="Remove attachment"
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="flex items-center gap-2 text-xs sm:text-sm text-indigo-700">
-                        <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                      <div className="flex items-center gap-2 text-sm text-indigo-700">
+                        <Paperclip className="w-4 h-4 flex-shrink-0" />
                         <span className="truncate">{attachment.name}</span>
                         <span className="text-indigo-500">
                           ({(attachment.size / 1024).toFixed(1)} KB)
@@ -988,13 +1101,13 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                     </div>
                   ) : (
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-                        <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0 text-indigo-600" />
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Paperclip className="w-4 h-4 flex-shrink-0 text-indigo-600" />
                         <div className="min-w-0 flex-1">
-                          <span className="text-xs sm:text-sm text-indigo-700 font-medium truncate block">
+                          <span className="text-sm text-indigo-700 font-medium truncate block">
                             {attachment.name}
                           </span>
-                          <span className="text-[10px] sm:text-xs text-indigo-500">
+                          <span className="text-xs text-indigo-500">
                             {(attachment.size / 1024).toFixed(1)} KB
                           </span>
                         </div>
@@ -1004,52 +1117,70 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                           setAttachment(null);
                           setAttachmentPreview(null);
                         }}
-                        className="text-indigo-600 hover:text-indigo-800 flex-shrink-0 ml-2 p-1"
+                        className="text-indigo-600 hover:text-indigo-800 flex-shrink-0 ml-2 p-1 rounded hover:bg-indigo-100 transition"
                         title="Remove attachment"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                   )}
                 </div>
               )}
-              <textarea
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                rows={2}
-                placeholder="Write a reply..."
-                className="w-full rounded-lg sm:rounded-xl border border-gray-200 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-              />
-              <div className="flex items-center justify-between gap-2">
-                <label className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 cursor-pointer hover:text-indigo-600 flex-shrink-0">
-                  <Paperclip className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Attach file</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
-                    onChange={handleFileSelect}
-                  />
+              <div className="flex items-end gap-3">
+                <label htmlFor="message-input" className="sr-only">
+                  Type your message
                 </label>
-                <button
-                  onClick={() => void handleSendMessage()}
-                  disabled={sending}
-                  className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-indigo-600 text-white text-xs sm:text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0"
-                >
-                  {sending ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-                  <span className="hidden sm:inline">Send Reply</span>
-                  <span className="sm:hidden">Send</span>
-                </button>
+                <textarea
+                  id="message-input"
+                  name="message-input"
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={3}
+                  placeholder="Type your message...."
+                  className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-gray-50"
+                />
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="attachment-input" className="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-indigo-600 transition p-2 rounded-lg hover:bg-gray-100">
+                    <Paperclip className="w-5 h-5" />
+                    <input
+                      id="attachment-input"
+                      name="attachment-input"
+                      type="file"
+                      className="hidden"
+                      accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+                      onChange={handleFileSelect}
+                    />
+                  </label>
+                  <button
+                    onClick={() => void handleSendMessage()}
+                    disabled={sending || (!messageInput.trim() && !attachment)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                  >
+                    {sending ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                    <span className="hidden sm:inline">Send</span>
+                  </button>
+                </div>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-3 p-4">
-            <MessageCircle className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-500" />
-            <p className="text-base sm:text-lg font-semibold text-center">Select a conversation</p>
-            <p className="text-xs sm:text-sm text-center max-w-sm">
-              {showConversations ? 'Choose a player conversation from the left to start chatting.' : 'Tap the menu button to view conversations.'}
-            </p>
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-4 p-8">
+            <div className="p-4 bg-indigo-100 rounded-full">
+              <MessageCircle className="w-12 h-12 text-indigo-500" />
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-700">Select a conversation</p>
+              <p className="text-sm text-gray-500 mt-2 max-w-sm">
+                {showConversations 
+                  ? 'Choose a player conversation from the left to start chatting.' 
+                  : 'Tap the menu button to view conversations.'}
+              </p>
+            </div>
             {!showConversations && (
               <button
                 onClick={() => setShowConversations(true)}
@@ -1067,4 +1198,3 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 };
 
 export default AdminChatPanel;
-

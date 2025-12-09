@@ -88,6 +88,188 @@ const fixUserMessageName = async (msg: any): Promise<void> => {
 
 router.use(requireAdminAuth);
 
+// New endpoint to get conversation summaries (list of all users with their last message)
+router.get('/conversations', async (req: Request, res: Response) => {
+  try {
+    const {
+      status,
+      search
+    } = req.query;
+
+    const filter: Record<string, unknown> = {};
+
+    if (status && typeof status === 'string') {
+      filter.status = status;
+    }
+
+    const searchFilter = buildSearchFilter(typeof search === 'string' ? search : undefined);
+    const finalFilter = searchFilter ? { $and: [filter, searchFilter] } : filter;
+
+    // Use aggregation to get unique conversations with last message and unread count
+    const pipeline: any[] = [
+      { $match: finalFilter },
+      {
+        $sort: { createdAt: -1 }
+      },
+      {
+        $group: {
+          _id: '$userId',
+          lastMessage: { $first: '$$ROOT' },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$senderType', 'user'] }, { $eq: ['$status', 'unread'] }] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      {
+        $unwind: {
+          path: '$user',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          userId: { $toString: '$_id' },
+          lastMessage: {
+            id: { $toString: '$lastMessage._id' },
+            userId: { $toString: '$lastMessage.userId' },
+            senderType: '$lastMessage.senderType',
+            message: '$lastMessage.message',
+            attachmentUrl: '$lastMessage.attachmentUrl',
+            attachmentName: '$lastMessage.attachmentName',
+            attachmentType: '$lastMessage.attachmentType',
+            attachmentSize: '$lastMessage.attachmentSize',
+            status: '$lastMessage.status',
+            name: '$lastMessage.name',
+            email: '$lastMessage.email',
+            createdAt: '$lastMessage.createdAt',
+            updatedAt: '$lastMessage.updatedAt',
+            metadata: '$lastMessage.metadata'
+          },
+          unreadCount: 1,
+          // Get user info for name/email
+          userInfo: {
+            firstName: '$user.firstName',
+            lastName: '$user.lastName',
+            username: '$user.username',
+            email: '$user.email'
+          }
+        }
+      },
+      {
+        $addFields: {
+          // Build display name from user info or message name
+          name: {
+            $cond: {
+              if: {
+                $and: [
+                  { $ne: ['$userInfo.firstName', null] },
+                  { $ne: ['$userInfo.firstName', ''] }
+                ]
+              },
+              then: {
+                $trim: {
+                  input: {
+                    $concat: [
+                      { $ifNull: ['$userInfo.firstName', ''] },
+                      ' ',
+                      { $ifNull: ['$userInfo.lastName', ''] }
+                    ]
+                  }
+                }
+              },
+              else: {
+                $cond: {
+                  if: {
+                    $and: [
+                      { $ne: ['$userInfo.username', null] },
+                      { $ne: ['$userInfo.username', ''] }
+                    ]
+                  },
+                  then: '$userInfo.username',
+                  else: {
+                    $cond: {
+                      if: {
+                        $and: [
+                          { $ne: ['$userInfo.email', null] },
+                          { $ne: ['$userInfo.email', ''] }
+                        ]
+                      },
+                      then: { $arrayElemAt: [{ $split: ['$userInfo.email', '@'] }, 0] },
+                      else: {
+                        $cond: {
+                          if: {
+                            $and: [
+                              { $ne: ['$lastMessage.name', null] },
+                              { $ne: ['$lastMessage.name', ''] },
+                              { $ne: ['$lastMessage.name', 'GAGame'] }
+                            ]
+                          },
+                          then: '$lastMessage.name',
+                          else: 'User'
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          email: {
+            $ifNull: ['$userInfo.email', '$lastMessage.email']
+          }
+        }
+      },
+      {
+        $sort: { 'lastMessage.createdAt': -1 }
+      }
+    ];
+
+    const conversations = await ChatMessage.aggregate(pipeline);
+
+    // Fix names for messages that might have "GAGame" or empty names
+    for (const conv of conversations) {
+      if (conv.lastMessage) {
+        await fixUserMessageName(conv.lastMessage);
+        // Update the name in the conversation if the message name was fixed
+        if (conv.lastMessage.name && conv.name === 'User' && conv.lastMessage.name !== 'GAGame') {
+          conv.name = conv.lastMessage.name;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: conversations.map(conv => ({
+        userId: conv.userId,
+        name: (typeof conv.name === 'string' ? conv.name.trim() : String(conv.name || '').trim()) || 'User',
+        email: conv.email || '',
+        lastMessage: conv.lastMessage,
+        unreadCount: conv.unreadCount
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch conversations',
+      error: error.message
+    });
+  }
+});
+
 router.get('/', async (req: Request, res: Response) => {
   try {
     const {
@@ -95,13 +277,16 @@ router.get('/', async (req: Request, res: Response) => {
       limit = 50,
       status,
       userId,
-      startDate,
-      endDate,
-      search
+      search,
+      before // ISO date string - load messages before this date (for pagination)
     } = req.query;
 
     const pageNumber = Number(page) || 1;
-    const limitNumber = Math.min(Number(limit) || 50, 200);
+    // When fetching conversations (no userId), allow much higher limit to show all conversations
+    // When fetching messages for a specific conversation (with userId), use normal pagination
+    const isFetchingConversations = !userId;
+    const maxLimit = isFetchingConversations ? 10000 : 200; // Allow up to 10k messages when fetching all conversations
+    const limitNumber = Math.min(Number(limit) || 50, maxLimit);
 
     const filter: Record<string, unknown> = {};
 
@@ -120,40 +305,57 @@ router.get('/', async (req: Request, res: Response) => {
       }
     }
 
-    if ((startDate && typeof startDate === 'string') || (endDate && typeof endDate === 'string')) {
-      filter.createdAt = {};
-      if (startDate && typeof startDate === 'string') {
-        filter.createdAt = {
-          ...(filter.createdAt as Record<string, Date>),
-          $gte: new Date(startDate)
-        };
-      }
-      if (endDate && typeof endDate === 'string') {
-        filter.createdAt = {
-          ...(filter.createdAt as Record<string, Date>),
-          $lte: new Date(endDate)
-        };
+    // Handle 'before' parameter for cursor-based pagination (loading older messages)
+    if (before && typeof before === 'string') {
+      try {
+        const beforeDate = new Date(before);
+        if (!isNaN(beforeDate.getTime())) {
+          filter.createdAt = { $lt: beforeDate };
+        }
+      } catch (e) {
+        // Invalid date, ignore
       }
     }
 
     const searchFilter = buildSearchFilter(typeof search === 'string' ? search : undefined);
     const finalFilter = searchFilter ? { $and: [filter, searchFilter] } : filter;
 
+    // When using 'before' parameter (cursor-based pagination), skip the skip/page logic
+    // because we're using the cursor (before date) instead
+    const useCursorPagination = before && typeof before === 'string';
+    
+    // Sort order depends on pagination type:
+    // - Cursor pagination (before): ascending to get oldest messages first (for prepending)
+    // - Offset pagination: descending to get newest messages first (standard list view)
+    const sortOrder: { [key: string]: 1 | -1 } = useCursorPagination 
+      ? { createdAt: 1 }  // Ascending for cursor pagination
+      : { createdAt: -1 }; // Descending for offset pagination
+    
+    const query = ChatMessage.find(finalFilter).sort(sortOrder);
+    
+    if (useCursorPagination) {
+      // Cursor-based: just limit, no skip
+      query.limit(limitNumber);
+    } else {
+      // Offset-based: use skip and limit
+      query.skip((pageNumber - 1) * limitNumber).limit(limitNumber);
+    }
+    
     const [messages, total] = await Promise.all([
-      ChatMessage.find(finalFilter)
-        .sort({ createdAt: -1 })
-        .skip((pageNumber - 1) * limitNumber)
-        .limit(limitNumber)
-        .populate('userId', 'firstName lastName username email')
-        .lean(),
+      query.populate('userId', 'firstName lastName username email').lean(),
       ChatMessage.countDocuments(finalFilter)
     ]);
 
     // Fix names for user messages that might have incorrect names (e.g., "GAGame")
     // This ensures existing messages with wrong names are corrected when fetched
+    // Also serialize messages to ensure they have 'id' field instead of just '_id'
     const fixedMessages = await Promise.all(
       messages.map(async (msg: any) => {
         await fixUserMessageName(msg);
+        // Ensure message has 'id' field for frontend compatibility
+        if (!msg.id && msg._id) {
+          msg.id = msg._id.toString();
+        }
         return msg;
       })
     );

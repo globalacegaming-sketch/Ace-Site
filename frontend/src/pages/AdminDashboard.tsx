@@ -574,7 +574,7 @@ const AdminDashboard: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex-1">
               <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white drop-shadow-md">
-                FortunePanda (Release) / User Management
+                User Management
               </h1>
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-xs sm:text-sm text-blue-100 font-medium">Agent Balance:</span>
