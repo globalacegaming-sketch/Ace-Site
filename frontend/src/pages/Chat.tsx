@@ -119,6 +119,20 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Decode HTML entities (like &#x27; for apostrophe) for display
+  // This safely decodes entities that were escaped by the backend sanitization
+  const decodeHtmlEntities = useCallback((text: string): string => {
+    if (!text) return text;
+    // Create a temporary textarea to decode HTML entities safely
+    // This is safe because we're only decoding text that came from our own sanitized backend
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    const decoded = textarea.value;
+    // Clean up
+    textarea.remove();
+    return decoded;
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -389,7 +403,7 @@ const Chat = () => {
                         )}
                         {message.message && (
                           <p className={`text-sm whitespace-pre-wrap break-words ${isUser ? 'text-[#0A0A0F]' : 'casino-text-primary'}`}>
-                            {message.message}
+                            {decodeHtmlEntities(message.message)}
                           </p>
                         )}
                         {message.attachmentUrl && (

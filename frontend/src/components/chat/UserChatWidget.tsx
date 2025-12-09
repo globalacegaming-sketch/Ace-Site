@@ -162,6 +162,20 @@ const UserChatWidget = () => {
     }
   };
 
+  // Decode HTML entities (like &#x27; for apostrophe) for display
+  // This safely decodes entities that were escaped by the backend sanitization
+  const decodeHtmlEntities = (text: string): string => {
+    if (!text) return text;
+    // Create a temporary textarea to decode HTML entities safely
+    // This is safe because we're only decoding text that came from our own sanitized backend
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    const decoded = textarea.value;
+    // Clean up
+    textarea.remove();
+    return decoded;
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     scrollToBottom();
@@ -435,7 +449,7 @@ const UserChatWidget = () => {
                             <span className="text-[10px] text-yellow-600">{timestamp}</span>
                           </div>
                           {msg.message && (
-                            <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{msg.message}</p>
+                            <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{decodeHtmlEntities(msg.message)}</p>
                           )}
                           {msg.metadata?.bonusTitle && (
                             <div className="mt-2 pt-2 border-t border-yellow-300">
@@ -469,7 +483,7 @@ const UserChatWidget = () => {
                         </p>
                         {msg.message && (
                           <p className="text-sm whitespace-pre-wrap break-words">
-                            {msg.message}
+                            {decodeHtmlEntities(msg.message)}
                           </p>
                         )}
                         {msg.attachmentUrl && (
