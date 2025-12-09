@@ -22,7 +22,12 @@ export const sendSuccess = <T = any>(
   data?: T,
   statusCode: number = 200,
   count?: number
-): Response => {
+): Response | void => {
+  // Check if response was already sent to prevent "headers already sent" error
+  if (res.headersSent) {
+    return;
+  }
+
   const response: ApiResponse<T> = {
     success: true,
     message,
@@ -42,7 +47,12 @@ export const sendError = (
   message: string,
   statusCode: number = 400,
   error?: string
-): Response => {
+): Response | void => {
+  // Check if response was already sent to prevent "headers already sent" error
+  if (res.headersSent) {
+    return;
+  }
+
   const response: ApiResponse = {
     success: false,
     message,

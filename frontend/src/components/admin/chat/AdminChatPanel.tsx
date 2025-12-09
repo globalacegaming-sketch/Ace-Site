@@ -10,10 +10,9 @@ import {
   Send,
   Filter,
   Paperclip,
-  RefreshCw,
   CircleDot,
   X,
-  Menu,
+  ArrowLeft,
   Gift,
   ChevronUp
 } from 'lucide-react';
@@ -81,78 +80,237 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const loadMoreButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedUserIdRef = useRef<string | null>(null);
   const playNotificationSoundRef = useRef<() => void>(() => {});
+  const showPushNotificationRef = useRef<(message: ChatMessage) => void>(() => {});
+  const notificationPermissionRef = useRef<NotificationPermission>('default');
 
   const httpBaseUrl = useMemo(() => apiBaseUrl.replace(/\/api$/, ''), [apiBaseUrl]);
 
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Initialize audio context on user interaction
+  // Initialize notification audio on mount
   useEffect(() => {
-    const initAudio = () => {
-      if (!audioContextRef.current) {
-        try {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        } catch (e) {
-          console.log('Web Audio API not supported');
+    let audio: HTMLAudioElement | null = null;
+    
+    try {
+      // Create audio element for notification sound
+      audio = new Audio('/music/notification.mp3');
+      audio.preload = 'auto';
+      audio.volume = 0.7; // Set volume to 70%
+      
+      // Handle audio loading errors silently
+      audio.onerror = () => {
+        // Silently handle error - notification sound is optional
+        audio = null;
+      };
+      
+      // Only set ref if audio loads successfully
+      audio.addEventListener('canplaythrough', () => {
+        if (audio) {
+          notificationAudioRef.current = audio;
         }
-      }
-    };
-
-    // Initialize on any user interaction
-    document.addEventListener('click', initAudio, { once: true });
-    document.addEventListener('keydown', initAudio, { once: true });
-    document.addEventListener('touchstart', initAudio, { once: true });
+      }, { once: true });
+      
+      // Try to load the audio
+      audio.load();
+      
+      // Set ref immediately but handle errors gracefully
+      notificationAudioRef.current = audio;
+    } catch (error) {
+      // Silently handle initialization errors
+      audio = null;
+    }
 
     return () => {
-      document.removeEventListener('click', initAudio);
-      document.removeEventListener('keydown', initAudio);
-      document.removeEventListener('touchstart', initAudio);
+      // Cleanup audio on unmount
+      if (notificationAudioRef.current) {
+        notificationAudioRef.current.pause();
+        notificationAudioRef.current.src = '';
+        notificationAudioRef.current = null;
+      }
     };
   }, []);
 
   const playNotificationSound = useCallback(() => {
     try {
-      // Ensure audio context is initialized
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (!notificationAudioRef.current) {
+        // Fallback: try to create audio element if ref is null
+        const audio = new Audio('/music/notification.mp3');
+        audio.volume = 0.7;
+        notificationAudioRef.current = audio;
       }
 
-      const audioContext = audioContextRef.current;
+      const audio = notificationAudioRef.current;
       
-      // Resume audio context if suspended (browser autoplay policy)
-      if (audioContext.state === 'suspended') {
-        audioContext.resume().catch(() => {
-          console.log('Could not resume audio context');
-        });
-      }
-
-      // Create a pleasant notification sound (two-tone beep)
-      const playTone = (frequency: number, startTime: number, duration: number) => {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = frequency;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0, startTime);
-        gainNode.gain.linearRampToValueAtTime(0.4, startTime + 0.01);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-        
-        oscillator.start(startTime);
-        oscillator.stop(startTime + duration);
-      };
-      
-      // Play two-tone notification
-      const now = audioContext.currentTime;
-      playTone(800, now, 0.15);
-      playTone(1000, now + 0.15, 0.15);
+      // Reset audio to beginning and play
+      audio.currentTime = 0;
+      audio.play().catch(() => {
+        // Silently handle autoplay restrictions - notification sound is optional
+        // Try to play after user interaction
+        // Use notificationAudioRef.current directly to avoid closure bug
+        const playOnInteraction = () => {
+          if (notificationAudioRef.current) {
+            notificationAudioRef.current.play().catch(() => {
+              // Silently handle playback failure
+            });
+          }
+          document.removeEventListener('click', playOnInteraction);
+          document.removeEventListener('keydown', playOnInteraction);
+        };
+        document.addEventListener('click', playOnInteraction, { once: true });
+        document.addEventListener('keydown', playOnInteraction, { once: true });
+      });
     } catch (error) {
-      console.log('Notification sound error:', error);
+      // Silently handle errors - notification sound is optional
     }
   }, []);
+
+  // Request browser notification permission
+  const requestNotificationPermission = useCallback(async () => {
+    if (!('Notification' in window)) {
+      console.log('This browser does not support notifications');
+      return false;
+    }
+
+    if (Notification.permission === 'granted') {
+      notificationPermissionRef.current = 'granted';
+      return true;
+    }
+
+    if (Notification.permission !== 'denied') {
+      try {
+        const permission = await Notification.requestPermission();
+        notificationPermissionRef.current = permission;
+        if (permission === 'granted') {
+          // Test notification to ensure Windows notifications work
+          try {
+            const testNotification = new Notification('Notifications enabled', {
+              body: 'You will receive Windows notifications for new customer messages',
+              icon: '/favicon.ico',
+              tag: 'test-notification',
+              silent: false
+            });
+            // Close test notification after 3 seconds
+            setTimeout(() => testNotification.close(), 3000);
+          } catch (e) {
+            console.log('Could not show test notification:', e);
+          }
+          return true;
+        } else if (permission === 'denied') {
+          toast.error('Notification permission denied. Please enable notifications in your browser settings to receive Windows notifications.', {
+            duration: 5000
+          });
+        }
+      } catch (error) {
+        console.log('Error requesting notification permission:', error);
+        toast.error('Failed to request notification permission', {
+          duration: 3000
+        });
+      }
+    } else {
+      toast.error('Notifications are blocked. Please enable them in your browser settings to receive Windows notifications.', {
+        duration: 5000
+      });
+    }
+
+    return false;
+  }, []);
+
+  // Show browser push notification
+  const showPushNotification = useCallback((message: ChatMessage) => {
+    if (!('Notification' in window)) {
+      return;
+    }
+
+    // Only show notification if permission is granted
+    if (notificationPermissionRef.current !== 'granted') {
+      return;
+    }
+
+    // Don't show notification if viewing this conversation and tab is focused
+    const isViewingConversation = selectedUserIdRef.current === message.userId;
+    const isTabFocused = document.hasFocus();
+
+    if (isViewingConversation && isTabFocused) {
+      // User is actively viewing this conversation, no need for notification
+      return;
+    }
+
+    try {
+      const senderName = message.name || 'Customer';
+      const messageText = message.message 
+        ? (message.message.length > 100 ? message.message.substring(0, 100) + '...' : message.message)
+        : message.attachmentName 
+        ? `Sent an attachment: ${message.attachmentName}`
+        : 'Sent a message';
+
+      // Create notification with Windows-friendly options
+      const notificationOptions: NotificationOptions = {
+        body: messageText,
+        icon: '/favicon.ico', // App icon for Windows
+        badge: '/favicon.ico', // Badge icon
+        tag: `chat-${message.userId}`, // Group notifications by conversation (replaces previous notification with same tag)
+        requireInteraction: false, // Don't require user interaction to dismiss
+        silent: false, // Allow system sound
+        // Add data for notification handling
+        data: {
+          userId: message.userId,
+          messageId: message.id,
+          url: window.location.href
+        }
+      };
+
+      const notification = new Notification(`New message from ${senderName}`, notificationOptions);
+
+      // Handle notification click - focus the window and select the conversation
+      notification.onclick = (event) => {
+        event.preventDefault();
+        window.focus();
+        // Focus the admin dashboard tab
+        if (window.parent !== window) {
+          window.parent.focus();
+        }
+        if (selectedUserIdRef.current !== message.userId) {
+          setSelectedUserId(message.userId);
+        }
+        // Don't auto-close on click - let Windows handle it
+      };
+
+      // Handle notification close
+      notification.onclose = () => {
+        // Notification was closed (by user or system)
+      };
+
+      // Don't auto-close - let Windows handle notification persistence
+      // Windows will automatically move it to Action Center if not dismissed
+      // This ensures notifications appear in Windows notification center
+    } catch (error) {
+      console.log('Error showing push notification:', error);
+    }
+  }, [setSelectedUserId]);
+
+  // Initialize notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window) {
+      notificationPermissionRef.current = Notification.permission;
+      
+      // Request permission if not already granted or denied
+      if (Notification.permission === 'default') {
+        // Request permission after a short delay to allow user interaction
+        const timer = setTimeout(() => {
+          requestNotificationPermission().then((granted) => {
+            if (granted) {
+              toast.success('Push notifications enabled', {
+                duration: 3000,
+                icon: '🔔'
+              });
+            }
+          });
+        }, 2000);
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [requestNotificationPermission]);
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -198,7 +356,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     scrollToBottom();
   }, [selectedUserId, conversationMessages]);
 
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       setLoading(true);
       // Use the new conversations endpoint that returns summaries directly
@@ -229,7 +387,15 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     } finally {
       setLoading(false);
     }
-  };
+  }, [adminToken, apiBaseUrl, statusFilter, searchQuery]);
+
+  // Expose refresh function to parent component via window object
+  useEffect(() => {
+    (window as any).__adminChatRefresh = fetchConversations;
+    return () => {
+      delete (window as any).__adminChatRefresh;
+    };
+  }, [fetchConversations]);
 
   const loadConversation = async (userId: string, loadOlder: boolean = false) => {
     if (!userId) return;
@@ -435,7 +601,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   useEffect(() => {
     selectedUserIdRef.current = selectedUserId;
     playNotificationSoundRef.current = playNotificationSound;
-  }, [selectedUserId, playNotificationSound]);
+    showPushNotificationRef.current = showPushNotification;
+  }, [selectedUserId, playNotificationSound, showPushNotification]);
 
   useEffect(() => {
     const socket = io(wsBaseUrl, {
@@ -458,11 +625,13 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
           (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
         
-        // Play notification sound if message is from user
+        // Play notification sound and show push notification if message is from user
         // Use ref to avoid socket reconnection when callback changes
         if (message.senderType === 'user') {
           setTimeout(() => {
             playNotificationSoundRef.current();
+            // Show browser push notification
+            showPushNotificationRef.current(message);
           }, 100);
         }
         
@@ -558,7 +727,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
   const handleSelectConversation = (userId: string) => {
     setSelectedUserId(userId);
-    // Close conversations sidebar on mobile when selecting a conversation
+    // Hide conversations sidebar on mobile when selecting a conversation
+    // This ensures chat area takes full width on mobile
     setShowConversations(false);
     if (!conversationMessages[userId]) {
       // Initialize hasMoreMessages as undefined (unknown) when starting to load
@@ -773,33 +943,17 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   };
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6">
+    <div className="h-full flex flex-col lg:flex-row gap-2 sm:gap-4 lg:gap-6">
       {/* Conversations Sidebar */}
-      <div className={`bg-white rounded-2xl border border-gray-200 shadow-lg flex flex-col transition-all duration-300 ${
+      <div className={`bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-lg flex flex-col transition-all duration-300 w-full ${
         showConversations ? 'flex' : 'hidden'
       } lg:flex lg:w-1/3`}>
-        <div className="p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
-          <div className="flex items-center gap-3 mb-4">
-            <button
-              onClick={() => void fetchConversations()}
-              className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition"
-              title="Refresh conversations"
-            >
-              <RefreshCw className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setShowConversations(false)}
-              className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition"
-              title="Close conversations"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="relative mb-3">
+        <div className="p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
+          <div className="relative mb-2 sm:mb-3">
             <label htmlFor="conversation-search" className="sr-only">
               Search by user or email
             </label>
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-gray-400 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2" />
             <input
               id="conversation-search"
               name="conversation-search"
@@ -807,37 +961,37 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
               placeholder="Search by user or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white text-gray-900 placeholder-gray-400"
+              className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white text-gray-900 placeholder-gray-400"
             />
           </div>
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 sm:gap-1.5 transition min-h-[32px] ${
                 statusFilter === 'all'
                   ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 border border-gray-200'
               }`}
             >
-              <Filter className="w-3 h-3" />
-              All
+              <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+              <span>All</span>
             </button>
             <button
               onClick={() => setStatusFilter('unread')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[32px] ${
                 statusFilter === 'unread'
                   ? 'bg-red-100 text-red-700 border border-red-200'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 border border-gray-200'
               }`}
             >
               Unread
             </button>
             <button
               onClick={() => setStatusFilter('resolved')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[32px] ${
                 statusFilter === 'resolved'
                   ? 'bg-green-100 text-green-700 border border-green-200'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 border border-gray-200'
               }`}
             >
               Resolved
@@ -868,26 +1022,26 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   <li key={conversation.userId}>
                     <button
                       onClick={() => handleSelectConversation(conversation.userId)}
-                      className={`w-full text-left px-4 py-4 transition-all ${
+                      className={`w-full text-left px-3 sm:px-4 py-3 sm:py-4 transition-all active:bg-gray-50 ${
                         isActive 
                           ? 'bg-indigo-50 border-l-4 border-indigo-600' 
                           : 'hover:bg-gray-50 border-l-4 border-transparent'
                       }`}
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-2 sm:gap-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-semibold text-gray-900 truncate">
+                          <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1">
+                            <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
                               {conversation.name || 'Unknown User'}
                             </p>
                             {conversation.unreadCount > 0 && (
-                              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[20px]">
+                              <span className="inline-flex items-center justify-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[18px] sm:min-w-[20px]">
                                 {conversation.unreadCount}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500 truncate mb-1.5">{conversation.email}</p>
-                          <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">
+                          <p className="text-[10px] sm:text-xs text-gray-500 truncate mb-1 sm:mb-1.5">{conversation.email}</p>
+                          <p className="text-[11px] sm:text-xs text-gray-600 leading-relaxed line-clamp-2">
                             {conversation.lastMessage?.message 
                               ? decodeHtmlEntities(conversation.lastMessage.message)
                               : conversation.lastMessage?.attachmentName 
@@ -895,7 +1049,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                               : '(Attachment)'}
                           </p>
                         </div>
-                        <div className="text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0">
+                        <div className="text-[9px] sm:text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0 pt-0.5">
                           {conversation.lastMessage
                             ? formatTime(conversation.lastMessage.createdAt)
                             : ''}
@@ -911,32 +1065,35 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       </div>
 
       {/* Chat Area */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-lg flex flex-col flex-1 min-h-0 lg:w-2/3">
+      <div className={`bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-lg flex flex-col flex-1 min-h-0 w-full ${showConversations && !selectedUserId ? 'hidden' : 'flex'} lg:flex lg:w-2/3`}>
         {selectedUserId ? (
           <>
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="p-2 sm:p-3 lg:p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                 <button
-                  onClick={() => setShowConversations(true)}
-                  className="lg:hidden p-2 text-gray-500 hover:bg-white rounded-lg transition flex-shrink-0"
-                  title="Show conversations"
+                  onClick={() => {
+                    setShowConversations(true);
+                    setSelectedUserId(null);
+                  }}
+                  className="lg:hidden p-1.5 sm:p-2 text-gray-600 hover:bg-white active:bg-gray-100 rounded-lg transition flex-shrink-0"
+                  title="Back to conversations"
                 >
-                  <Menu className="w-5 h-5" />
+                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-lg font-bold text-gray-900 truncate">
+                  <h3 className="text-sm sm:text-base lg:text-lg font-semibold sm:font-bold text-gray-900 truncate">
                     {conversationSummaries.find((c) => c.userId === selectedUserId)?.name || 'User'}
                   </h3>
-                  <p className="text-sm text-gray-500 truncate">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">
                     {conversationSummaries.find((c) => c.userId === selectedUserId)?.email || 'No email on file'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleResolveMessages}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 active:bg-green-200 border border-green-200 rounded-lg transition"
               >
-                <CheckCircle className="w-4 h-4" />
+                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">Mark Resolved</span>
                 <span className="sm:hidden">Resolve</span>
               </button>
@@ -944,7 +1101,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
             <div 
               ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 min-h-0 relative"
+              className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-white sm:bg-gray-50 min-h-0 relative"
             >
               {selectedConversationMessages.length === 0 && !loadingMore ? (
                 <div className="text-center text-gray-500 py-12">
@@ -1069,7 +1226,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-gray-200 bg-white p-4 space-y-3 flex-shrink-0">
+            <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
               {attachment && (
                 <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-200">
                   {attachmentPreview ? (
@@ -1126,7 +1283,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   )}
                 </div>
               )}
-              <div className="flex items-end gap-3">
+              <div className="flex items-end gap-2 sm:gap-3">
                 <label htmlFor="message-input" className="sr-only">
                   Type your message
                 </label>
@@ -1136,12 +1293,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  rows={3}
+                  rows={2}
                   placeholder="Type your message...."
-                  className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-gray-50"
+                  className="flex-1 rounded-lg sm:rounded-xl border border-gray-200 px-3 sm:px-4 py-2 sm:py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-white sm:bg-gray-50"
                 />
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="attachment-input" className="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-indigo-600 transition p-2 rounded-lg hover:bg-gray-100">
+                <div className="flex flex-row sm:flex-col gap-1.5 sm:gap-2">
+                  <label htmlFor="attachment-input" className="flex items-center justify-center text-gray-600 cursor-pointer hover:text-indigo-600 transition p-2 sm:p-2 rounded-lg hover:bg-gray-100 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0">
                     <Paperclip className="w-5 h-5" />
                     <input
                       id="attachment-input"
@@ -1155,7 +1312,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   <button
                     onClick={() => void handleSendMessage()}
                     disabled={sending || (!messageInput.trim() && !attachment)}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                    className="inline-flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0"
                   >
                     {sending ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -1184,9 +1341,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
             {!showConversations && (
               <button
                 onClick={() => setShowConversations(true)}
-                className="mt-2 lg:hidden flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+                className="mt-2 lg:hidden flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 active:bg-indigo-800 transition"
               >
-                <Menu className="w-4 h-4" />
+                <ArrowLeft className="w-4 h-4" />
                 Show Conversations
               </button>
             )}

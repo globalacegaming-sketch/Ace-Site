@@ -19,6 +19,28 @@ const AdminLogin: React.FC = () => {
     stopMusic();
   }, [stopMusic]);
 
+  // Redirect to dashboard if already logged in
+  useEffect(() => {
+    const session = localStorage.getItem('admin_session');
+    if (session) {
+      try {
+        const parsedSession = JSON.parse(session);
+        // Check if session is still valid
+        if (parsedSession.expiresAt && Date.now() < parsedSession.expiresAt) {
+          // Already logged in, redirect to dashboard
+          navigate('/adminacers', { replace: true });
+          return;
+        } else {
+          // Session expired, remove it
+          localStorage.removeItem('admin_session');
+        }
+      } catch (error) {
+        // Invalid session, remove it
+        localStorage.removeItem('admin_session');
+      }
+    }
+  }, [navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 

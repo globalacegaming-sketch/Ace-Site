@@ -136,6 +136,11 @@ router.get('/agent-balance', async (req: Request, res: Response) => {
       return sendError(res, result.message || 'Failed to get agent balance', 400);
     }
   } catch (error) {
+    // Check if response was already sent to prevent "headers already sent" error
+    if (res.headersSent) {
+      logger.error('Get agent balance error (response already sent):', error);
+      return;
+    }
     logger.error('Get agent balance error:', error);
     return sendError(res, 'Internal server error', 500);
   }
