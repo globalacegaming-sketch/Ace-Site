@@ -158,10 +158,10 @@ const Home = () => {
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent'
                 }}>
-                  100% up to $100
+                  100% Bonus on your first deposit up to $100
                 </div>
                 <div className="casino-text-primary text-sm sm:text-base lg:text-lg mb-4 sm:mb-6 leading-relaxed">
-                  + Referral Bonus, VIP Rewards and much more (25 on Sign up)
+                  + Referral Bonus, VIP Rewards and much more
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <button 
