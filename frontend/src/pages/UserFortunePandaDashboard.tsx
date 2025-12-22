@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Gamepad2, DollarSign, RefreshCw, Play, Eye, EyeOff, User, CreditCard } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import fortunePandaApi from '../services/fortunePandaApi';
 
 interface Game {
@@ -24,7 +23,6 @@ const UserFortunePandaDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCredentials, setShowCredentials] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     loadUserAccount();
@@ -63,10 +61,6 @@ const UserFortunePandaDashboard: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Find the game to get its name
-      const game = games.find(g => g.kindId === kindId);
-      const gameName = game?.gameName || 'Game';
-      
       const result = await fortunePandaApi.enterUserGame(kindId);
       if (result.success) {
         // Directly navigate to game URL (works on mobile and desktop)
