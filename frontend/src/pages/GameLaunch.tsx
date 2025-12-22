@@ -60,38 +60,48 @@ const GameLaunch = () => {
   return (
     <div className="min-h-screen casino-bg-primary">
       {/* Header */}
-      <div className="casino-bg-secondary border-b casino-border p-4">
+      <div className="casino-bg-secondary border-b casino-border p-2 sm:p-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
             <button
               onClick={() => navigate('/games')}
-              className="btn-casino-primary p-2 rounded-lg"
+              className="btn-casino-primary p-2 rounded-lg flex-shrink-0"
+              aria-label="Back to games"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
-            <div>
-              <h1 className="text-xl font-bold casino-text-primary">{gameName}</h1>
-              <p className="text-sm casino-text-secondary">Playing in fullscreen</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm sm:text-xl font-bold casino-text-primary truncate">{gameName}</h1>
+              <p className="text-xs sm:text-sm casino-text-secondary hidden sm:block">Playing in fullscreen</p>
             </div>
           </div>
           <button
             onClick={handleOpenInNewTab}
-            className="btn-casino-primary px-4 py-2 rounded-lg flex items-center space-x-2"
+            className="btn-casino-primary px-2 sm:px-4 py-2 rounded-lg flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ml-2"
+            title="Open in new tab"
           >
-            <ExternalLink className="w-4 h-4" />
-            <span>Open in New Tab</span>
+            <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Open in New Tab</span>
+            <span className="sm:hidden">New Tab</span>
           </button>
         </div>
       </div>
 
       {/* Game iframe */}
-      <div className="h-[calc(100vh-80px)]">
+      <div className="h-[calc(100vh-80px)] w-full">
         <iframe
           src={gameUrl}
           className="w-full h-full border-0"
           title={gameName}
           allowFullScreen
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+          allow="fullscreen; autoplay; payment; camera; microphone; geolocation"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            display: 'block'
+          }}
         />
       </div>
     </div>

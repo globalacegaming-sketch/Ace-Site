@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gamepad2, DollarSign, RefreshCw, Play, Eye, EyeOff, User, CreditCard } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import fortunePandaApi from '../services/fortunePandaApi';
 
 interface Game {
@@ -23,6 +24,7 @@ const UserFortunePandaDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCredentials, setShowCredentials] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadUserAccount();
@@ -61,11 +63,21 @@ const UserFortunePandaDashboard: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      // Find the game to get its name
+      const game = games.find(g => g.kindId === kindId);
+      const gameName = game?.gameName || 'Game';
+      
       const result = await fortunePandaApi.enterUserGame(kindId);
       if (result.success) {
-        // Open game in new window
-        if (result.data?.webLoginUrl) {
-          window.open(result.data.webLoginUrl, '_blank');
+        // Navigate to game launch page instead of popup
+        // This works better on mobile and provides a better user experience
+        const gameUrl = result.data?.webLoginUrl || result.data?.gameUrl || result.data?.url;
+        if (gameUrl) {
+          const encodedUrl = encodeURIComponent(gameUrl);
+          const encodedName = encodeURIComponent(gameName);
+          navigate(`/game-launch?url=${encodedUrl}&name=${encodedName}`);
+        } else {
+          setError('Game URL not found');
         }
       } else {
         setError(result.message);

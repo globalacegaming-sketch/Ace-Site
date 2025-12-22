@@ -118,15 +118,11 @@ const Games = () => {
           return;
         }
 
-        // Step 4: Open game in popup window
-        const gameWindow = window.open(gameUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes,noopener,noreferrer');
-        
-        if (!gameWindow || gameWindow.closed || typeof gameWindow.closed == 'undefined') {
-          toast.error('Popup blocked! Please allow popups for this site to play games.', {
-            duration: 5000
-          });
-          return;
-        }
+        // Step 4: Navigate to game launch page instead of popup
+        // This works better on mobile and provides a better user experience
+        const encodedUrl = encodeURIComponent(gameUrl);
+        const encodedName = encodeURIComponent(game.gameName);
+        navigate(`/game-launch?url=${encodedUrl}&name=${encodedName}`);
         
         toast.success('Game launching...', { duration: 2000 });
       } catch (error: any) {
