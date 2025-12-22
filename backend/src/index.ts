@@ -104,10 +104,32 @@ const rejectedOrigins = new Set<string>();
 const lastLogTime = new Map<string, number>();
 const LOG_THROTTLE_MS = 60000; // Only log each unique origin once per minute
 
+// Store current request for CORS callback access
+let currentRequest: any = null;
+
+// Middleware to capture request for CORS callback
+app.use((req, res, next) => {
+  currentRequest = req;
+  next();
+});
+
 app.use(cors({
   origin: function (origin, callback) {
+    const req = currentRequest;
+    const contentType = req?.headers?.['content-type'] || '';
+    const isFileUpload = contentType.includes('multipart/form-data');
+    const isUploadEndpoint = req?.path?.includes('/messages') || req?.path?.includes('/chat');
+    const isUploadMethod = req?.method === 'POST';
+    
     // In production, reject requests with no origin (except for specific cases)
     if (!origin) {
+      // Allow file upload requests without origin (FormData sometimes doesn't send origin)
+      if ((isFileUpload || isUploadEndpoint) && isUploadMethod) {
+        if (!isProduction || process.env.ALLOW_NO_ORIGIN === 'true') {
+          return callback(null, true);
+        }
+      }
+      
       // Allow no-origin requests only in development or for specific internal services
       if (!isProduction || process.env.ALLOW_NO_ORIGIN === 'true') {
         return callback(null, true);
@@ -118,7 +140,11 @@ app.use(cors({
       if (now - lastLog > LOG_THROTTLE_MS) {
         logger.warn('CORS: Rejected request with no origin', { 
           isProduction,
-          allowNoOrigin: process.env.ALLOW_NO_ORIGIN 
+          allowNoOrigin: process.env.ALLOW_NO_ORIGIN,
+          path: req?.path,
+          method: req?.method,
+          isFileUpload,
+          isUploadEndpoint
         });
         lastLogTime.set('no-origin', now);
       }
@@ -232,14 +258,26 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Type', 'Content-Length', 'Content-Disposition'],
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve uploads with CORS headers for image previews
 app.use(
   '/uploads',
+  (req, res, next) => {
+    // Set CORS headers for static file serving
+    const origin = req.headers.origin;
+    if (origin && (allowedOrigins.includes(origin) || (!isProduction && origin.includes('localhost')))) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    next();
+  },
   express.static(path.resolve(__dirname, '../uploads'))
 );
 
