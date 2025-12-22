@@ -120,6 +120,12 @@ app.use(cors({
     const isFileUpload = contentType.includes('multipart/form-data');
     const isUploadEndpoint = req?.path?.includes('/messages') || req?.path?.includes('/chat');
     const isUploadMethod = req?.method === 'POST';
+    const isStaticFile = req?.path?.startsWith('/uploads');
+    
+    // Skip CORS check for static file requests (handled by static file middleware)
+    if (isStaticFile && req?.method === 'GET') {
+      return callback(null, true);
+    }
     
     // In production, reject requests with no origin (except for specific cases)
     if (!origin) {
@@ -267,18 +273,87 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve uploads with CORS headers for image previews
+// This must handle CORS properly for image fetching
+// Note: Images loaded in <img> tags don't send Origin header, so we need to be permissive
 app.use(
   '/uploads',
   (req, res, next) => {
-    // Set CORS headers for static file serving
     const origin = req.headers.origin;
-    if (origin && (allowedOrigins.includes(origin) || (!isProduction && origin.includes('localhost')))) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Handle preflight OPTIONS request
+    if (req.method === 'OPTIONS') {
+      // Be permissive for static file OPTIONS - allow all origins in dev, check in prod
+      if (origin) {
+        const isAllowed = allowedOrigins.includes(origin) || 
+                         (!isProduction && (origin.includes('localhost') || origin.includes('127.0.0.1'))) ||
+                         (isProduction && process.env.ALLOW_NO_ORIGIN === 'true');
+        
+        if (isAllowed || !isProduction) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          return res.status(204).end();
+        }
+      } else if (!isProduction || process.env.ALLOW_NO_ORIGIN === 'true') {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        return res.status(204).end();
+      }
+      return res.status(403).end();
     }
+    
+    // Handle GET requests for static files
+    // For images loaded via <img> tags, browsers don't send Origin header
+    // We need to set permissive CORS headers to allow image loading
+    if (req.method === 'GET') {
+      if (origin) {
+        // If origin is provided, check if it's allowed
+        const isAllowed = allowedOrigins.includes(origin) || 
+                         (!isProduction && (origin.includes('localhost') || origin.includes('127.0.0.1'))) ||
+                         (isProduction && process.env.ALLOW_NO_ORIGIN === 'true');
+        
+        if (isAllowed || !isProduction) {
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+        } else {
+          // In production with origin but not allowed, still allow but don't set CORS
+          // This allows same-origin requests
+        }
+      } else {
+        // No origin header - this happens with <img> tags or same-origin requests
+        // Set permissive CORS to allow image loading
+        // In development, always allow; in production, only if ALLOW_NO_ORIGIN is set
+        if (!isProduction || process.env.ALLOW_NO_ORIGIN === 'true') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+        // If same-origin, no CORS headers needed, but setting them doesn't hurt
+      }
+    }
+    
     next();
   },
-  express.static(path.resolve(__dirname, '../uploads'))
+  express.static(path.resolve(__dirname, '../uploads'), {
+    setHeaders: (res, filePath) => {
+      // Always set CORS headers for static files to allow image loading
+      // Images loaded via <img> tags don't send Origin header, so we need to be permissive
+      const existingOrigin = res.getHeader('Access-Control-Allow-Origin');
+      if (!existingOrigin) {
+        // If no origin header was set by middleware, set a permissive one
+        // In production, only if ALLOW_NO_ORIGIN is set; in dev, always allow
+        if (!isProduction || process.env.ALLOW_NO_ORIGIN === 'true') {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        } else {
+          // In production without ALLOW_NO_ORIGIN, try to get origin from request
+          // But we can't access req here, so we'll be more restrictive
+          // The middleware above should have handled this
+        }
+      }
+      // Always set these headers for static files
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
+  })
 );
 
 // Request logging middleware
