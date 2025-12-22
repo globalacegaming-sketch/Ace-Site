@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Image as ImageIcon, Download } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
+import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../../utils/api';
 
 interface ChatMessage {
   id: string;
@@ -45,6 +45,7 @@ const UserChatWidget = () => {
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
 
   // Hide widget on admin/agent pages
   const isAdminOrAgentPage = useMemo(() => {
@@ -487,17 +488,47 @@ const UserChatWidget = () => {
                           </p>
                         )}
                         {msg.attachmentUrl && (
-                          <a
-                            href={`${httpBaseUrl}${msg.attachmentUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`mt-3 flex items-center gap-2 text-sm font-medium underline ${
-                              isUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
-                            }`}
-                          >
-                            <FileText className="w-4 h-4" />
-                            {msg.attachmentName || 'Download attachment'}
-                          </a>
+                          <div className="mt-3">
+                            {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
+                              <div className="space-y-2">
+                                <div
+                                  onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
+                                  className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
+                                >
+                                  <img
+                                    src={getAttachmentUrl(msg.attachmentUrl)}
+                                    alt={msg.attachmentName || 'Image attachment'}
+                                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                    loading="lazy"
+                                  />
+                                </div>
+                                <a
+                                  href={getAttachmentUrl(msg.attachmentUrl)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={msg.attachmentName}
+                                  className={`inline-flex items-center gap-2 text-xs font-medium underline ${
+                                    isUser ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
+                                  }`}
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  <span>{msg.attachmentName || 'Download image'}</span>
+                                </a>
+                              </div>
+                            ) : (
+                              <a
+                                href={getAttachmentUrl(msg.attachmentUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-2 text-sm font-medium underline ${
+                                  isUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                                }`}
+                              >
+                                <FileText className="w-4 h-4" />
+                                {msg.attachmentName || 'Download attachment'}
+                              </a>
+                            )}
+                          </div>
                         )}
                         <div
                           className={`mt-2 text-[11px] ${
@@ -568,6 +599,44 @@ const UserChatWidget = () => {
       >
         <MessageCircle className="w-6 h-6" />
       </button>
+
+      {/* Image Modal */}
+      {imageModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
+          onClick={() => setImageModal(null)}
+        >
+          <div className="relative w-full h-full flex items-center justify-center">
+            {/* Close Button */}
+            <button
+              onClick={() => setImageModal(null)}
+              className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white hover:text-gray-300 z-10 bg-black bg-opacity-70 hover:bg-opacity-90 rounded-full p-2 sm:p-3 touch-manipulation transition-all"
+              aria-label="Close image"
+            >
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
+            </button>
+            
+            {/* Download Button */}
+            <a
+              href={imageModal.url}
+              download={imageModal.name}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 text-white hover:text-gray-300 z-10 bg-black bg-opacity-70 hover:bg-opacity-90 rounded-full p-2 sm:p-3 touch-manipulation transition-all"
+              aria-label="Download image"
+            >
+              <Download className="w-5 h-5 sm:w-6 sm:h-6" />
+            </a>
+            
+            <img
+              src={imageModal.url}
+              alt={imageModal.name}
+              className="max-w-full max-h-[95vh] sm:max-h-[90vh] w-auto h-auto object-contain"
+              onClick={(e) => e.stopPropagation()}
+              style={{ touchAction: 'none' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

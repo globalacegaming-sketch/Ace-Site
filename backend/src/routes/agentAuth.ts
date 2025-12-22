@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { authLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -14,8 +15,8 @@ if (!AGENT_USERNAME || !AGENT_PASSWORD) {
   console.error('Please set AGENT_USERNAME and AGENT_PASSWORD in your .env file');
 }
 
-// Agent login
-router.post('/login', async (req: Request, res: Response) => {
+// Agent login - apply rate limiting
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 

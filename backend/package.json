@@ -28,6 +28,7 @@
     "@types/node": "^20.10.0",
     "axios": "^1.12.2",
     "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.8.0",
     "connect-timeout": "^1.9.1",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",

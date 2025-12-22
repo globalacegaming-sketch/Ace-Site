@@ -14,11 +14,11 @@ export const generalLimiter = rateLimit({
 
 // Strict rate limiter for authentication endpoints - prevents brute force attacks
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 5 * 60 * 1000, // 5 minutes
   max: 5, // Limit each IP to 5 requests per windowMs
   message: {
     success: false,
-    message: 'Too many authentication attempts, please try again after 15 minutes.'
+    message: 'Too many authentication attempts, please try again after 5 minutes.'
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -40,12 +40,14 @@ export const passwordResetLimiter = rateLimit({
 // Strict rate limiter for registration
 export const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // Limit each IP to 3 registrations per hour
+  max: 10, // Limit each IP to 10 registrations per hour
   message: {
     success: false,
     message: 'Too many registration attempts, please try again after 1 hour.'
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Note: We count ALL registration attempts (successful and failed) to prevent abuse
+  // This prevents attackers from creating unlimited accounts from a single IP
 });
 

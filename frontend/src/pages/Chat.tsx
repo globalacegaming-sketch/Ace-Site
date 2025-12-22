@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, Loader2, FileText, MessageCircle } from 'lucide-react';
+import { Send, Loader2, FileText, MessageCircle, Image as ImageIcon, X } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
-import { getApiBaseUrl, getWsBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../utils/api';
 
 interface ChatMessage {
   id: string;
@@ -32,6 +32,7 @@ const Chat = () => {
   const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -407,16 +408,46 @@ const Chat = () => {
                           </p>
                         )}
                         {message.attachmentUrl && (
-                          <a
-                            href={`${httpBaseUrl}${message.attachmentUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 mt-2 text-sm underline"
-                            style={isUser ? { color: '#0A0A0F' } : { color: '#00B0FF' }}
-                          >
-                            <FileText className="w-4 h-4" />
-                            {message.attachmentName || 'Attachment'}
-                          </a>
+                          <div className="mt-2">
+                            {isImageAttachment(message.attachmentType, message.attachmentName) ? (
+                              <div className="space-y-2">
+                                <div
+                                  onClick={() => setImageModal({ url: getAttachmentUrl(message.attachmentUrl!), name: message.attachmentName || 'Image' })}
+                                  className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
+                                  style={isUser ? { borderColor: 'rgba(10, 10, 15, 0.2)' } : { borderColor: 'rgba(0, 176, 255, 0.2)' }}
+                                >
+                                  <img
+                                    src={getAttachmentUrl(message.attachmentUrl)}
+                                    alt={message.attachmentName || 'Image attachment'}
+                                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                    loading="lazy"
+                                  />
+                                </div>
+                                <a
+                                  href={getAttachmentUrl(message.attachmentUrl)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={message.attachmentName}
+                                  className="inline-flex items-center gap-2 text-xs underline"
+                                  style={isUser ? { color: '#0A0A0F' } : { color: '#00B0FF' }}
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  <span>{message.attachmentName || 'Download image'}</span>
+                                </a>
+                              </div>
+                            ) : (
+                              <a
+                                href={getAttachmentUrl(message.attachmentUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 text-sm underline"
+                                style={isUser ? { color: '#0A0A0F' } : { color: '#00B0FF' }}
+                              >
+                                <FileText className="w-4 h-4" />
+                                {message.attachmentName || 'Attachment'}
+                              </a>
+                            )}
+                          </div>
                         )}
                       </div>
                       <span className="text-xs casino-text-secondary mt-1 px-1">
@@ -531,6 +562,31 @@ const Chat = () => {
           </button>
         </div>
       </div>
+
+      {/* Image Modal */}
+      {imageModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
+          onClick={() => setImageModal(null)}
+        >
+          <div className="relative w-full h-full flex items-center justify-center">
+            <button
+              onClick={() => setImageModal(null)}
+              className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white hover:text-gray-300 z-10 bg-black bg-opacity-70 rounded-full p-2 sm:p-3 touch-manipulation"
+              aria-label="Close image"
+            >
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
+            </button>
+            <img
+              src={imageModal.url}
+              alt={imageModal.name}
+              className="max-w-full max-h-[95vh] sm:max-h-[90vh] w-auto h-auto object-contain"
+              onClick={(e) => e.stopPropagation()}
+              style={{ touchAction: 'none' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

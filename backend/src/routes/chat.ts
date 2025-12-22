@@ -4,6 +4,10 @@ import ChatMessage, { IChatMessage } from '../models/ChatMessage';
 import { getSocketServerInstance } from '../utils/socketManager';
 import { chatAttachmentUpload, getChatAttachmentUrl } from '../config/chatUploads';
 import { sanitizeText } from '../utils/sanitize';
+import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
+import fs from 'fs';
+import path from 'path';
+import logger from '../utils/logger';
 
 const router = Router();
 
@@ -134,11 +138,38 @@ router.post(
         name = req.user.email ? req.user.email.split('@')[0] : 'User';
       }
       
+      // Upload to Cloudinary if attachment exists and Cloudinary is configured
+      // Otherwise, fall back to local storage
+      let attachmentUrl: string | undefined;
+      if (attachment && req.file) {
+        if (isCloudinaryEnabled()) {
+          try {
+            const userId = req.user._id.toString();
+            const result = await cloudinary.uploader.upload(req.file.path, {
+              folder: `chat/${userId}`
+            });
+            attachmentUrl = result.secure_url;
+            
+            // Delete temporary file after upload
+            fs.unlinkSync(req.file.path);
+          } catch (cloudinaryError: any) {
+            // Clean up temp file even if Cloudinary upload fails
+            if (req.file?.path && fs.existsSync(req.file.path)) {
+              fs.unlinkSync(req.file.path);
+            }
+            throw new Error(`Failed to upload attachment: ${cloudinaryError.message}`);
+          }
+        } else {
+          // Fall back to local storage if Cloudinary is not configured
+          attachmentUrl = getChatAttachmentUrl(attachment.filename);
+        }
+      }
+      
       const chatMessage = await ChatMessage.create({
         userId: req.user._id,
         senderType: 'user', // Always 'user' for user-sent messages
         message: sanitizedMessage,
-        attachmentUrl: attachment ? getChatAttachmentUrl(attachment.filename) : undefined,
+        attachmentUrl,
         attachmentName: attachment?.originalname,
         attachmentType: attachment?.mimetype,
         attachmentSize: attachment?.size,
@@ -161,6 +192,12 @@ router.post(
         data: payload
       });
     } catch (error: any) {
+      logger.error('Failed to send chat message:', {
+        error: error.message,
+        stack: error.stack,
+        userId: req.user?._id,
+        hasAttachment: !!req.file
+      });
       res.status(500).json({
         success: false,
         message: 'Failed to send message',

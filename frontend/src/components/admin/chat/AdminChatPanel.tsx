@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 import {
@@ -14,9 +14,11 @@ import {
   X,
   ArrowLeft,
   Gift,
-  ChevronUp
+  ChevronUp,
+  Image as ImageIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getAttachmentUrl, isImageAttachment } from '../../../utils/api';
 
 interface ChatMessage {
   id: string;
@@ -74,6 +76,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [showConversations, setShowConversations] = useState(true);
+  const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [socketReconnecting, setSocketReconnecting] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -82,8 +87,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const playNotificationSoundRef = useRef<() => void>(() => {});
   const showPushNotificationRef = useRef<(message: ChatMessage) => void>(() => {});
   const notificationPermissionRef = useRef<NotificationPermission>('default');
-
-  const httpBaseUrl = useMemo(() => apiBaseUrl.replace(/\/api$/, ''), [apiBaseUrl]);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -605,10 +610,91 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   }, [selectedUserId, playNotificationSound, showPushNotification]);
 
   useEffect(() => {
+    // Cleanup any existing reconnection timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    reconnectAttemptsRef.current = 0;
+
     const socket = io(wsBaseUrl, {
       transports: ['websocket'],
       auth: { adminToken },
-      autoConnect: true
+      autoConnect: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      timeout: 20000
+    });
+
+    // Connection status handlers
+    socket.on('connect', () => {
+      console.log('✅ Socket connected');
+      setSocketConnected(true);
+      setSocketReconnecting(false);
+      reconnectAttemptsRef.current = 0;
+      // Note: Conversation refresh on reconnection is handled by the 'reconnect' event handler
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Socket disconnected:', reason);
+      setSocketConnected(false);
+      
+      // If disconnect was not intentional, mark as reconnecting
+      if (reason === 'io server disconnect' || reason === 'io client disconnect') {
+        // Server or client initiated disconnect - don't reconnect automatically
+        setSocketReconnecting(false);
+      } else {
+        // Network error or other issue - will attempt to reconnect
+        setSocketReconnecting(true);
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setSocketConnected(false);
+      setSocketReconnecting(true);
+      reconnectAttemptsRef.current++;
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log(`✅ Socket reconnected after ${attemptNumber} attempts`);
+      setSocketConnected(true);
+      setSocketReconnecting(false);
+      reconnectAttemptsRef.current = 0;
+      
+      // Refresh conversations after reconnection to sync state
+      fetchConversations();
+      
+      // If viewing a conversation, reload it to ensure we have all messages
+      if (selectedUserIdRef.current) {
+        loadConversation(selectedUserIdRef.current);
+      }
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log(`🔄 Reconnection attempt ${attemptNumber}`);
+      setSocketReconnecting(true);
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('Reconnection error:', error);
+      setSocketReconnecting(true);
+    });
+
+    socket.on('reconnect_failed', () => {
+      console.error('❌ Socket reconnection failed');
+      setSocketReconnecting(false);
+      toast.error('Failed to reconnect to chat server. Please refresh the page.', {
+        duration: 5000,
+        id: 'socket-reconnect-failed'
+      });
+    });
+
+    socket.on('chat:connected', (data) => {
+      console.log('Chat connection confirmed:', data);
+      setSocketConnected(true);
     });
 
     socket.on('chat:message:new', (message: ChatMessage) => {
@@ -638,7 +724,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         return { ...prev, [message.userId]: updated };
       });
 
-      // Only update summaries if this message is not a duplicate
+      // Update conversation summaries in real-time
       // Check if the message ID already exists in the conversation summary's lastMessage
       setConversationSummaries((prevSummaries) => {
         const existingSummary = prevSummaries.find(s => s.userId === message.userId);
@@ -650,24 +736,38 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         
         const map = new Map(prevSummaries.map((summary) => [summary.userId, summary] as const));
         const existing = map.get(message.userId);
-        const unreadIncrement =
-          message.senderType === 'user' && message.status === 'unread' ? 1 : 0;
+        
+        // Calculate unread count increment/decrement
+        let unreadCountChange = 0;
+        if (message.senderType === 'user') {
+          if (message.status === 'unread') {
+            unreadCountChange = 1;
+          } else if (existing && existing.lastMessage?.id === message.id && existing.lastMessage?.status === 'unread') {
+            // Message was marked as read/resolved, decrement unread count
+            unreadCountChange = -1;
+          }
+        }
 
         const updatedSummary: ConversationSummary = existing
           ? {
               ...existing,
               lastMessage: message,
-              unreadCount: existing.unreadCount + unreadIncrement
+              unreadCount: Math.max(0, existing.unreadCount + unreadCountChange),
+              // Update name and email if available in the message
+              name: message.name || existing.name,
+              email: message.email || existing.email
             }
           : {
               userId: message.userId,
               name: message.name,
               email: message.email,
               lastMessage: message,
-              unreadCount: unreadIncrement
+              unreadCount: message.senderType === 'user' && message.status === 'unread' ? 1 : 0
             };
 
         map.set(message.userId, updatedSummary);
+        
+        // Sort by last message timestamp (most recent first)
         const sorted = Array.from(map.values()).sort((a, b) => {
           const dateA = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
           const dateB = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
@@ -684,6 +784,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     });
 
     socket.on('chat:message:status', (message: ChatMessage) => {
+      // Update message status in conversation messages
       setConversationMessages((prev) => {
         const current = prev[message.userId] || [];
         const updated = current.map((item) =>
@@ -695,30 +796,55 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         };
       });
 
+      // Update conversation summaries with status change
       setConversationSummaries((prev) =>
-        prev.map((summary) =>
-          summary.userId === message.userId
-            ? {
-                ...summary,
-                lastMessage:
-                  summary.lastMessage && summary.lastMessage.id === message.id
-                    ? { ...summary.lastMessage, status: message.status }
-                    : summary.lastMessage,
-                unreadCount:
-                  message.senderType === 'user' && message.status !== 'unread'
-                    ? Math.max(0, summary.unreadCount - 1)
-                    : summary.unreadCount
-              }
-            : summary
-        )
+        prev.map((summary) => {
+          if (summary.userId !== message.userId) {
+            return summary;
+          }
+
+          // Update last message status if it matches
+          const updatedLastMessage =
+            summary.lastMessage && summary.lastMessage.id === message.id
+              ? { ...summary.lastMessage, status: message.status }
+              : summary.lastMessage;
+
+          // Calculate unread count change
+          let unreadCount = summary.unreadCount;
+          if (message.senderType === 'user') {
+            if (message.status === 'unread' && summary.lastMessage?.id === message.id && summary.lastMessage?.status !== 'unread') {
+              // Message was marked as unread (shouldn't happen often, but handle it)
+              unreadCount = summary.unreadCount + 1;
+            } else if (message.status !== 'unread' && summary.lastMessage?.id === message.id && summary.lastMessage?.status === 'unread') {
+              // Message was marked as read/resolved, decrement unread count
+              unreadCount = Math.max(0, summary.unreadCount - 1);
+            }
+          }
+
+          return {
+            ...summary,
+            lastMessage: updatedLastMessage || summary.lastMessage,
+            unreadCount
+          };
+        })
       );
     });
 
     socketRef.current = socket;
 
     return () => {
+      // Cleanup socket connection
+      socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
+      setSocketConnected(false);
+      setSocketReconnecting(false);
+      
+      // Clear any pending reconnection timeouts
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
     };
     // Only reconnect socket when wsBaseUrl or adminToken changes
     // selectedUserId and playNotificationSound don't require socket reconnection
@@ -949,6 +1075,39 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         showConversations ? 'flex' : 'hidden'
       } lg:flex lg:w-1/3`}>
         <div className="p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
+          {/* Socket Connection Status Indicator */}
+          <div className="mb-2 sm:mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                socketConnected 
+                  ? 'bg-green-500 animate-pulse' 
+                  : socketReconnecting 
+                    ? 'bg-yellow-500 animate-pulse' 
+                    : 'bg-red-500'
+              }`} title={socketConnected ? 'Connected' : socketReconnecting ? 'Reconnecting...' : 'Disconnected'} />
+              <span className={`text-xs font-medium ${
+                socketConnected 
+                  ? 'text-green-700' 
+                  : socketReconnecting 
+                    ? 'text-yellow-700' 
+                    : 'text-red-700'
+              }`}>
+                {socketConnected ? 'Live' : socketReconnecting ? 'Reconnecting...' : 'Offline'}
+              </span>
+            </div>
+            {!socketConnected && !socketReconnecting && (
+              <button
+                onClick={() => {
+                  if (socketRef.current) {
+                    socketRef.current.connect();
+                  }
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Reconnect
+              </button>
+            )}
+          </div>
           <div className="relative mb-2 sm:mb-3">
             <label htmlFor="conversation-search" className="sr-only">
               Search by user or email
@@ -1198,17 +1357,47 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                             </p>
                           )}
                           {msg.attachmentUrl && (
-                            <a
-                              href={`${httpBaseUrl}${msg.attachmentUrl}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={`mt-3 inline-flex items-center gap-2 text-xs font-semibold underline transition ${
-                                isAdmin ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
-                              }`}
-                            >
-                              <FileText className="w-4 h-4" />
-                              <span>{msg.attachmentName || 'Download attachment'}</span>
-                            </a>
+                            <div className="mt-3">
+                              {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
+                                <div className="space-y-2">
+                                  <div
+                                    onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
+                                    className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
+                                  >
+                                    <img
+                                      src={getAttachmentUrl(msg.attachmentUrl)}
+                                      alt={msg.attachmentName || 'Image attachment'}
+                                      className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                  <a
+                                    href={getAttachmentUrl(msg.attachmentUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={msg.attachmentName}
+                                    className={`inline-flex items-center gap-2 text-xs font-semibold underline transition ${
+                                      isAdmin ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
+                                    }`}
+                                  >
+                                    <ImageIcon className="w-3 h-3" />
+                                    <span>{msg.attachmentName || 'Download image'}</span>
+                                  </a>
+                                </div>
+                              ) : (
+                                <a
+                                  href={getAttachmentUrl(msg.attachmentUrl)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-2 text-xs font-semibold underline transition ${
+                                    isAdmin ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                                  }`}
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  <span>{msg.attachmentName || 'Download attachment'}</span>
+                                </a>
+                              )}
+                            </div>
                           )}
                           <div
                             className={`mt-2 text-[11px] capitalize ${
@@ -1347,6 +1536,31 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                 Show Conversations
               </button>
             )}
+          </div>
+        )}
+
+        {/* Image Modal */}
+        {imageModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
+            onClick={() => setImageModal(null)}
+          >
+            <div className="relative w-full h-full flex items-center justify-center">
+              <button
+                onClick={() => setImageModal(null)}
+                className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white hover:text-gray-300 z-10 bg-black bg-opacity-70 rounded-full p-2 sm:p-3 touch-manipulation"
+                aria-label="Close image"
+              >
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              <img
+                src={imageModal.url}
+                alt={imageModal.name}
+                className="max-w-full max-h-[95vh] sm:max-h-[90vh] w-auto h-auto object-contain"
+                onClick={(e) => e.stopPropagation()}
+                style={{ touchAction: 'none' }}
+              />
+            </div>
           </div>
         )}
       </div>
