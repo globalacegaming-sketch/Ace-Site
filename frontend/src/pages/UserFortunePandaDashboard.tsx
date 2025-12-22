@@ -69,13 +69,12 @@ const UserFortunePandaDashboard: React.FC = () => {
       
       const result = await fortunePandaApi.enterUserGame(kindId);
       if (result.success) {
-        // Navigate to game launch page instead of popup
-        // This works better on mobile and provides a better user experience
+        // Directly navigate to game URL (works on mobile and desktop)
+        // This avoids iframe issues and popup blockers
+        // User can use browser back button to return
         const gameUrl = result.data?.webLoginUrl || result.data?.gameUrl || result.data?.url;
         if (gameUrl) {
-          const encodedUrl = encodeURIComponent(gameUrl);
-          const encodedName = encodeURIComponent(gameName);
-          navigate(`/game-launch?url=${encodedUrl}&name=${encodedName}`);
+          window.location.href = gameUrl;
         } else {
           setError('Game URL not found');
         }

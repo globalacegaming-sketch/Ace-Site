@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
 
 const GameLaunch = () => {
   const [searchParams] = useSearchParams();
@@ -8,15 +8,26 @@ const GameLaunch = () => {
   const [gameUrl, setGameUrl] = useState<string | null>(null);
   const [gameName, setGameName] = useState<string>('Game');
   const [loading, setLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     const url = searchParams.get('url');
     const name = searchParams.get('name');
     
     if (url) {
-      setGameUrl(url);
-      setGameName(name || 'Game');
+      const decodedUrl = decodeURIComponent(url);
+      setGameUrl(decodedUrl);
+      setGameName(name ? decodeURIComponent(name) : 'Game');
       setLoading(false);
+      
+      // Automatically redirect to game URL after a brief delay
+      // This works better than iframe since many game providers block iframe embedding
+      setRedirecting(true);
+      const redirectTimer = setTimeout(() => {
+        window.location.href = decodedUrl;
+      }, 1500); // 1.5 second delay to show loading message
+      
+      return () => clearTimeout(redirectTimer);
     } else {
       setLoading(false);
     }
@@ -24,15 +35,19 @@ const GameLaunch = () => {
 
   const handleOpenInNewTab = () => {
     if (gameUrl) {
-      window.open(gameUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes,noopener,noreferrer');
+      window.open(gameUrl, '_blank', 'noopener,noreferrer');
     }
+  };
+
+  const handleGoBack = () => {
+    navigate('/games');
   };
 
   if (loading) {
     return (
       <div className="min-h-screen casino-bg-primary flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4" style={{ color: '#FFD700' }} />
           <p className="casino-text-secondary">Loading game...</p>
         </div>
       </div>
@@ -46,7 +61,7 @@ const GameLaunch = () => {
           <h2 className="text-2xl font-bold casino-text-primary mb-4">Game Not Found</h2>
           <p className="casino-text-secondary mb-6">No game URL provided.</p>
           <button
-            onClick={() => navigate('/games')}
+            onClick={handleGoBack}
             className="btn-casino-primary px-6 py-3 rounded-xl"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -58,51 +73,51 @@ const GameLaunch = () => {
   }
 
   return (
-    <div className="min-h-screen casino-bg-primary">
-      {/* Header */}
-      <div className="casino-bg-secondary border-b casino-border p-2 sm:p-4">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
-            <button
-              onClick={() => navigate('/games')}
-              className="btn-casino-primary p-2 rounded-lg flex-shrink-0"
-              aria-label="Back to games"
-            >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-sm sm:text-xl font-bold casino-text-primary truncate">{gameName}</h1>
-              <p className="text-xs sm:text-sm casino-text-secondary hidden sm:block">Playing in fullscreen</p>
-            </div>
+    <div className="min-h-screen casino-bg-primary flex items-center justify-center">
+      <div className="casino-bg-secondary rounded-3xl shadow-xl p-8 sm:p-10 text-center max-w-lg w-full mx-4 casino-border">
+        <div className="mb-6">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4" style={{ backgroundColor: 'rgba(255, 215, 0, 0.1)' }}>
+            <Loader2 className="w-10 h-10 animate-spin" style={{ color: '#FFD700' }} />
           </div>
-          <button
-            onClick={handleOpenInNewTab}
-            className="btn-casino-primary px-2 sm:px-4 py-2 rounded-lg flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ml-2"
-            title="Open in new tab"
-          >
-            <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Open in New Tab</span>
-            <span className="sm:hidden">New Tab</span>
-          </button>
+          <h2 className="text-2xl sm:text-3xl font-bold casino-text-primary mb-2">{gameName}</h2>
+          <p className="casino-text-secondary text-sm sm:text-base">
+            {redirecting ? 'Redirecting to game...' : 'Preparing game...'}
+          </p>
         </div>
-      </div>
 
-      {/* Game iframe */}
-      <div className="h-[calc(100vh-80px)] w-full">
-        <iframe
-          src={gameUrl}
-          className="w-full h-full border-0"
-          title={gameName}
-          allowFullScreen
-          allow="fullscreen; autoplay; payment; camera; microphone; geolocation"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-        />
+        <div className="space-y-4">
+          <p className="casino-text-secondary text-xs sm:text-sm">
+            The game will open in a new window. Use your browser's back button to return.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => {
+                if (gameUrl) {
+                  window.location.href = gameUrl;
+                }
+              }}
+              className="btn-casino-primary px-6 py-3 rounded-xl flex items-center justify-center gap-2"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Open Game Now</span>
+            </button>
+            <button
+              onClick={handleOpenInNewTab}
+              className="btn-casino-outline px-6 py-3 rounded-xl flex items-center justify-center gap-2"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Open in New Tab</span>
+            </button>
+            <button
+              onClick={handleGoBack}
+              className="btn-casino-outline px-6 py-3 rounded-xl flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Games</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -118,11 +118,10 @@ const Games = () => {
           return;
         }
 
-        // Step 4: Navigate to game launch page instead of popup
-        // This works better on mobile and provides a better user experience
-        const encodedUrl = encodeURIComponent(gameUrl);
-        const encodedName = encodeURIComponent(game.gameName);
-        navigate(`/game-launch?url=${encodedUrl}&name=${encodedName}`);
+        // Step 4: Directly navigate to game URL (works on mobile and desktop)
+        // This avoids iframe issues and popup blockers
+        // User can use browser back button to return
+        window.location.href = gameUrl;
         
         toast.success('Game launching...', { duration: 2000 });
       } catch (error: any) {
