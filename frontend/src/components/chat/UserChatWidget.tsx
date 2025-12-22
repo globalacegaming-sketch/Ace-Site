@@ -71,7 +71,6 @@ const UserChatWidget = () => {
 
   const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
   const WS_BASE_URL = useMemo(() => getWsBaseUrl(), []);
-  const httpBaseUrl = useMemo(() => API_BASE_URL.replace(/\/api$/, ''), [API_BASE_URL]);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   // Initialize audio context on user interaction

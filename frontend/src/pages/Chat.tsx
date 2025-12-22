@@ -39,7 +39,6 @@ const Chat = () => {
 
   const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
   const WS_BASE_URL = useMemo(() => getWsBaseUrl(), []);
-  const httpBaseUrl = useMemo(() => API_BASE_URL.replace(/\/api$/, ''), [API_BASE_URL]);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   // Check if mobile
