@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
   Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
-  ChevronDown, CheckCircle, Ticket, FileText, Clock, CheckCircle2, XCircle
-} from 'lucide-react';
+  ChevronDown, CheckCircle, Ticket, FileText, Clock, CheckCircle2, XCircle,
+  Send, Upload} from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -76,7 +76,8 @@ const AgentDashboard: React.FC = () => {
   const { stopMusic } = useMusic();
   
   const [activeSection, setActiveSection] = useState<ActiveSection>('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(false);
   
   // Data states
@@ -90,6 +91,76 @@ const AgentDashboard: React.FC = () => {
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState<string>('all');
+  
+  // Email promotions states
+  const [emailForm, setEmailForm] = useState({
+    subject: '',
+    headerTitle: '',
+    headerSubtitle: '',
+    emailBody: '',
+    recipientOption: 'all' as 'all' | 'selected',
+    selectedRecipients: [] as string[]
+  });
+  const [emailAttachment, setEmailAttachment] = useState<File | null>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailPreview, setEmailPreview] = useState(false);
+  const [emailPreviewHtml, setEmailPreviewHtml] = useState<string>('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // Fetch email preview function (must be at component level for hooks)
+  const fetchEmailPreview = useCallback(async () => {
+    if (!emailForm.emailBody.trim()) {
+      setEmailPreviewHtml('');
+      return;
+    }
+
+    try {
+      setLoadingPreview(true);
+      const token = getAgentToken();
+      
+      // Use FormData if there's an attachment, otherwise use JSON
+      const formData = new FormData();
+      formData.append('subject', emailForm.subject || 'Email Preview');
+      formData.append('headerTitle', emailForm.headerTitle || 'Important Message');
+      formData.append('headerSubtitle', emailForm.headerSubtitle || '');
+      formData.append('emailBody', emailForm.emailBody);
+      
+      if (emailAttachment) {
+        formData.append('attachment', emailAttachment);
+      }
+      
+      const response = await axios.post(
+        `${API_BASE_URL}/email-promotions/preview`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+            // Don't set Content-Type - axios will set it automatically with correct boundary for FormData
+          }
+        }
+      );
+
+      if (response.data.success && response.data.html) {
+        setEmailPreviewHtml(response.data.html);
+      }
+    } catch (error: any) {
+      console.error('Error fetching email preview:', error);
+      toast.error('Failed to load email preview');
+    } finally {
+      setLoadingPreview(false);
+    }
+  }, [emailForm.subject, emailForm.headerTitle, emailForm.headerSubtitle, emailForm.emailBody, emailAttachment, API_BASE_URL]);
+
+  // Fetch preview when form changes (must be at component level)
+  useEffect(() => {
+    if (emailPreview && emailForm.emailBody.trim()) {
+      const timeoutId = setTimeout(() => {
+        fetchEmailPreview();
+      }, 500); // Debounce by 500ms
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [emailForm.subject, emailForm.headerTitle, emailForm.headerSubtitle, emailForm.emailBody, emailPreview, emailAttachment, API_BASE_URL, fetchEmailPreview]);
 
   // Modal states
   const [showPlatformModal, setShowPlatformModal] = useState(false);
@@ -122,6 +193,23 @@ const AgentDashboard: React.FC = () => {
   useEffect(() => {
     stopMusic();
   }, [stopMusic]);
+
+  // Handle mobile/desktop responsiveness
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (mobile) {
+        setSidebarOpen(false); // Close sidebar on mobile by default
+      } else {
+        setSidebarOpen(true); // Open sidebar on desktop by default
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     const session = localStorage.getItem('agent_session');
@@ -540,17 +628,341 @@ const AgentDashboard: React.FC = () => {
     </div>
   );
 
-  // Render Email Promotions Section (Placeholder)
-  const renderEmailPromotions = () => (
+  // Render Email Promotions Section
+  const renderEmailPromotions = () => {
+    const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+        setEmailAttachment(e.target.files[0]);
+      }
+    };
+
+    const handleSendEmail = async () => {
+      if (!emailForm.subject.trim()) {
+        toast.error('Subject is required');
+        return;
+      }
+      if (!emailForm.emailBody.trim()) {
+        toast.error('Email body is required');
+        return;
+      }
+
+      try {
+        setSendingEmail(true);
+        const token = getAgentToken();
+        
+        const formData = new FormData();
+        formData.append('subject', emailForm.subject);
+        formData.append('headerTitle', emailForm.headerTitle || 'Important Message');
+        formData.append('headerSubtitle', emailForm.headerSubtitle || 'Stay Updated With Us');
+        formData.append('emailBody', emailForm.emailBody);
+        
+        if (emailForm.recipientOption === 'selected' && emailForm.selectedRecipients.length > 0) {
+          formData.append('recipientIds', JSON.stringify(emailForm.selectedRecipients));
+        }
+        
+        if (emailAttachment) {
+          formData.append('attachment', emailAttachment);
+        }
+
+        const response = await axios.post(
+          `${API_BASE_URL}/email-promotions/send`,
+          formData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+              // Don't set Content-Type - axios will set it automatically with correct boundary for FormData
+            }
+          }
+        );
+
+        if (response.data.success) {
+          toast.success(response.data.message || 'Emails sent successfully!');
+          // Reset form
+          setEmailForm({
+            subject: '',
+            headerTitle: '',
+            headerSubtitle: '',
+            emailBody: '',
+            recipientOption: 'all',
+            selectedRecipients: []
+          });
+          setEmailAttachment(null);
+          // Reset file input
+          const fileInput = document.getElementById('email-attachment') as HTMLInputElement;
+          if (fileInput) fileInput.value = '';
+          
+          // Add to recent actions
+          setRecentActions(prev => [{
+            title: `Sent ${response.data.data?.successful || 0} promotional emails`,
+            description: `Subject: ${emailForm.subject}`,
+            timestamp: 'Just now'
+          }, ...prev.slice(0, 9)]);
+        } else {
+          toast.error(response.data.message || 'Failed to send emails');
+        }
+      } catch (error: any) {
+        console.error('Error sending email:', error);
+        toast.error(error.response?.data?.message || 'Failed to send promotional emails');
+      } finally {
+        setSendingEmail(false);
+      }
+    };
+
+    return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Email Promotions</h2>
-      <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-        <Mail className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-600">Email promotion feature coming soon</p>
-        <p className="text-sm text-gray-500 mt-2">We will figure out how to implement bulk email sending later</p>
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gray-900">Email Promotions</h2>
+          <button
+            onClick={() => {
+              setEmailPreview(!emailPreview);
+              if (!emailPreview && emailForm.emailBody.trim()) {
+                fetchEmailPreview();
+              }
+            }}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+          >
+            {emailPreview ? 'Hide' : 'Show'} Preview
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Form */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+              {/* Email Subject */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Email Subject *
+                </label>
+                <input
+                  type="text"
+                  value={emailForm.subject}
+                  onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
+                  placeholder="Enter email subject (appears in inbox)"
+                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
+                />
+              </div>
+
+              {/* Header Section */}
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Header Section</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Header Title
+                    </label>
+                    <input
+                      type="text"
+                      value={emailForm.headerTitle}
+                      onChange={(e) => setEmailForm({...emailForm, headerTitle: e.target.value})}
+                      placeholder="e.g., Important Announcement, Special Offer, etc."
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Large title displayed at the top of the email</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Header Subtitle (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={emailForm.headerSubtitle}
+                      onChange={(e) => setEmailForm({...emailForm, headerSubtitle: e.target.value})}
+                      placeholder="e.g., Stay Updated With Us, Limited Time Only, etc."
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Optional subtitle shown below the main title. Note: "Americas Ace Gaming" tagline always appears above.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email Content */}
+              <div className="border-t border-gray-200 pt-6">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Email Content / Body *
+                </label>
+                <textarea
+                  value={emailForm.emailBody}
+                  onChange={(e) => setEmailForm({...emailForm, emailBody: e.target.value})}
+                  placeholder="Enter your email content here..."
+                  rows={12}
+                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-black"
+                />
+                <p className="text-xs text-gray-500 mt-1">Main email content. Use line breaks to separate paragraphs</p>
+              </div>
+
+              {/* Attachment */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Attachment (Optional)
+                </label>
+                <div className="flex items-center gap-4">
+                  <label className="flex-1 cursor-pointer">
+                    <input
+                      id="email-attachment"
+                      type="file"
+                      onChange={handleAttachmentChange}
+                      className="hidden"
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                    />
+                    <div className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                      <Upload className="w-5 h-5 text-gray-400" />
+                      <span className="text-sm text-gray-600">
+                        {emailAttachment ? emailAttachment.name : 'Click to upload attachment'}
+                      </span>
+                    </div>
+                  </label>
+                  {emailAttachment && (
+                    <button
+                      onClick={() => {
+                        setEmailAttachment(null);
+                        const fileInput = document.getElementById('email-attachment') as HTMLInputElement;
+                        if (fileInput) fileInput.value = '';
+                      }}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Supported: Images, PDF, Word, Excel (Max 10MB)
+                </p>
+              </div>
+
+              {/* Recipient Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Recipients
+                </label>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={emailForm.recipientOption === 'all'}
+                      onChange={() => setEmailForm({...emailForm, recipientOption: 'all'})}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">All contacts ({contacts.length})</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={emailForm.recipientOption === 'selected'}
+                      onChange={() => setEmailForm({...emailForm, recipientOption: 'selected'})}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">Selected contacts</span>
+                  </label>
+                  {emailForm.recipientOption === 'selected' && (
+                    <div className="ml-7 mt-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 space-y-2">
+                      {contacts.map((contact) => (
+                        <label key={contact._id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                          <input
+                            type="checkbox"
+                            checked={emailForm.selectedRecipients.includes(contact._id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEmailForm({
+                                  ...emailForm,
+                                  selectedRecipients: [...emailForm.selectedRecipients, contact._id]
+                                });
+                              } else {
+                                setEmailForm({
+                                  ...emailForm,
+                                  selectedRecipients: emailForm.selectedRecipients.filter(id => id !== contact._id)
+                                });
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <span className="text-sm text-gray-700">{contact.email}</span>
+                        </label>
+                      ))}
+                      {contacts.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-2">No contacts available</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Send Button */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleSendEmail}
+                  disabled={sendingEmail || !emailForm.subject.trim() || !emailForm.emailBody.trim()}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {sendingEmail ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" />
+                      Send Promotional Email
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="lg:col-span-1">
+            {emailPreview && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
+                  {loadingPreview && (
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  )}
+                </div>
+                {emailPreviewHtml ? (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-lg">
+                    <iframe
+                      srcDoc={emailPreviewHtml}
+                      className="w-full"
+                      style={{ 
+                        minHeight: '600px',
+                        border: 'none',
+                        width: '100%'
+                      }}
+                      title="Email Preview"
+                    />
+                  </div>
+                ) : emailForm.emailBody.trim() ? (
+                  <div className="border border-gray-200 rounded-xl p-8 text-center text-gray-500">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">Loading preview...</p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-xl p-8 text-center text-gray-500">
+                    <Mail className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">Enter email content to see preview</p>
+                  </div>
+                )}
+                {emailAttachment && emailPreviewHtml && (
+                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs text-blue-700 font-medium">
+                        Attachment: {emailAttachment.name}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Render FAQs Section
   const renderFAQs = () => (
@@ -777,7 +1189,7 @@ const AgentDashboard: React.FC = () => {
             <select
               value={ticketStatusFilter}
               onChange={(e) => setTicketStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
             >
               <option value="all">All Statuses</option>
               <option value="pending">Pending</option>
@@ -791,7 +1203,7 @@ const AgentDashboard: React.FC = () => {
             <select
               value={ticketCategoryFilter}
               onChange={(e) => setTicketCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
             >
               <option value="all">All Categories</option>
               <option value="payment_related_queries">Payment Related Queries</option>
@@ -1037,25 +1449,27 @@ const AgentDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="min-h-screen bg-gray-100 flex relative">
+      {/* Overlay for mobile when sidebar is open */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
       {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-gray-800 text-white transition-all duration-300 flex flex-col`}>
+      <div className={`${sidebarOpen ? 'w-64' : 'w-0 lg:w-20'} bg-gray-800 text-white transition-all duration-300 flex flex-col fixed h-screen z-50 overflow-hidden`}>
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center justify-between">
-            <h2 className={`${sidebarOpen ? 'block' : 'hidden'} font-bold text-lg`}>Zenith Rise G.</h2>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-gray-700 rounded"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
+            <h2 className={`${sidebarOpen ? 'block' : 'hidden'} font-bold text-lg whitespace-nowrap`}>Zenith Rise G.</h2>
           </div>
         </div>
 
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center gap-3">
-            <User className="w-5 h-5" />
-            <span className={`${sidebarOpen ? 'block' : 'hidden'} text-sm truncate`}>
+            <User className="w-5 h-5 flex-shrink-0" />
+            <span className={`${sidebarOpen ? 'block' : 'hidden'} text-sm truncate whitespace-nowrap`}>
               {getAgentUsername()}
             </span>
           </div>
@@ -1063,13 +1477,16 @@ const AgentDashboard: React.FC = () => {
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button
-            onClick={() => setActiveSection('dashboard')}
+            onClick={() => {
+              setActiveSection('dashboard');
+              if (isMobile) setSidebarOpen(false);
+            }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
               activeSection === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-700'
             }`}
           >
-            <Settings className="w-5 h-5" />
-            <span className={sidebarOpen ? 'block' : 'hidden'}>Dashboard</span>
+            <Settings className="w-5 h-5 flex-shrink-0" />
+            <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Dashboard</span>
           </button>
 
           <div className="space-y-1">
@@ -1077,13 +1494,16 @@ const AgentDashboard: React.FC = () => {
               Game
             </div>
             <button
-              onClick={() => setActiveSection('gamecards')}
+              onClick={() => {
+                setActiveSection('gamecards');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'gamecards' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Settings className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Game cards</span>
+              <Gamepad2 className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Game cards</span>
             </button>
           </div>
 
@@ -1092,40 +1512,52 @@ const AgentDashboard: React.FC = () => {
               Home
             </div>
             <button
-              onClick={() => setActiveSection('faqs')}
+              onClick={() => {
+                setActiveSection('faqs');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'faqs' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <HelpCircle className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Faqs</span>
+              <HelpCircle className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Faqs</span>
             </button>
             <button
-              onClick={() => setActiveSection('notifications')}
+              onClick={() => {
+                setActiveSection('notifications');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'notifications' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Bell className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Notifications</span>
+              <Bell className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Notifications</span>
             </button>
             <button
-              onClick={() => setActiveSection('support-tickets')}
+              onClick={() => {
+                setActiveSection('support-tickets');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'support-tickets' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Ticket className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Support Tickets</span>
+              <Ticket className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Support Tickets</span>
             </button>
             <button
-              onClick={() => setActiveSection('email-promotions')}
+              onClick={() => {
+                setActiveSection('email-promotions');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'email-promotions' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Mail className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Email promotions</span>
+              <Mail className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Email promotions</span>
             </button>
           </div>
 
@@ -1134,13 +1566,16 @@ const AgentDashboard: React.FC = () => {
               User
             </div>
             <button
-              onClick={() => setActiveSection('contacts')}
+              onClick={() => {
+                setActiveSection('contacts');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'contacts' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Users className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Users</span>
+              <Users className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Users</span>
             </button>
           </div>
 
@@ -1149,13 +1584,16 @@ const AgentDashboard: React.FC = () => {
               Bonus
             </div>
             <button
-              onClick={() => setActiveSection('bonuses')}
+              onClick={() => {
+                setActiveSection('bonuses');
+                if (isMobile) setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                 activeSection === 'bonuses' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Gift className="w-5 h-5" />
-              <span className={sidebarOpen ? 'block' : 'hidden'}>Bonuses</span>
+              <Gift className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Bonuses</span>
             </button>
           </div>
         </nav>
@@ -1165,49 +1603,50 @@ const AgentDashboard: React.FC = () => {
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
-            <LogOut className="w-5 h-5" />
-            <span className={sidebarOpen ? 'block' : 'hidden'}>Logout</span>
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Logout</span>
           </button>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className={`flex-1 flex flex-col ml-0 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} transition-all duration-300`}>
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
+        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 sticky top-0 z-50">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Toggle sidebar"
               >
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
-              <span className="text-gray-700 font-medium">Home</span>
+              <span className="text-gray-700 font-medium hidden sm:block">Home</span>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="relative">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="relative hidden sm:block">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search Contact Details..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 lg:w-64 text-black"
                 />
               </div>
-              <div className="flex items-center gap-2 cursor-pointer">
+              <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors">
                 <User className="w-5 h-5 text-gray-600" />
-                <ChevronDown className="w-4 h-4 text-gray-600" />
+                <ChevronDown className="w-4 h-4 text-gray-600 hidden sm:block" />
               </div>
             </div>
           </div>
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 p-6 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
           <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className={`grid grid-cols-1 gap-4 sm:gap-6 ${activeSection === 'dashboard' ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
               {/* Main Content */}
-              <div className="lg:col-span-2">
+              <div className={activeSection === 'dashboard' ? 'lg:col-span-2' : 'lg:col-span-1'}>
                 {loading && (
                   <div className="flex justify-center items-center py-20">
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -1216,7 +1655,8 @@ const AgentDashboard: React.FC = () => {
                 {!loading && renderContent()}
               </div>
 
-              {/* Recent Actions Sidebar */}
+              {/* Recent Actions Sidebar - Only show on dashboard */}
+              {activeSection === 'dashboard' && (
               <div className="lg:col-span-1">
                 <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent actions</h3>
@@ -1242,6 +1682,7 @@ const AgentDashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
         </main>
@@ -1292,24 +1733,24 @@ const AgentDashboard: React.FC = () => {
             }} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Name *</label>
-                <input type="text" value={platformForm.name} onChange={(e) => setPlatformForm({...platformForm, name: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="text" value={platformForm.name} onChange={(e) => setPlatformForm({...platformForm, name: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Description *</label>
-                <textarea value={platformForm.description} onChange={(e) => setPlatformForm({...platformForm, description: e.target.value})} required rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea value={platformForm.description} onChange={(e) => setPlatformForm({...platformForm, description: e.target.value})} required rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Image URL *</label>
-                <input type="url" value={platformForm.image} onChange={(e) => setPlatformForm({...platformForm, image: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="url" value={platformForm.image} onChange={(e) => setPlatformForm({...platformForm, image: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Game Link *</label>
-                <input type="url" value={platformForm.gameLink} onChange={(e) => setPlatformForm({...platformForm, gameLink: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="url" value={platformForm.gameLink} onChange={(e) => setPlatformForm({...platformForm, gameLink: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Order</label>
-                  <input type="number" value={platformForm.order} onChange={(e) => setPlatformForm({...platformForm, order: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="number" value={platformForm.order} onChange={(e) => setPlatformForm({...platformForm, order: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
                 <div className="flex items-center pt-8">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1368,17 +1809,17 @@ const AgentDashboard: React.FC = () => {
               }
             }} className="p-6 space-y-4">
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Title *</label>
-                <input type="text" value={bonusForm.title} onChange={(e) => setBonusForm({...bonusForm, title: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="text" value={bonusForm.title} onChange={(e) => setBonusForm({...bonusForm, title: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Description *</label>
-                <textarea value={bonusForm.description} onChange={(e) => setBonusForm({...bonusForm, description: e.target.value})} required rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea value={bonusForm.description} onChange={(e) => setBonusForm({...bonusForm, description: e.target.value})} required rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Image URL *</label>
-                <input type="url" value={bonusForm.image} onChange={(e) => setBonusForm({...bonusForm, image: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="url" value={bonusForm.image} onChange={(e) => setBonusForm({...bonusForm, image: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Bonus Type</label>
-                  <select value={bonusForm.bonusType} onChange={(e) => setBonusForm({...bonusForm, bonusType: e.target.value as Bonus['bonusType']})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <select value={bonusForm.bonusType} onChange={(e) => setBonusForm({...bonusForm, bonusType: e.target.value as Bonus['bonusType']})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black">
                     <option value="welcome">Welcome</option>
                     <option value="deposit">Deposit</option>
                     <option value="free_spins">Free Spins</option>
@@ -1387,21 +1828,21 @@ const AgentDashboard: React.FC = () => {
                   </select>
                 </div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Bonus Value</label>
-                  <input type="text" value={bonusForm.bonusValue} onChange={(e) => setBonusForm({...bonusForm, bonusValue: e.target.value})} placeholder="e.g., 100%, $50" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="text" value={bonusForm.bonusValue} onChange={(e) => setBonusForm({...bonusForm, bonusValue: e.target.value})} placeholder="e.g., 100%, $50" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Terms and Conditions</label>
-                <textarea value={bonusForm.termsAndConditions} onChange={(e) => setBonusForm({...bonusForm, termsAndConditions: e.target.value})} rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea value={bonusForm.termsAndConditions} onChange={(e) => setBonusForm({...bonusForm, termsAndConditions: e.target.value})} rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Order</label>
-                  <input type="number" value={bonusForm.order} onChange={(e) => setBonusForm({...bonusForm, order: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="number" value={bonusForm.order} onChange={(e) => setBonusForm({...bonusForm, order: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Valid From</label>
-                  <input type="date" value={bonusForm.validFrom} onChange={(e) => setBonusForm({...bonusForm, validFrom: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="date" value={bonusForm.validFrom} onChange={(e) => setBonusForm({...bonusForm, validFrom: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Valid Until</label>
-                  <input type="date" value={bonusForm.validUntil} onChange={(e) => setBonusForm({...bonusForm, validUntil: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="date" value={bonusForm.validUntil} onChange={(e) => setBonusForm({...bonusForm, validUntil: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
               </div>
               <div className="flex items-center">
@@ -1460,17 +1901,17 @@ const AgentDashboard: React.FC = () => {
               }
             }} className="p-6 space-y-4">
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Question *</label>
-                <input type="text" value={faqForm.question} onChange={(e) => setFaqForm({...faqForm, question: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="text" value={faqForm.question} onChange={(e) => setFaqForm({...faqForm, question: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Answer *</label>
-                <textarea value={faqForm.answer} onChange={(e) => setFaqForm({...faqForm, answer: e.target.value})} required rows={5} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea value={faqForm.answer} onChange={(e) => setFaqForm({...faqForm, answer: e.target.value})} required rows={5} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Category</label>
-                  <input type="text" value={faqForm.category} onChange={(e) => setFaqForm({...faqForm, category: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="text" value={faqForm.category} onChange={(e) => setFaqForm({...faqForm, category: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Order</label>
-                  <input type="number" value={faqForm.order} onChange={(e) => setFaqForm({...faqForm, order: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="number" value={faqForm.order} onChange={(e) => setFaqForm({...faqForm, order: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
               </div>
               <div className="flex items-center">
@@ -1529,14 +1970,14 @@ const AgentDashboard: React.FC = () => {
               }
             }} className="p-6 space-y-4">
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Title *</label>
-                <input type="text" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="text" value={noticeForm.title} onChange={(e) => setNoticeForm({...noticeForm, title: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Message *</label>
-                <textarea value={noticeForm.message} onChange={(e) => setNoticeForm({...noticeForm, message: e.target.value})} required rows={4} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <textarea value={noticeForm.message} onChange={(e) => setNoticeForm({...noticeForm, message: e.target.value})} required rows={4} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
-                  <select value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value as Notice['type']})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <select value={noticeForm.type} onChange={(e) => setNoticeForm({...noticeForm, type: e.target.value as Notice['type']})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black">
                     <option value="info">Info</option>
                     <option value="warning">Warning</option>
                     <option value="success">Success</option>
@@ -1544,11 +1985,11 @@ const AgentDashboard: React.FC = () => {
                   </select>
                 </div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Priority (1-3, only top 3 shown)</label>
-                  <input type="number" min="1" max="3" value={noticeForm.priority} onChange={(e) => setNoticeForm({...noticeForm, priority: Math.max(1, Math.min(3, parseInt(e.target.value) || 1))})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input type="number" min="1" max="3" value={noticeForm.priority} onChange={(e) => setNoticeForm({...noticeForm, priority: Math.max(1, Math.min(3, parseInt(e.target.value) || 1))})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Expires At (Optional)</label>
-                <input type="date" value={noticeForm.expiresAt} onChange={(e) => setNoticeForm({...noticeForm, expiresAt: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="date" value={noticeForm.expiresAt} onChange={(e) => setNoticeForm({...noticeForm, expiresAt: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
               <div className="flex items-center">
                 <label className="flex items-center gap-2 cursor-pointer">

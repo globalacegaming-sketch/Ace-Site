@@ -36,6 +36,7 @@ import contactsRoutes from './routes/contacts';
 import chatRoutes from './routes/chat';
 import adminChatRoutes from './routes/adminChat';
 import supportTicketRoutes from './routes/supportTicket';
+import emailPromotionsRoutes from './routes/emailPromotions';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -430,6 +431,7 @@ app.use('/api/contacts', contactsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin/messages', adminChatRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
+app.use('/api/email-promotions', emailPromotionsRoutes);
 
 // WebSocket connection handling
 io.use(async (socket, next) => {
