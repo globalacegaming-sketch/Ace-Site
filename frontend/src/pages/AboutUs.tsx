@@ -31,32 +31,6 @@ const AboutUs = () => {
     }
   ];
 
-  const team = [
-    {
-      name: 'Alex Johnson',
-      role: 'CEO & Founder',
-      image: '/api/placeholder/150/150',
-      description: 'Gaming industry veteran with 15+ years of experience in online gaming platforms.'
-    },
-    {
-      name: 'Sarah Chen',
-      role: 'CTO',
-      image: '/api/placeholder/150/150',
-      description: 'Technology leader specializing in scalable gaming infrastructure and security.'
-    },
-    {
-      name: 'Mike Rodriguez',
-      role: 'Head of Operations',
-      image: '/api/placeholder/150/150',
-      description: 'Operations expert ensuring smooth gaming experiences and customer satisfaction.'
-    },
-    {
-      name: 'Emma Wilson',
-      role: 'Head of Customer Support',
-      image: '/api/placeholder/150/150',
-      description: 'Customer experience specialist dedicated to providing exceptional player support.'
-    }
-  ];
 
   return (
     <div className="min-h-screen bg-gray-50 pt-16">
@@ -146,29 +120,6 @@ const AboutUs = () => {
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        {/* Team Section */}
-        <div className="mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">Meet Our Team</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {team.map((member, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
-                <div className="bg-gradient-to-br from-primary-100 to-secondary-100 h-48 flex items-center justify-center">
-                  <div className="w-24 h-24 bg-primary-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-2xl font-bold">
-                      {member.name.split(' ').map(n => n[0]).join('')}
-                    </span>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-1">{member.name}</h3>
-                  <p className="text-primary-600 font-medium mb-3">{member.role}</p>
-                  <p className="text-gray-600 text-sm">{member.description}</p>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
 
