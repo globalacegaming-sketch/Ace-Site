@@ -15,7 +15,9 @@ import {
   Mail,
   Shield,
   Users,
-  MessageCircle
+  MessageCircle,
+  Ban,
+  UserCheck
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -35,6 +37,11 @@ interface User {
   role: string;
   isActive: boolean;
   isEmailVerified?: boolean;
+  isBanned?: boolean;
+  bannedIPs?: string[];
+  bannedAt?: string;
+  banReason?: string;
+  lastLoginIP?: string;
   createdAt: string;
   lastLogin?: string;
 }
@@ -323,6 +330,74 @@ const AdminDashboard: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to verify email');
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleBanUser = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to permanently ban this user? This will also ban their IP address.')) {
+      return;
+    }
+
+    try {
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+
+      const response = await axios.put(
+        `${API_BASE_URL}/admin/users/${userId}/ban`,
+        { reason: 'Suspicious activity detected by admin' },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        toast.success('User banned successfully');
+        loadUsers();
+      } else {
+        toast.error(response.data.message || 'Failed to ban user');
+      }
+    } catch (error: any) {
+      console.error('Failed to ban user:', error);
+      toast.error(error.response?.data?.message || 'Failed to ban user');
+    }
+  };
+
+  const handleUnbanUser = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to unban this user?')) {
+      return;
+    }
+
+    try {
+      const token = getAdminToken();
+      if (!token) {
+        navigate('/adminacers/login');
+        return;
+      }
+
+      const response = await axios.put(
+        `${API_BASE_URL}/admin/users/${userId}/unban`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        toast.success('User unbanned successfully');
+        loadUsers();
+      } else {
+        toast.error(response.data.message || 'Failed to unban user');
+      }
+    } catch (error: any) {
+      console.error('Failed to unban user:', error);
+      toast.error(error.response?.data?.message || 'Failed to unban user');
     }
   };
 
@@ -1064,9 +1139,17 @@ const AdminDashboard: React.FC = () => {
                               <Mail className="w-4 h-4 text-red-500 flex-shrink-0" />
                             </div>
                           )}
+                          {user.isBanned && (
+                            <div title="User is Banned">
+                              <Ban className="w-4 h-4 text-red-600 flex-shrink-0" />
+                            </div>
+                          )}
                         </div>
                         <p className="text-xs sm:text-sm text-gray-600 truncate">{user.email}</p>
                         <p className="text-xs text-gray-500 truncate">@{user.username} • ID: {user._id.substring(0, 8)}...</p>
+                        {user.isBanned && user.banReason && (
+                          <p className="text-xs text-red-600 mt-1">Banned: {user.banReason}</p>
+                        )}
                       </div>
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:ml-4">
                         {!user.isEmailVerified && (
@@ -1092,6 +1175,25 @@ const AdminDashboard: React.FC = () => {
                           <span className="hidden sm:inline">Reset Password</span>
                           <span className="sm:hidden">Reset</span>
                         </button>
+                        {user.isBanned ? (
+                          <button
+                            onClick={() => handleUnbanUser(user._id)}
+                            className="px-3 py-2.5 sm:py-1.5 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 active:bg-green-800 transition flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
+                          >
+                            <UserCheck className="w-4 h-4" />
+                            <span className="hidden sm:inline">Unban User</span>
+                            <span className="sm:hidden">Unban</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleBanUser(user._id)}
+                            className="px-3 py-2.5 sm:py-1.5 bg-red-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-red-700 active:bg-red-800 transition flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
+                          >
+                            <Ban className="w-4 h-4" />
+                            <span className="hidden sm:inline">Ban User</span>
+                            <span className="sm:hidden">Ban</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

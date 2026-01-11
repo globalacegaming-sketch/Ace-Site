@@ -78,6 +78,14 @@ const Login = () => {
 
       const result = await response.json();
 
+      // Check if user is banned (403 status)
+      if (response.status === 403 && result.message) {
+        setError(result.message);
+        toast.error(result.message);
+        setIsLoading(false);
+        return;
+      }
+
       if (result.success) {
         // Login successful
         const userSession = {

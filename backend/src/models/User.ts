@@ -29,6 +29,11 @@ export interface IUser extends Document {
 
   referralCode?: string;
   referredBy?: string;
+  isBanned?: boolean;
+  bannedIPs?: string[];
+  bannedAt?: Date;
+  banReason?: string;
+  lastLoginIP?: string;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -159,6 +164,26 @@ const UserSchema = new Schema<IUser>({
   passwordResetExpires: {
     type: Date,
     select: false
+  },
+  isBanned: {
+    type: Boolean,
+    default: false
+  },
+  bannedIPs: {
+    type: [String],
+    default: []
+  },
+  bannedAt: {
+    type: Date
+  },
+  banReason: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Ban reason cannot exceed 500 characters']
+  },
+  lastLoginIP: {
+    type: String,
+    trim: true
   }
 }, {
   timestamps: true,
@@ -194,6 +219,9 @@ UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 
 // Compound index for password reset lookups
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
+
+// Index for banned users
+UserSchema.index({ isBanned: 1 });
 
 // Hash password before saving
 UserSchema.pre('save', async function(next) {

@@ -21,6 +21,11 @@ export interface User {
   fortunePandaLastSync?: string;
   referralCode?: string;
   referredBy?: string;
+  isBanned?: boolean;
+  bannedIPs?: string[];
+  bannedAt?: string;
+  banReason?: string;
+  lastLoginIP?: string;
   createdAt: string;
   updatedAt: string;
 }

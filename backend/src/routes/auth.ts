@@ -8,6 +8,7 @@ import emailService from '../services/emailService';
 import { authLimiter, registerLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
+import { getClientIP } from '../utils/requestUtils';
 
 const router = Router();
 
@@ -197,11 +198,38 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       return sendError(res, 'Email and password are required', 400);
     }
 
+    // Get client IP address
+    const clientIP = getClientIP(req);
+
     // Find user by email and include password for comparison
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
       return sendError(res, 'Invalid email or password', 401);
+    }
+
+    // Check if user is banned (this blocks the user regardless of IP)
+    if (user.isBanned) {
+      logger.warn(`Banned user attempted login: ${email} from IP: ${clientIP}`);
+      return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
+    }
+
+    // Check if IP is banned for this user
+    if (user.bannedIPs && user.bannedIPs.length > 0 && user.bannedIPs.includes(clientIP)) {
+      logger.warn(`Banned IP attempted login: ${clientIP} for user: ${email}`);
+      return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
+    }
+
+    // Also check if any banned user has this IP in their banned IPs list
+    // This prevents banned users from logging in from any IP that was previously associated with a banned account
+    const userWithBannedIP = await User.findOne({
+      bannedIPs: { $in: [clientIP] },
+      isBanned: true
+    });
+
+    if (userWithBannedIP) {
+      logger.warn(`Banned IP attempted login: ${clientIP} for user: ${email}`);
+      return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
     }
 
     // Check if account is active
@@ -216,8 +244,10 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       return sendError(res, 'Invalid email or password', 401);
     }
 
-    // Update last login
-    await (user as any).updateLastLogin();
+    // Update last login and IP
+    user.lastLogin = new Date();
+    user.lastLoginIP = clientIP;
+    await user.save();
 
     // Generate tokens
     const tokens = generateTokens(user);

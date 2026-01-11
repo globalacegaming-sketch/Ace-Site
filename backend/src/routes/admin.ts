@@ -9,6 +9,7 @@ import { requireAdminAuth } from '../middleware/adminAuth';
 import { authLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
+import { getClientIP } from '../utils/requestUtils';
 
 const router = Router();
 
@@ -1038,6 +1039,115 @@ router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Re
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     logger.error('❌ Error updating FortunePanda password:', errorMessage);
+    return res.status(500).json({
+      success: false,
+      message: errorMessage
+    });
+  }
+});
+
+// Ban user (permanent ban with IP blocking)
+router.put('/users/:userId/ban', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    // Get user's last known IP address
+    const userIP = user.lastLoginIP;
+    
+    // Ban the user
+    user.isBanned = true;
+    user.bannedAt = new Date();
+    user.banReason = reason || 'Suspicious activity';
+    
+    // Add IP to banned IPs if it exists
+    if (userIP) {
+      if (!user.bannedIPs) {
+        user.bannedIPs = [];
+      }
+      if (!user.bannedIPs.includes(userIP)) {
+        user.bannedIPs.push(userIP);
+      }
+    }
+
+    await user.save();
+
+    logger.info('🚫 User banned by admin:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      bannedIP: userIP,
+      reason: user.banReason,
+      bannedBy: req.adminSession?.agentName
+    });
+
+    return res.json({
+      success: true,
+      message: 'User banned successfully',
+      data: {
+        userId: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        isBanned: user.isBanned,
+        bannedAt: user.bannedAt,
+        bannedIPs: user.bannedIPs,
+        banReason: user.banReason
+      }
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Error banning user:', errorMessage);
+    return res.status(500).json({
+      success: false,
+      message: errorMessage
+    });
+  }
+});
+
+// Unban user
+router.put('/users/:userId/unban', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    // Unban the user (but keep IPs in bannedIPs for reference)
+    user.isBanned = false;
+    user.bannedAt = undefined;
+    user.banReason = undefined;
+
+    await user.save();
+
+    logger.info('✅ User unbanned by admin:', {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      unbannedBy: req.adminSession?.agentName
+    });
+
+    return res.json({
+      success: true,
+      message: 'User unbanned successfully',
+      data: {
+        userId: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        isBanned: user.isBanned
+      }
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Error unbanning user:', errorMessage);
     return res.status(500).json({
       success: false,
       message: errorMessage
