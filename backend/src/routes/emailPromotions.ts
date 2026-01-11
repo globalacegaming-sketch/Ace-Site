@@ -94,10 +94,30 @@ const getEmailTemplate = async (
   // Load and convert logo to base64 for email embedding
   let logoDataUri = '';
   try {
-    const logoPath = path.resolve(__dirname, '../logo.png');
-    const logoBuffer = fs.readFileSync(logoPath);
-    const logoBase64 = logoBuffer.toString('base64');
-    logoDataUri = `data:image/png;base64,${logoBase64}`;
+    // Try multiple possible logo paths
+    const possiblePaths = [
+      path.resolve(__dirname, '../logo.png'),
+      path.resolve(__dirname, '../../logo.png'),
+      path.resolve(__dirname, '../../../logo.png'),
+      path.resolve(process.cwd(), 'logo.png'),
+      path.resolve(process.cwd(), 'backend/logo.png'),
+      path.resolve(process.cwd(), 'backend/src/logo.png')
+    ];
+    
+    let logoFound = false;
+    for (const logoPath of possiblePaths) {
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath);
+        const logoBase64 = logoBuffer.toString('base64');
+        logoDataUri = `data:image/png;base64,${logoBase64}`;
+        logoFound = true;
+        break;
+      }
+    }
+    
+    if (!logoFound) {
+      logger.warn('Could not find logo.png in any of the expected locations, using placeholder');
+    }
   } catch (error) {
     logger.warn('Could not load logo.png, using placeholder:', error);
     // Fallback to placeholder if logo not found
@@ -416,6 +436,17 @@ router.post(
   requireAgentAuth,
   emailAttachmentUpload.single('attachment'),
   async (req: Request, res: Response) => {
+    // Check if request has timed out before processing
+    if (req.timedout) {
+      if (!res.headersSent) {
+        return res.status(408).json({
+          success: false,
+          message: 'Request timeout. Email sending may still be processing in the background.'
+        });
+      }
+      return;
+    }
+
     try {
       const { subject, emailBody, headerTitle, headerSubtitle, recipientIds, recipientEmails } = req.body;
       const attachment = req.file;
@@ -518,7 +549,7 @@ router.post(
 
       sendSmtpEmail.tags = ['promotional'];
 
-      // Send to all recipients
+      // Track results
       const results = {
         total: recipients.length,
         successful: 0,
@@ -526,37 +557,161 @@ router.post(
         errors: [] as string[]
       };
 
-      // Brevo supports batch sending, so we can send to multiple recipients at once
-      try {
-        sendSmtpEmail.to = recipients.map(email => ({ email }));
+      // Brevo has a limit of 99 recipients per email, so we need to batch them
+      const MAX_RECIPIENTS_PER_BATCH = 99;
+      const batches: string[][] = [];
+      
+      // Split recipients into batches of MAX_RECIPIENTS_PER_BATCH
+      for (let i = 0; i < recipients.length; i += MAX_RECIPIENTS_PER_BATCH) {
+        batches.push(recipients.slice(i, i + MAX_RECIPIENTS_PER_BATCH));
+      }
+
+      logger.info(`Sending email to ${recipients.length} recipients in ${batches.length} batch(es)`);
+
+      // Send emails in batches
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        // Check for timeout periodically
+        if (req.timedout) {
+          logger.warn(`Request timed out while processing batch ${batchIndex + 1}/${batches.length}. Stopping email sending.`);
+          break;
+        }
+
+        const batch = batches[batchIndex];
         
-        const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-        
-        // If successful, all emails were sent
-        results.successful = recipients.length;
-        
-        logger.info(`Successfully sent ${results.successful} promotional emails`, {
-          subject,
-          messageId: result.messageId
-        });
-      } catch (error: any) {
-        logger.error('Error sending batch email:', error);
-        // Try sending individually as fallback
-        for (const email of recipients) {
-          try {
-            const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
-            individualEmail.sender = sendSmtpEmail.sender;
-            individualEmail.to = [{ email }];
-            individualEmail.subject = sendSmtpEmail.subject;
-            individualEmail.htmlContent = sendSmtpEmail.htmlContent;
-            // Attachment is embedded in HTML, no need to attach separately
-            individualEmail.tags = sendSmtpEmail.tags;
+        try {
+          // Create a copy of the email for this batch
+          const batchEmail = new SibApiV3Sdk.SendSmtpEmail();
+          batchEmail.sender = sendSmtpEmail.sender;
+          batchEmail.to = batch.map(email => ({ email }));
+          batchEmail.subject = sendSmtpEmail.subject;
+          batchEmail.htmlContent = sendSmtpEmail.htmlContent;
+          batchEmail.tags = sendSmtpEmail.tags;
+          
+          // Set timeout for each email batch (10 seconds)
+          const result = await Promise.race([
+            apiInstance.sendTransacEmail(batchEmail),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Email batch send timeout')), 10000)
+            )
+          ]) as any;
+          
+          results.successful += batch.length;
+          
+          logger.info(`Batch ${batchIndex + 1}/${batches.length}: Successfully sent ${batch.length} emails`, {
+            subject,
+            messageId: result.messageId
+          });
+          
+          // Add a small delay between batches to avoid rate limiting (except for the last batch)
+          if (batchIndex < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between batches
+          }
+        } catch (error: any) {
+          logger.error(`Error sending batch ${batchIndex + 1}:`, error);
+          
+          // Check if it's a "too many recipients" error
+          const errorMessage = error.response?.body?.message || error.message || '';
+          if (errorMessage.includes('Too many recipients')) {
+            // If batch is too large, split and retry
+            logger.warn(`Batch ${batchIndex + 1} had too many recipients, splitting into smaller batches`);
+            const halfSize = Math.ceil(batch.length / 2);
+            const firstHalf = batch.slice(0, halfSize);
+            const secondHalf = batch.slice(halfSize);
             
-            await apiInstance.sendTransacEmail(individualEmail);
-            results.successful++;
-          } catch (err: any) {
-            results.failed++;
-            results.errors.push(`${email}: ${err.message || 'Unknown error'}`);
+            // Retry with first half
+            if (firstHalf.length > 0 && firstHalf.length <= MAX_RECIPIENTS_PER_BATCH) {
+              try {
+                const splitEmail = new SibApiV3Sdk.SendSmtpEmail();
+                splitEmail.sender = sendSmtpEmail.sender;
+                splitEmail.to = firstHalf.map(email => ({ email }));
+                splitEmail.subject = sendSmtpEmail.subject;
+                splitEmail.htmlContent = sendSmtpEmail.htmlContent;
+                splitEmail.tags = sendSmtpEmail.tags;
+                await apiInstance.sendTransacEmail(splitEmail);
+                results.successful += firstHalf.length;
+              } catch (err: any) {
+                // If still fails, try individually
+                for (const email of firstHalf) {
+                  try {
+                    const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
+                    individualEmail.sender = sendSmtpEmail.sender;
+                    individualEmail.to = [{ email }];
+                    individualEmail.subject = sendSmtpEmail.subject;
+                    individualEmail.htmlContent = sendSmtpEmail.htmlContent;
+                    individualEmail.tags = sendSmtpEmail.tags;
+                    await apiInstance.sendTransacEmail(individualEmail);
+                    results.successful++;
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                  } catch (e: any) {
+                    results.failed++;
+                    const emailForError = email; // Capture email in scope
+                    results.errors.push(`${emailForError}: ${e.response?.body?.message || e.message || 'Unknown error'}`);
+                  }
+                }
+              }
+            }
+            
+            // Retry with second half
+            if (secondHalf.length > 0 && secondHalf.length <= MAX_RECIPIENTS_PER_BATCH) {
+              try {
+                const splitEmail = new SibApiV3Sdk.SendSmtpEmail();
+                splitEmail.sender = sendSmtpEmail.sender;
+                splitEmail.to = secondHalf.map(emailAddr => ({ email: emailAddr }));
+                splitEmail.subject = sendSmtpEmail.subject;
+                splitEmail.htmlContent = sendSmtpEmail.htmlContent;
+                splitEmail.tags = sendSmtpEmail.tags;
+                await apiInstance.sendTransacEmail(splitEmail);
+                results.successful += secondHalf.length;
+              } catch (err: any) {
+                // If still fails, try individually
+                for (const emailAddr of secondHalf) {
+                  try {
+                    const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
+                    individualEmail.sender = sendSmtpEmail.sender;
+                    individualEmail.to = [{ email: emailAddr }];
+                    individualEmail.subject = sendSmtpEmail.subject;
+                    individualEmail.htmlContent = sendSmtpEmail.htmlContent;
+                    individualEmail.tags = sendSmtpEmail.tags;
+                    await apiInstance.sendTransacEmail(individualEmail);
+                    results.successful++;
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                  } catch (e: any) {
+                    results.failed++;
+                    results.errors.push(`${emailAddr}: ${e.response?.body?.message || e.message || 'Unknown error'}`);
+                  }
+                }
+              }
+            }
+          } else {
+            // If batch fails for other reasons, try sending individually as fallback
+            for (const email of batch) {
+              if (req.timedout) break; // Check timeout before each individual send
+              
+              try {
+                const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
+                individualEmail.sender = sendSmtpEmail.sender;
+                individualEmail.to = [{ email }];
+                individualEmail.subject = sendSmtpEmail.subject;
+                individualEmail.htmlContent = sendSmtpEmail.htmlContent;
+                individualEmail.tags = sendSmtpEmail.tags;
+                
+                await Promise.race([
+                  apiInstance.sendTransacEmail(individualEmail),
+                  new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Individual email send timeout')), 5000)
+                  )
+                ]);
+                results.successful++;
+                
+                // Small delay between individual sends to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
+              } catch (err: any) {
+                results.failed++;
+                const errorMsg = err.response?.body?.message || err.message || 'Unknown error';
+                results.errors.push(`${email}: ${errorMsg}`);
+                logger.error(`Failed to send email to ${email}:`, errorMsg);
+              }
+            }
           }
         }
       }
@@ -570,24 +725,34 @@ router.post(
         }
       }
 
-      return res.json({
-        success: true,
-        message: `Email promotion sent. ${results.successful} successful, ${results.failed} failed.`,
-        data: {
-          total: results.total,
-          successful: results.successful,
-          failed: results.failed,
-          errors: results.errors.length > 0 ? results.errors : undefined
-        }
-      });
+      // Only send response if headers haven't been sent yet
+      if (!res.headersSent) {
+        return res.json({
+          success: true,
+          message: `Email promotion sent. ${results.successful} successful, ${results.failed} failed.`,
+          data: {
+            total: results.total,
+            successful: results.successful,
+            failed: results.failed,
+            errors: results.errors.length > 0 ? results.errors.slice(0, 10) : undefined // Limit error details to first 10
+          }
+        });
+      }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Error sending promotional emails:', errorMessage);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send promotional emails',
-        error: errorMessage
-      });
+      
+      // Only send response if headers haven't been sent yet
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send promotional emails',
+          error: errorMessage
+        });
+      } else {
+        // If headers already sent, just log the error
+        logger.error('Error after response sent:', errorMessage);
+      }
     }
   }
 );

@@ -9,6 +9,7 @@ import { authLimiter, registerLimiter, passwordResetLimiter } from '../middlewar
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
+import { isIPBanned } from '../utils/ipBanUtils';
 
 const router = Router();
 
@@ -29,6 +30,16 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
       password, 
       referralCode 
     } = req.body;
+
+    // Get client IP address
+    const clientIP = getClientIP(req);
+
+    // Check if IP is globally banned BEFORE any other validation
+    const ipIsBanned = await isIPBanned(clientIP);
+    if (ipIsBanned) {
+      logger.warn(`Banned IP attempted registration: ${clientIP}`);
+      return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
+    }
 
     // Validate required fields
     if (!firstName || !lastName || !username || !email || !password) {
@@ -106,7 +117,8 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
           fortunePandaPassword,
           emailVerificationToken: emailVerificationCode,
           emailVerificationExpires,
-          isEmailVerified: false
+          isEmailVerified: false,
+          lastLoginIP: clientIP // Store the IP address used during registration
         });
 
         await newUser.save();
@@ -201,6 +213,13 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     // Get client IP address
     const clientIP = getClientIP(req);
 
+    // Check if IP is globally banned BEFORE checking user credentials
+    const ipIsBanned = await isIPBanned(clientIP);
+    if (ipIsBanned) {
+      logger.warn(`Globally banned IP attempted login: ${clientIP}`);
+      return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
+    }
+
     // Find user by email and include password for comparison
     const user = await User.findOne({ email }).select('+password');
 
@@ -216,18 +235,6 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
 
     // Check if IP is banned for this user
     if (user.bannedIPs && user.bannedIPs.length > 0 && user.bannedIPs.includes(clientIP)) {
-      logger.warn(`Banned IP attempted login: ${clientIP} for user: ${email}`);
-      return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
-    }
-
-    // Also check if any banned user has this IP in their banned IPs list
-    // This prevents banned users from logging in from any IP that was previously associated with a banned account
-    const userWithBannedIP = await User.findOne({
-      bannedIPs: { $in: [clientIP] },
-      isBanned: true
-    });
-
-    if (userWithBannedIP) {
       logger.warn(`Banned IP attempted login: ${clientIP} for user: ${email}`);
       return sendError(res, 'Due to suspicous activity you have resulted in permanent account ban . Please play safe and follow rules', 403);
     }

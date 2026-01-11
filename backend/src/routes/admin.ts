@@ -10,6 +10,7 @@ import { authLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
+import { banUserIPs, findUsersByIP } from '../utils/ipBanUtils';
 
 const router = Router();
 
@@ -1078,18 +1079,40 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
 
     await user.save();
 
+    // Ban all IPs associated with this user globally
+    const bannedIPs = await banUserIPs(userId, {
+      bannedBy: req.adminSession?.agentName || 'Admin',
+      reason: reason || 'Suspicious activity - user banned'
+    });
+
+    // Also find and ban any other users that have used these IPs
+    for (const ip of bannedIPs) {
+      const usersWithSameIP = await findUsersByIP(ip);
+      for (const otherUser of usersWithSameIP) {
+        if (otherUser._id.toString() !== userId && !otherUser.isBanned) {
+          logger.warn(`User ${otherUser._id} has used banned IP ${ip}, considering ban`);
+          // Optionally ban other users with the same IP - uncomment if needed
+          // otherUser.isBanned = true;
+          // otherUser.bannedAt = new Date();
+          // otherUser.banReason = `Associated IP ${ip} was banned`;
+          // await otherUser.save();
+        }
+      }
+    }
+
     logger.info('🚫 User banned by admin:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
       bannedIP: userIP,
+      globallyBannedIPs: bannedIPs,
       reason: user.banReason,
       bannedBy: req.adminSession?.agentName
     });
 
     return res.json({
       success: true,
-      message: 'User banned successfully',
+      message: 'User banned successfully. All associated IPs have been globally banned.',
       data: {
         userId: user._id.toString(),
         username: user.username,
@@ -1097,6 +1120,7 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
         isBanned: user.isBanned,
         bannedAt: user.bannedAt,
         bannedIPs: user.bannedIPs,
+        globallyBannedIPs: bannedIPs,
         banReason: user.banReason
       }
     });
