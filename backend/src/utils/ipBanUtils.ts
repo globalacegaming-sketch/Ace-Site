@@ -138,3 +138,101 @@ export async function findUsersByIP(ip: string): Promise<any[]> {
   }
 }
 
+/**
+ * Unban an IP address globally (only if it's safe to do so)
+ */
+export async function unbanIP(ip: string, userId?: string): Promise<boolean> {
+  try {
+    // Find the banned IP record
+    const bannedIP = await BannedIP.findOne({ ip });
+    
+    if (!bannedIP) {
+      logger.debug(`IP ${ip} is not banned`);
+      return true; // Not banned, so considered successful
+    }
+
+    // If userId is provided, check if this IP is only associated with this user
+    if (userId) {
+      const usersWithIP = await findUsersByIP(ip);
+      const otherBannedUsers = usersWithIP.filter(
+        u => u._id.toString() !== userId && u.isBanned
+      );
+
+      // If there are other banned users using this IP, don't unban it
+      if (otherBannedUsers.length > 0) {
+        logger.warn(`Cannot unban IP ${ip} - it's also used by other banned users`, {
+          otherBannedUserIds: otherBannedUsers.map(u => u._id.toString())
+        });
+        return false;
+      }
+    }
+
+    // Remove the IP ban
+    await BannedIP.deleteOne({ ip });
+
+    logger.info(`IP ${ip} has been unbanned globally`, {
+      userId
+    });
+
+    return true;
+  } catch (error) {
+    logger.error(`Error unbanning IP ${ip}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Unban all IPs associated with a user
+ * Only unbans IPs that are not associated with other banned users
+ */
+export async function unbanUserIPs(userId: string): Promise<string[]> {
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      logger.warn(`User ${userId} not found when trying to unban IPs`);
+      return [];
+    }
+
+    const ipsToUnban: string[] = [];
+
+    // Add lastLoginIP if it exists
+    if (user.lastLoginIP) {
+      ipsToUnban.push(user.lastLoginIP);
+    }
+
+    // Add all bannedIPs from the user
+    if (user.bannedIPs && user.bannedIPs.length > 0) {
+      ipsToUnban.push(...user.bannedIPs);
+    }
+
+    // Remove duplicates
+    const uniqueIPs = [...new Set(ipsToUnban)];
+
+    const unbannedIPs: string[] = [];
+
+    // Try to unban each IP (only if safe)
+    for (const ip of uniqueIPs) {
+      if (ip && ip.trim() !== '' && ip !== 'unknown') {
+        try {
+          const success = await unbanIP(ip, userId);
+          if (success) {
+            unbannedIPs.push(ip);
+          }
+        } catch (error) {
+          logger.error(`Error unbanning IP ${ip} for user ${userId}:`, error);
+        }
+      }
+    }
+
+    logger.info(`Unbanned ${unbannedIPs.length} of ${uniqueIPs.length} IP(s) for user ${userId}`, {
+      unbannedIPs,
+      totalIPs: uniqueIPs
+    });
+
+    return unbannedIPs;
+  } catch (error) {
+    logger.error(`Error unbanning user IPs for user ${userId}:`, error);
+    return [];
+  }
+}
+

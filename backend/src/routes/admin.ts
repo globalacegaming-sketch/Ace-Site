@@ -10,7 +10,7 @@ import { authLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
-import { banUserIPs, findUsersByIP } from '../utils/ipBanUtils';
+import { banUserIPs, findUsersByIP, unbanUserIPs } from '../utils/ipBanUtils';
 
 const router = Router();
 
@@ -1145,28 +1145,33 @@ router.put('/users/:userId/unban', async (req: Request, res: Response) => {
       return sendError(res, 'User not found', 404);
     }
 
-    // Unban the user (but keep IPs in bannedIPs for reference)
+    // Unban the user first
     user.isBanned = false;
     user.bannedAt = undefined;
     user.banReason = undefined;
 
     await user.save();
 
+    // Unban all IPs associated with this user (only if they're not used by other banned users)
+    const unbannedIPs = await unbanUserIPs(userId);
+
     logger.info('✅ User unbanned by admin:', {
       userId: user._id.toString(),
       username: user.username,
       email: user.email,
+      unbannedIPs: unbannedIPs,
       unbannedBy: req.adminSession?.agentName
     });
 
     return res.json({
       success: true,
-      message: 'User unbanned successfully',
+      message: `User unbanned successfully. ${unbannedIPs.length} IP(s) were also unbanned.`,
       data: {
         userId: user._id.toString(),
         username: user.username,
         email: user.email,
-        isBanned: user.isBanned
+        isBanned: user.isBanned,
+        unbannedIPs: unbannedIPs
       }
     });
   } catch (error: unknown) {
