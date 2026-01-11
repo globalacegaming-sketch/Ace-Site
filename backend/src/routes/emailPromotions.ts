@@ -9,6 +9,15 @@ import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
 import logger from '../utils/logger';
 import * as SibApiV3Sdk from 'sib-api-v3-sdk';
 
+// Extend Express Request interface to include timedout property from connect-timeout middleware
+declare global {
+  namespace Express {
+    interface Request {
+      timedout?: boolean;
+    }
+  }
+}
+
 // Get Brevo API instance (reuse the configured one from emailService)
 const getBrevoApiInstance = (): { apiInstance: SibApiV3Sdk.TransactionalEmailsApi; apiKey: string | null } => {
   const apiKey = process.env.BREVO_API_KEY;
