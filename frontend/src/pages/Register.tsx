@@ -130,28 +130,28 @@ const Register = () => {
       {/* Full screen layout - NO WRAPPERS */}
       <div className="flex min-h-screen">
           {/* Left Side - Form */}
-          <div className="w-full lg:w-1/2 casino-feature-card p-8 lg:p-12 flex flex-col justify-center relative">
+          <div className="w-full lg:w-1/2 casino-feature-card p-4 sm:p-6 lg:p-12 flex flex-col justify-center relative">
             {/* Casino decorative elements */}
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full -translate-y-20 translate-x-20"></div>
             <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full translate-y-16 -translate-x-16"></div>
             <div className="absolute top-1/2 right-0 w-24 h-24 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full -translate-y-1/2 translate-x-12"></div>
 
             <div className="relative z-10">
-              <div className="text-center mb-6 lg:mb-8">
-                <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 mb-3 lg:mb-4">
+              <div className="text-center mb-4 sm:mb-5 lg:mb-8">
+                <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 lg:w-16 lg:h-16 mb-2 sm:mb-3 lg:mb-4">
                   <img 
                     src="/logo.png" 
                     alt="Global Ace Gaming" 
                     className="w-full h-full object-contain"
                   />
                 </div>
-                <h1 className="text-2xl lg:text-4xl font-bold casino-text-primary mb-2">Sign Up to Start your gaming journey</h1>
-                <p className="casino-text-secondary text-sm lg:text-lg">Create your account and start playing today</p>
+                <h1 className="text-xl sm:text-2xl lg:text-4xl font-bold casino-text-primary mb-1 sm:mb-2">Sign Up to Start your gaming journey</h1>
+                <p className="casino-text-secondary text-xs sm:text-sm lg:text-lg">Create your account and start playing today</p>
               </div>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 lg:space-y-6" noValidate>
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4 lg:space-y-6" noValidate>
                 {/* Name Fields */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4">
               <div>
                     <label htmlFor="firstName" className="block text-sm font-medium casino-text-primary mb-2">
                       First Name
@@ -160,9 +160,13 @@ const Register = () => {
                   {...register('firstName')}
                   type="text"
                   id="firstName"
-                      className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
-                        errors.firstName ? 'border-red-400 focus:ring-red-400' : ''
+                      className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
+                        errors.firstName ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                       }`}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        color: '#000000',
+                      }}
                       placeholder="Enter your first name"
                 />
                  {errors.firstName && (
@@ -180,9 +184,13 @@ const Register = () => {
                   {...register('lastName')}
                   type="text"
                   id="lastName"
-                      className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
-                        errors.lastName ? 'border-red-400 focus:ring-red-400' : ''
+                      className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
+                        errors.lastName ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                       }`}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        color: '#000000',
+                      }}
                       placeholder="Enter your last name"
                 />
                  {errors.lastName && (
@@ -203,9 +211,13 @@ const Register = () => {
                 {...register('username')}
                 type="text"
                 id="username"
-                    className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
-                      errors.username ? 'border-red-400 focus:ring-red-400' : ''
+                    className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
+                      errors.username ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                     }`}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      color: '#000000',
+                    }}
                     placeholder="Choose a username"
               />
                {errors.username && (
@@ -225,9 +237,13 @@ const Register = () => {
                     {...register('phoneNumber')}
                     type="tel"
                     id="phoneNumber"
-                    className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
-                      errors.phoneNumber ? 'border-red-400 focus:ring-red-400' : ''
+                    className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
+                      errors.phoneNumber ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                     }`}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      color: '#000000',
+                    }}
                     placeholder="Enter your phone number"
                   />
                    {errors.phoneNumber && (
@@ -247,9 +263,13 @@ const Register = () => {
                 {...register('email')}
                 type="email"
                 id="email"
-                    className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
-                      errors.email ? 'border-red-400 focus:ring-red-400' : ''
+                    className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
+                      errors.email ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                     }`}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      color: '#000000',
+                    }}
                     placeholder="Enter your email address"
               />
                {errors.email && (
@@ -261,7 +281,7 @@ const Register = () => {
           </div>
 
                 {/* Password Fields */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4">
             <div>
                     <label htmlFor="password" className="block text-sm font-medium casino-text-primary mb-2">
                       Password
@@ -271,9 +291,13 @@ const Register = () => {
                   {...register('password')}
                   type={showPassword ? 'text' : 'password'}
                   id="password"
-                        className={`input-casino px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 ${
-                          errors.password ? 'border-red-400 focus:ring-red-400' : ''
+                        className={`px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 w-full rounded-lg border transition-all duration-300 ${
+                          errors.password ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                         }`}
+                        style={{
+                          backgroundColor: '#FFFFFF',
+                          color: '#000000',
+                        }}
                         placeholder="Create a password"
                 />
                 <button
@@ -304,9 +328,13 @@ const Register = () => {
                   {...register('confirmPassword')}
                   type={showConfirmPassword ? 'text' : 'password'}
                   id="confirmPassword"
-                        className={`input-casino px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 ${
-                          errors.confirmPassword ? 'border-red-400 focus:ring-red-400' : ''
+                        className={`px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 w-full rounded-lg border transition-all duration-300 ${
+                          errors.confirmPassword ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                         }`}
+                        style={{
+                          backgroundColor: '#FFFFFF',
+                          color: '#000000',
+                        }}
                   placeholder="Confirm your password"
                 />
                 <button
@@ -339,7 +367,11 @@ const Register = () => {
                 {...register('referralCode')}
                 type="text"
                 id="referralCode"
-                    className="input-casino px-3 py-3 lg:px-4 lg:py-4"
+                    className="px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border border-gray-300 focus:border-yellow-400 focus:ring-yellow-400 transition-all duration-300"
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      color: '#000000',
+                    }}
                     placeholder="Enter referral code if you have one"
                   />
             </div>
@@ -381,7 +413,7 @@ const Register = () => {
             </button>
           </form>
 
-              <div className="mt-6 lg:mt-8 text-center">
+              <div className="mt-4 sm:mt-5 lg:mt-8 text-center">
                 <p className="casino-text-secondary text-sm lg:text-base">
               Already have an account?{' '}
               <Link

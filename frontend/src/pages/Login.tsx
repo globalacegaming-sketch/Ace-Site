@@ -142,37 +142,37 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16">
+    <div className="h-screen casino-bg-primary relative overflow-hidden pt-16 lg:pt-16">
       {/* Casino-themed background elements */}
       <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
       <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
 
       {/* Full screen layout - NO WRAPPERS */}
-      <div className="flex h-screen">
+      <div className="flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden">
           {/* Left Side - Form */}
-          <div className="w-full lg:w-1/2 casino-feature-card p-8 lg:p-12 flex flex-col justify-center relative">
+          <div className="w-full lg:w-1/2 casino-feature-card py-3 px-4 sm:py-4 sm:px-6 lg:p-12 flex flex-col justify-center relative overflow-hidden">
             {/* Casino decorative elements */}
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full -translate-y-20 translate-x-20"></div>
             <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full translate-y-16 -translate-x-16"></div>
             <div className="absolute top-1/2 right-0 w-24 h-24 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full -translate-y-1/2 translate-x-12"></div>
             
-            <div className="relative z-10">
-              <div className="text-center mb-6 lg:mb-8">
-                <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 mb-3 lg:mb-4">
+            <div className="relative z-10 w-full max-h-full overflow-y-auto">
+              <div className="text-center mb-4 sm:mb-5 lg:mb-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 sm:w-18 sm:h-18 lg:w-16 lg:h-16 mb-2 sm:mb-3 lg:mb-4">
                   <img 
                     src="/logo.png" 
                     alt="Global Ace Gaming" 
                     className="w-full h-full object-contain"
                   />
                 </div>
-                <h1 className="text-2xl lg:text-4xl font-bold casino-text-primary mb-2">Welcome Back!</h1>
-                <p className="casino-text-secondary text-sm lg:text-lg">Sign in to continue your gaming journey</p>
+                <h1 className="text-xl sm:text-2xl lg:text-4xl font-bold casino-text-primary mb-1 sm:mb-2 lg:mb-2">Welcome Back!</h1>
+                <p className="casino-text-secondary text-xs sm:text-sm lg:text-lg">Sign in to continue your gaming journey</p>
               </div>
               
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 lg:space-y-6" noValidate>
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4 lg:space-y-6" noValidate>
             <div>
-                  <label htmlFor="email" className="block text-sm font-medium casino-text-primary mb-2">
+                  <label htmlFor="email" className="block text-sm font-medium casino-text-primary mb-1.5 sm:mb-2">
                 Email Address
               </label>
                   <div className="relative">
@@ -180,22 +180,26 @@ const Login = () => {
                       {...register('email', { required: 'Email is required' })}
                 type="email"
                 id="email"
-                      className={`input-casino px-3 py-3 lg:px-4 lg:py-4 ${
-                        errors.email ? 'border-red-400 focus:ring-red-400' : ''
-                }`}
+                      className={`px-3 py-2.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 text-sm sm:text-base ${
+                        errors.email ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
+                      }`}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        color: '#000000',
+                      }}
                 placeholder="Enter your email"
               />
                   </div>
               {errors.email && (
-                    <p className="mt-2 text-sm text-red-300 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
+                    <p className="mt-1.5 text-xs sm:text-sm text-red-300 flex items-center">
+                      <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
                   {errors.email.message}
                 </p>
               )}
             </div>
 
             <div>
-                  <label htmlFor="password" className="block text-sm font-medium casino-text-primary mb-2">
+                  <label htmlFor="password" className="block text-sm font-medium casino-text-primary mb-1.5 sm:mb-2">
                 Password
               </label>
               <div className="relative">
@@ -203,39 +207,40 @@ const Login = () => {
                       {...register('password', { required: 'Password is required' })}
                   type={showPassword ? 'text' : 'password'}
                   id="password"
-                      className={`input-casino px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 ${
-                        errors.password ? 'border-red-400 focus:ring-red-400' : ''
+                      className={`px-3 py-2.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 pr-9 sm:pr-10 lg:pr-12 w-full rounded-lg border transition-all duration-300 text-sm sm:text-base ${
+                        errors.password ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                   }`}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        color: '#000000',
+                      }}
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
-                      className="absolute inset-y-0 right-0 pr-3 lg:pr-4 flex items-center hover:bg-yellow-400/20 rounded-r-lg transition-colors duration-200"
+                      className="absolute inset-y-0 right-0 pr-3 sm:pr-3 lg:pr-4 flex items-center hover:bg-yellow-400/20 rounded-r-lg transition-colors duration-200"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? (
-                        <EyeOff className="h-4 w-4 lg:h-5 lg:w-5 casino-text-secondary" />
+                        <EyeOff className="h-4 w-4 sm:h-4 sm:w-4 lg:h-5 lg:w-5 casino-text-secondary" />
                   ) : (
-                        <Eye className="h-4 w-4 lg:h-5 lg:w-5 casino-text-secondary" />
+                        <Eye className="h-4 w-4 sm:h-4 sm:w-4 lg:h-5 lg:w-5 casino-text-secondary" />
                   )}
                 </button>
               </div>
               {errors.password && (
-                    <p className="mt-2 text-sm text-red-300 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
+                    <p className="mt-1.5 text-xs sm:text-sm text-red-300 flex items-center">
+                      <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
                   {errors.password.message}
                 </p>
               )}
             </div>
 
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center pt-1">
                   <label className="flex items-center">
-                    <input type="checkbox" className="w-4 h-4 text-yellow-400 bg-casino-bg-secondary border-casino-border rounded focus:ring-yellow-400 focus:ring-2" />
-                    <span className="ml-2 text-sm casino-text-secondary">Remember me</span>
+                    <input type="checkbox" className="w-4 h-4 sm:w-4 sm:h-4 text-yellow-400 bg-casino-bg-secondary border-casino-border rounded focus:ring-yellow-400 focus:ring-2" />
+                    <span className="ml-2 text-sm sm:text-sm casino-text-secondary">Remember me</span>
                   </label>
-                  <a href="#" className="text-sm casino-text-secondary hover:casino-text-primary transition-colors duration-200">
-                    Forgot password?
-                  </a>
                 </div>
 
                 {error && (
@@ -250,32 +255,32 @@ const Login = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="btn-casino-primary w-full py-3 lg:py-4 px-6 rounded-xl lg:rounded-2xl flex items-center justify-center space-x-2 lg:space-x-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-casino-primary w-full py-2.5 sm:py-3 lg:py-4 px-4 sm:px-6 rounded-xl lg:rounded-2xl flex items-center justify-center space-x-2 lg:space-x-3 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base mt-1"
                 >
                   {isLoading ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 lg:h-5 lg:w-5 border-2 border-black border-t-transparent"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 sm:h-4 sm:w-4 lg:h-5 lg:w-5 border-2 border-black border-t-transparent"></div>
                       <span>Signing in...</span>
                     </>
                   ) : (
                     <>
-                      <LogIn className="w-4 h-4 lg:w-5 lg:h-5" />
+                      <LogIn className="w-4 h-4 sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
                       <span>Sign In</span>
                     </>
                   )}
                 </button>
           </form>
 
-              <div className="mt-4 text-center">
+              <div className="mt-3 sm:mt-4 text-center">
                 <Link
                   to="/forgot-password"
-                  className="text-sm casino-text-secondary hover:casino-text-primary transition-colors duration-200 underline"
+                  className="text-xs sm:text-sm casino-text-secondary hover:casino-text-primary transition-colors duration-200 underline"
                 >
                   Forgot your password?
                 </Link>
               </div>
 
-              <div className="mt-6 lg:mt-8 text-center">
+              <div className="mt-3 sm:mt-4 lg:mt-8 text-center">
                 <p className="casino-text-secondary text-sm lg:text-base">
                   Don't have an account?{' '}
                   <Link

@@ -359,6 +359,44 @@
   }
 }
 
+/* Logo Glow Animation */
+@keyframes logoGlow {
+  0%, 100% {
+    opacity: 0.15;
+    filter: blur(5px) drop-shadow(0 0 20px rgba(255, 215, 0, 0.3));
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.25;
+    filter: blur(5px) drop-shadow(0 0 40px rgba(255, 215, 0, 0.6)) drop-shadow(0 0 60px rgba(255, 215, 0, 0.4));
+    transform: scale(1.02);
+  }
+}
+
+@keyframes logoGlowPulse {
+  0%, 100% {
+    opacity: 0.1;
+    filter: blur(8px) drop-shadow(0 0 30px rgba(255, 215, 0, 0.4));
+  }
+  50% {
+    opacity: 0.2;
+    filter: blur(8px) drop-shadow(0 0 50px rgba(255, 215, 0, 0.7)) drop-shadow(0 0 80px rgba(255, 215, 0, 0.5));
+  }
+}
+
+@keyframes textGlow {
+  0%, 100% {
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.3), 0 0 60px rgba(255, 215, 0, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.7), 0 0 60px rgba(255, 215, 0, 0.5), 0 0 80px rgba(255, 215, 0, 0.3), 0 0 100px rgba(255, 215, 0, 0.2);
+  }
+}
+
+.animate-text-glow {
+  animation: textGlow 4s ease-in-out infinite;
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out;
 }

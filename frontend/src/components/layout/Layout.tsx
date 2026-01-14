@@ -299,14 +299,6 @@ const Layout = ({ children }: LayoutProps) => {
 
   return (
     <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#0A0A0F' }}>
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-10 left-10 w-32 h-32 rounded-full opacity-20 animate-pulse" style={{ backgroundColor: '#FFD700' }}></div>
-        <div className="absolute top-32 right-20 w-24 h-24 rounded-full opacity-30 animate-bounce" style={{ backgroundColor: '#E53935' }}></div>
-        <div className="absolute bottom-20 left-1/4 w-16 h-16 rounded-full opacity-25 animate-pulse" style={{ backgroundColor: '#00C853' }}></div>
-        <div className="absolute top-1/2 right-1/3 w-20 h-20 rounded-full opacity-20 animate-pulse" style={{ backgroundColor: '#00B0FF' }}></div>
-      </div>
-
       {/* Full Width Navbar */}
       <header className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-sm border-b px-3 sm:px-4 py-2 sm:py-1.5 w-full" 
               style={{ 

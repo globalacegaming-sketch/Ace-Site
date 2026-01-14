@@ -550,6 +550,11 @@ router.post(
         name: process.env.BREVO_FROM_NAME || 'Global Ace Gaming',
         email: process.env.BREVO_FROM_EMAIL || 'noreply@globalacegaming.com'
       };
+      
+      // Ensure the sender name is properly set to avoid showing email address
+      if (!sendSmtpEmail.sender.name || sendSmtpEmail.sender.name === sendSmtpEmail.sender.email) {
+        sendSmtpEmail.sender.name = 'Global Ace Gaming';
+      }
 
       sendSmtpEmail.subject = subject;
       sendSmtpEmail.htmlContent = emailHtml;
@@ -589,9 +594,13 @@ router.post(
         
         try {
           // Create a copy of the email for this batch
+          // Use BCC to hide recipient email addresses from each other
           const batchEmail = new SibApiV3Sdk.SendSmtpEmail();
           batchEmail.sender = sendSmtpEmail.sender;
-          batchEmail.to = batch.map(email => ({ email }));
+          // Set a single "to" address (the sender's email) and use BCC for all recipients
+          // This ensures recipients cannot see each other's email addresses
+          batchEmail.to = [{ email: sendSmtpEmail.sender.email }];
+          batchEmail.bcc = batch.map(email => ({ email }));
           batchEmail.subject = sendSmtpEmail.subject;
           batchEmail.htmlContent = sendSmtpEmail.htmlContent;
           batchEmail.tags = sendSmtpEmail.tags;
@@ -632,7 +641,8 @@ router.post(
               try {
                 const splitEmail = new SibApiV3Sdk.SendSmtpEmail();
                 splitEmail.sender = sendSmtpEmail.sender;
-                splitEmail.to = firstHalf.map(email => ({ email }));
+                splitEmail.to = [{ email: sendSmtpEmail.sender.email }];
+                splitEmail.bcc = firstHalf.map(email => ({ email }));
                 splitEmail.subject = sendSmtpEmail.subject;
                 splitEmail.htmlContent = sendSmtpEmail.htmlContent;
                 splitEmail.tags = sendSmtpEmail.tags;
@@ -665,7 +675,8 @@ router.post(
               try {
                 const splitEmail = new SibApiV3Sdk.SendSmtpEmail();
                 splitEmail.sender = sendSmtpEmail.sender;
-                splitEmail.to = secondHalf.map(emailAddr => ({ email: emailAddr }));
+                splitEmail.to = [{ email: sendSmtpEmail.sender.email }];
+                splitEmail.bcc = secondHalf.map(emailAddr => ({ email: emailAddr }));
                 splitEmail.subject = sendSmtpEmail.subject;
                 splitEmail.htmlContent = sendSmtpEmail.htmlContent;
                 splitEmail.tags = sendSmtpEmail.tags;
@@ -693,6 +704,7 @@ router.post(
             }
           } else {
             // If batch fails for other reasons, try sending individually as fallback
+            // For individual sends, use "to" since there's only one recipient
             for (const email of batch) {
               if (req.timedout) break; // Check timeout before each individual send
               

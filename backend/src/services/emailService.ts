@@ -53,10 +53,16 @@ class EmailService {
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
 
     // Set sender (must be verified in Brevo dashboard)
+    // Use name only to avoid showing email address to recipients
     sendSmtpEmail.sender = {
       name: this.fromName || 'Global Ace Gaming',
       email: this.fromEmail || 'noreply@globalacegaming.com'
     };
+    
+    // Ensure the sender name is properly set to avoid showing email address
+    if (!sendSmtpEmail.sender.name || sendSmtpEmail.sender.name === sendSmtpEmail.sender.email) {
+      sendSmtpEmail.sender.name = 'Global Ace Gaming';
+    }
 
     // Set recipient
     sendSmtpEmail.to = [{ email: options.to }];
@@ -130,12 +136,20 @@ class EmailService {
           return false;
         }
 
+        // Check for rate limit (429) - fail immediately, don't retry
+        if (errorStatus === 429) {
+          console.error('❌ Brevo API Rate Limit Error: Email quota exceeded');
+          console.error('   Email failed to send. Please check your Brevo account limits.');
+          console.error('   Rate limit details:', errorBody);
+          // Fail immediately, don't retry
+          return false;
+        }
+
         const isRetryableError = 
           error.code === 'ETIMEDOUT' || 
           error.code === 'ECONNREFUSED' || 
           error.code === 'ESOCKETTIMEDOUT' ||
-          errorStatus === 429 || // Rate limit
-          errorStatus >= 500; // Server errors
+          errorStatus >= 500; // Server errors (but not rate limits)
 
         if (isRetryableError && attempt < retries) {
           const waitTime = (attempt + 1) * 2000; // Exponential backoff: 2s, 4s
