@@ -300,10 +300,11 @@ const Layout = ({ children }: LayoutProps) => {
   return (
     <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#0A0A0F' }}>
       {/* Full Width Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-sm border-b px-3 sm:px-4 py-2 sm:py-1.5 w-full" 
+      <header className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-sm border-b px-3 sm:px-4 pb-2 sm:pb-1.5 w-full" 
               style={{ 
                 backgroundColor: 'rgba(27, 27, 47, 0.95)', 
-                borderBottomColor: '#2C2C3A' 
+                borderBottomColor: '#2C2C3A',
+                paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))'
               }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center">
@@ -538,7 +539,7 @@ const Layout = ({ children }: LayoutProps) => {
                 setIsNotificationOpen(false);
               }}
               style={{ 
-                top: '48px',
+                top: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
                 zIndex: 9998
               }}
             />
@@ -547,8 +548,8 @@ const Layout = ({ children }: LayoutProps) => {
             data-notification-dropdown
             className={`${
               isMobile 
-                ? 'fixed left-0 right-0 top-12 w-full max-w-none rounded-t-2xl rounded-b-none' 
-                : 'fixed right-4 top-16 w-80 sm:w-96 max-h-[calc(100vh-100px)] rounded-lg'
+                ? 'fixed left-0 right-0 w-full max-w-none rounded-t-2xl rounded-b-none' 
+                : 'fixed right-4 w-80 sm:w-96 max-h-[calc(100vh-100px)] rounded-lg'
             } overflow-hidden shadow-2xl border flex flex-col`}
             onClick={(e) => e.stopPropagation()}
             style={{ 
@@ -556,6 +557,7 @@ const Layout = ({ children }: LayoutProps) => {
               borderColor: '#2C2C3A',
               boxShadow: isMobile ? '0 -4px 20px rgba(0, 0, 0, 0.5)' : '0 10px 40px rgba(0, 0, 0, 0.5)',
               zIndex: 9999,
+              top: isMobile ? 'calc(3.5rem + env(safe-area-inset-top, 0px))' : 'calc(4rem + env(safe-area-inset-top, 0px))',
               ...(isMobile ? {
                 height: '60vh',
                 maxHeight: '500px',
@@ -716,12 +718,13 @@ const Layout = ({ children }: LayoutProps) => {
         {/* Desktop Sidebar */}
         {!isMobile && (
           <div 
-            className={`fixed top-16 bottom-0 left-0 z-50 backdrop-blur-sm transition-all duration-500 ease-in-out shadow-2xl border-r ${
+            className={`fixed bottom-0 left-0 z-50 backdrop-blur-sm transition-all duration-500 ease-in-out shadow-2xl border-r ${
               sidebarCollapsed ? 'w-16' : 'w-64'
             }`}
             style={{ 
               backgroundColor: '#1B1B2F', 
-              borderRightColor: '#2C2C3A' 
+              borderRightColor: '#2C2C3A',
+              top: 'calc(4rem + env(safe-area-inset-top, 0px))'
             }}
             onMouseEnter={() => setSidebarCollapsed(false)}
             onMouseLeave={() => setSidebarCollapsed(true)}
@@ -769,12 +772,13 @@ const Layout = ({ children }: LayoutProps) => {
 
         {/* Mobile Sidebar */}
         {isMobile && (
-          <div className={`fixed top-12 bottom-0 left-0 z-50 w-64 backdrop-blur-sm transform transition-transform duration-500 ease-in-out shadow-2xl border-r ${
+          <div className={`fixed bottom-0 left-0 z-50 w-64 backdrop-blur-sm transform transition-transform duration-500 ease-in-out shadow-2xl border-r ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
           style={{ 
             backgroundColor: '#1B1B2F', 
-            borderRightColor: '#2C2C3A' 
+            borderRightColor: '#2C2C3A',
+            top: 'calc(3rem + env(safe-area-inset-top, 0px))'
           }}>
             {/* Navigation Menu */}
             <nav className="px-4 py-4">
@@ -809,8 +813,8 @@ const Layout = ({ children }: LayoutProps) => {
         <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
           !isMobile && sidebarCollapsed ? 'ml-16' : !isMobile ? 'ml-64' : 'ml-0'
         } ${location.pathname === '/chat' ? 'h-screen overflow-hidden' : ''}`}>
-          {/* Main Content Area */}
-          <main className={`flex-1 ${location.pathname === '/chat' ? 'pb-0 h-full overflow-hidden relative' : 'pb-16 sm:pb-20 lg:pb-0'}`}>
+          {/* Main Content Area - pt accounts for fixed header + iOS safe-area */}
+          <main className={`flex-1 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] ${location.pathname === '/chat' ? 'pb-0 h-full overflow-hidden relative' : 'pb-16 sm:pb-20 lg:pb-0'}`}>
             {children}
           </main>
         </div>

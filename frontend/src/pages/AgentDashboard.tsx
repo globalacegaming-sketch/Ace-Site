@@ -1627,7 +1627,7 @@ const AgentDashboard: React.FC = () => {
       {/* Main Content */}
       <div className={`flex-1 flex flex-col ml-0 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} transition-all duration-300`}>
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 sticky top-0 z-50">
+        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 pb-4 sticky top-0 z-50" style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 sm:gap-4">
               <button
