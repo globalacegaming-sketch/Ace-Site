@@ -1,0 +1,8 @@
+# Our security address
+Contact: mailto:support@globalacegaming.com
+# Our preferred languages for receiving reports (comma-separated)
+Preferred-Languages: en
+# Canonical URL for this file
+Canonical: https://www.globalacegaming.com/.well-known/security.txt
+# When to expect an update (required)
+Expires: 2027-12-31T23:59:59.000Z
