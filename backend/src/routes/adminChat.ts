@@ -8,6 +8,7 @@ import { getSocketServerInstance } from '../utils/socketManager';
 import { sanitizeText } from '../utils/sanitize';
 import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
 import fs from 'fs';
+import { sendChatMessagePush } from '../services/oneSignalService';
 
 const router = Router();
 
@@ -507,6 +508,11 @@ router.post(
 
       io.to('admins').emit('chat:message:new', payload);
       io.to(room).emit('chat:message:new', payload);
+
+      // Push when user is inactive or logged out (no-op if OneSignal not configured)
+      const webUrl = process.env.FRONTEND_URL || process.env.PRODUCTION_FRONTEND_URL;
+      const body = sanitizedMessage || (attachment ? 'Support sent an attachment' : 'New support message');
+      void sendChatMessagePush({ userId, body, webUrl });
 
       res.status(201).json({
         success: true,

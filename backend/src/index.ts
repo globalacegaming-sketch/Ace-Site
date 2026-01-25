@@ -37,6 +37,9 @@ import chatRoutes from './routes/chat';
 import adminChatRoutes from './routes/adminChat';
 import supportTicketRoutes from './routes/supportTicket';
 import emailPromotionsRoutes from './routes/emailPromotions';
+import wheelRoutes from './routes/wheel';
+import adminWheelRoutes from './routes/adminWheel';
+import agentWheelRoutes from './routes/agentWheel';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -417,6 +420,10 @@ app.use('/api/user', userRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/content', contentRoutes);
+// Mount /api/admin/wheel and /api/admin/messages before /api/admin so they are matched first.
+// /api/admin would otherwise catch /api/admin/wheel/* and run requireAdminAuth, which rejects agent JWTs.
+app.use('/api/admin/wheel', adminWheelRoutes);
+app.use('/api/admin/messages', adminChatRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/fortune-panda', fortunePandaRoutes);
 app.use('/api/fortune-panda-user', fortunePandaUserRoutes);
@@ -429,9 +436,10 @@ app.use('/api/notices', noticeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/chat', chatRoutes);
-app.use('/api/admin/messages', adminChatRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/email-promotions', emailPromotionsRoutes);
+app.use('/api/wheel', wheelRoutes);
+app.use('/api/agent/wheel', agentWheelRoutes);
 
 // WebSocket connection handling
 io.use(async (socket, next) => {

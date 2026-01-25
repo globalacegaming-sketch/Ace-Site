@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../../utils/api';
+import { oneSignalRequestPermission } from '../../services/oneSignal';
 
 interface ChatMessage {
   id: string;
@@ -308,7 +309,12 @@ const UserChatWidget = () => {
       toast.error('Please sign in to contact support.');
       return;
     }
+    const opening = !isOpen;
     setIsOpen((prev) => !prev);
+    // Request push permission when opening chat (contextual, non-blocking)
+    if (opening) {
+      oneSignalRequestPermission().catch(() => {});
+    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {

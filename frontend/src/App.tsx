@@ -6,6 +6,8 @@ import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
 import UserChatWidget from './components/chat/UserChatWidget';
+import OneSignalAuthSync from './components/OneSignalAuthSync';
+import WheelOfFortune from './components/wheel/WheelOfFortune';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -165,6 +167,7 @@ function App() {
         <Router>
           <div className="App">
           <SessionManager />
+          <OneSignalAuthSync />
           <Toaster 
             position="top-right"
             containerStyle={{
@@ -277,6 +280,7 @@ function App() {
         </Routes>
         
         <UserChatWidget />
+        <WheelOfFortune />
           </div>
         </Router>
       </ClickSoundProvider>

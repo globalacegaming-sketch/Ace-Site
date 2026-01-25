@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { getApiBaseUrl } from '../utils/api';
 import { useMusic } from '../contexts/MusicContext';
+import WheelManagementPanel from '../components/wheel/WheelManagementPanel';
 
 // Types
 interface Platform {
@@ -68,7 +69,7 @@ interface Notice {
   expiresAt?: string;
 }
 
-type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets';
+type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel';
 
 const AgentDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -1425,6 +1426,8 @@ const AgentDashboard: React.FC = () => {
         return renderFAQs();
       case 'bonuses':
         return renderBonuses();
+      case 'wheel':
+        return <WheelManagementPanel />;
       case 'notifications':
         return renderNotifications();
       case 'support-tickets':
@@ -1594,6 +1597,18 @@ const AgentDashboard: React.FC = () => {
             >
               <Gift className="w-5 h-5 flex-shrink-0" />
               <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Bonuses</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveSection('wheel');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'wheel' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <Gift className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Wheel Management</span>
             </button>
           </div>
         </nav>

@@ -5,6 +5,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../utils/api';
+import { oneSignalRequestPermission } from '../services/oneSignal';
 
 interface ChatMessage {
   id: string;
@@ -50,6 +51,13 @@ const Chat = () => {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Request push permission when on Chat page (contextual; no-op if already granted)
+  useEffect(() => {
+    if (isAuthenticated) {
+      oneSignalRequestPermission().catch(() => {});
+    }
+  }, [isAuthenticated]);
 
   // Initialize audio context on user interaction
   useEffect(() => {

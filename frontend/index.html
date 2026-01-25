@@ -3,8 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Global Ace Gaming - Premium Online Gaming Platform</title>
+    <!-- OneSignal: deferred queue and init run before SDK loads -->
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "85f288b7-130d-4334-9a01-304bd9070551",
+          allowLocalhostAsSecureOrigin: true,
+          promptOptions: {
+            slidedown: {
+              prompts: [{
+                type: "push",
+                autoPrompt: false,
+                text: {
+                  actionMessage: "Get notified when support replies to your messages.",
+                  acceptButton: "Allow",
+                  cancelButton: "Not now"
+                }
+              }]
+            }
+          }
+        });
+      });
+    </script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <meta name="description" content="Experience the ultimate online gaming platform with FortunePanda integration. Play thousands of games, enjoy secure transactions, and win big with Global Ace Gaming." />
   </head>
   <body>

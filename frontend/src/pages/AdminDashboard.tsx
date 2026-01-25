@@ -1893,7 +1893,7 @@ const AdminDashboard: React.FC = () => {
             </span>
           </button>
 
-          {/* User Verification Tab - Right */}
+          {/* User Verification Tab */}
           <button
             onClick={() => setActiveTab('verification')}
             className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
@@ -1916,6 +1916,7 @@ const AdminDashboard: React.FC = () => {
               Verify
             </span>
           </button>
+
         </div>
       </div>
     </div>
