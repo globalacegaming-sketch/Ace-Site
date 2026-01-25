@@ -7,9 +7,9 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { getApiBaseUrl } from '../utils/api';
-import { useMusic } from '../contexts/MusicContext';
-import WheelManagementPanel from '../components/wheel/WheelManagementPanel';
+import { getApiBaseUrl } from '../../utils/api';
+import { useMusic } from '../../contexts/MusicContext';
+import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
 
 // Types
 interface Platform {
@@ -71,7 +71,7 @@ interface Notice {
 
 type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel';
 
-const AgentDashboard: React.FC = () => {
+const AceadminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const API_BASE_URL = getApiBaseUrl();
   const { stopMusic } = useMusic();
@@ -216,7 +216,7 @@ const AgentDashboard: React.FC = () => {
     const session = localStorage.getItem('agent_session');
     if (!session) {
       toast.error('Please login to access agent dashboard');
-      navigate('/agent-login');
+      navigate('/aceadmin/login');
       return;
     }
 
@@ -225,12 +225,12 @@ const AgentDashboard: React.FC = () => {
       if (parsedSession.expiresAt && Date.now() > parsedSession.expiresAt) {
         localStorage.removeItem('agent_session');
         toast.error('Session expired. Please login again.');
-        navigate('/agent-login');
+        navigate('/aceadmin/login');
         return;
       }
     } catch (error) {
       localStorage.removeItem('agent_session');
-      navigate('/agent-login');
+      navigate('/aceadmin/login');
     }
 
     loadAllData();
@@ -347,7 +347,7 @@ const AgentDashboard: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('agent_session');
     toast.success('Logged out successfully');
-    navigate('/agent-login');
+    navigate('/aceadmin/login');
   };
 
   // Render Dashboard Section
@@ -2026,5 +2026,5 @@ const AgentDashboard: React.FC = () => {
   );
 };
 
-export default AgentDashboard;
+export default AceadminDashboard;
 

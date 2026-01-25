@@ -85,9 +85,8 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const API_BASE_URL = getApiBaseUrl();
 
   // Hide on admin/agent pages and on login/signup (auth) pages
-  const isAdminOrAgentPage = location.pathname.startsWith('/adminacers') || 
-                             location.pathname.startsWith('/agent-login') || 
-                             location.pathname.startsWith('/agent-dashboard');
+  const isAdminOrAgentPage = location.pathname.startsWith('/aceadmin') || 
+                             location.pathname.startsWith('/aceagent');
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
   // Handle responsive sizing (match initial logic)

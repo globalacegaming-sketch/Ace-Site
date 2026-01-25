@@ -48,9 +48,8 @@ export default function IOSAddToHomeScreenBanner() {
   const location = useLocation();
 
   useEffect(() => {
-    const onAdminOrAgent = location.pathname.startsWith('/adminacers') ||
-      location.pathname.startsWith('/agent-login') ||
-      location.pathname.startsWith('/agent-dashboard');
+    const onAdminOrAgent = location.pathname.startsWith('/aceadmin') ||
+      location.pathname.startsWith('/aceagent');
     if (onAdminOrAgent) {
       setVisible(false);
       return;

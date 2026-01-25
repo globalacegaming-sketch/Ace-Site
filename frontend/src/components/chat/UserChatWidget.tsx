@@ -50,9 +50,8 @@ const UserChatWidget = () => {
 
   // Hide widget on admin/agent pages
   const isAdminOrAgentPage = useMemo(() => {
-    return location.pathname.startsWith('/adminacers') || 
-           location.pathname.startsWith('/agent-login') || 
-           location.pathname.startsWith('/agent-dashboard');
+    return location.pathname.startsWith('/aceadmin') || 
+           location.pathname.startsWith('/aceagent');
   }, [location.pathname]);
 
   // Check if user has admin role (agents use separate session, so they won't be in user store)

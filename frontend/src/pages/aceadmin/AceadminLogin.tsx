@@ -3,10 +3,10 @@ import { Shield, Loader2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getApiBaseUrl } from '../utils/api';
-import { useMusic } from '../contexts/MusicContext';
+import { getApiBaseUrl } from '../../utils/api';
+import { useMusic } from '../../contexts/MusicContext';
 
-const AgentLogin: React.FC = () => {
+const AceadminLogin: React.FC = () => {
   const navigate = useNavigate();
   const API_BASE_URL = getApiBaseUrl();
   const { stopMusic } = useMusic();
@@ -36,7 +36,7 @@ const AgentLogin: React.FC = () => {
         // Store agent session
         localStorage.setItem('agent_session', JSON.stringify(response.data.data));
         toast.success('Agent login successful!');
-        navigate('/agent-dashboard');
+        navigate('/aceadmin/dashboard');
       } else {
         setError(response.data.message || 'Login failed');
         toast.error(response.data.message || 'Login failed');
@@ -57,8 +57,8 @@ const AgentLogin: React.FC = () => {
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mb-4">
             <Shield className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-white mb-2">Agent Login</h2>
-          <p className="text-gray-300">Access the agent dashboard</p>
+          <h2 className="text-3xl font-bold text-white mb-2">Admin Login</h2>
+          <p className="text-gray-300">Access the admin dashboard</p>
         </div>
         
         <form onSubmit={handleAgentLogin} className="space-y-6">
@@ -110,7 +110,7 @@ const AgentLogin: React.FC = () => {
             ) : (
               <>
                 <Shield className="w-5 h-5" />
-                <span>Login as Agent</span>
+                <span>Login as Admin</span>
               </>
             )}
           </button>
@@ -120,4 +120,4 @@ const AgentLogin: React.FC = () => {
   );
 };
 
-export default AgentLogin;
+export default AceadminLogin;

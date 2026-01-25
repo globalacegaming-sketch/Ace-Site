@@ -22,11 +22,13 @@ import ProfilePage from './pages/Profile';
 import Settings from './pages/Settings';
 import Support from './pages/Support';
 import GameLaunch from './pages/GameLaunch';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminLogin from './pages/AdminLogin';
+import AceagentLogin from './pages/aceagent/AceagentLogin';
+import AceagentDashboard from './pages/aceagent/AceagentDashboard';
 import UserFortunePandaDashboard from './pages/UserFortunePandaDashboard';
-import AgentLogin from './pages/AgentLogin';
-import AgentDashboard from './pages/AgentDashboard';
+import AceadminLogin from './pages/aceadmin/AceadminLogin';
+import AceadminDashboard from './pages/aceadmin/AceadminDashboard';
+import RoleSubdomainGuard from './components/RoleSubdomainGuard';
+import NotFound from './pages/NotFound';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
@@ -268,14 +270,18 @@ function App() {
             </ProtectedRoute>
           } />
           
-          {/* Admin Routes */}
-          <Route path="/adminacers/login" element={<AdminLogin />} />
-          <Route path="/adminacers" element={<AdminDashboard />} />
+          {/* Admin (aceagent): only on aceagent.globalacegaming.com */}
+          <Route path="/aceagent/login" element={<RoleSubdomainGuard role="admin"><AceagentLogin /></RoleSubdomainGuard>} />
+          <Route path="/aceagent" element={<RoleSubdomainGuard role="admin"><AceagentDashboard /></RoleSubdomainGuard>} />
           
-          {/* Agent Login Route */}
-          <Route path="/agent-login" element={<AgentLogin />} />
-          <Route path="/agent-dashboard" element={<AgentDashboard />} />
+          {/* Agent (aceadmin): only on aceadmin.globalacegaming.com */}
+          <Route path="/aceadmin" element={<Navigate to="/aceadmin/login" replace />} />
+          <Route path="/aceadmin/login" element={<RoleSubdomainGuard role="agent"><AceadminLogin /></RoleSubdomainGuard>} />
+          <Route path="/aceadmin/dashboard" element={<RoleSubdomainGuard role="agent"><AceadminDashboard /></RoleSubdomainGuard>} />
           
+          {/* 404 - fallback for unknown paths; RoleSubdomainGuard renders NotFound when hostname doesn't match */}
+          <Route path="/404" element={<NotFound />} />
+
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

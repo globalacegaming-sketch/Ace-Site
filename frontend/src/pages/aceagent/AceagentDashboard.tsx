@@ -22,9 +22,9 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getApiBaseUrl, getWsBaseUrl } from '../utils/api';
-import AdminChatPanel from '../components/admin/chat/AdminChatPanel';
-import { useMusic } from '../contexts/MusicContext';
+import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
+import AdminChatPanel from '../../components/admin/chat/AdminChatPanel';
+import { useMusic } from '../../contexts/MusicContext';
 
 interface User {
   _id: string;
@@ -56,7 +56,7 @@ const getFPAccountName = (dbUsername: string | undefined): string => {
   return dbUsername || 'N/A';
 };
 
-const AdminDashboard: React.FC = () => {
+const AceagentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const API_BASE_URL = getApiBaseUrl();
@@ -99,13 +99,13 @@ const AdminDashboard: React.FC = () => {
   // Prevent navigation to login page if already logged in
   useEffect(() => {
     const session = localStorage.getItem('admin_session');
-    if (session && location.pathname === '/adminacers/login') {
+    if (session && location.pathname === '/aceagent/login') {
       try {
         const parsedSession = JSON.parse(session);
         // If session is valid, reload to stay on dashboard
         if (parsedSession.expiresAt && Date.now() < parsedSession.expiresAt) {
           // Reload the page to stay on dashboard instead of login
-          window.location.href = '/adminacers';
+          window.location.href = '/aceagent';
           return;
         }
       } catch (error) {
@@ -126,9 +126,9 @@ const AdminDashboard: React.FC = () => {
             // Small delay to let React Router update location
             setTimeout(() => {
               const currentPath = window.location.pathname;
-              if (currentPath === '/adminacers/login' || currentPath.includes('/adminacers/login')) {
+              if (currentPath === '/aceagent/login' || currentPath.includes('/aceagent/login')) {
                 // Reload the page to stay on dashboard
-                window.location.href = '/adminacers';
+                window.location.href = '/aceagent';
               }
             }, 0);
           }
@@ -156,7 +156,7 @@ const AdminDashboard: React.FC = () => {
     const session = localStorage.getItem('admin_session');
     if (!session) {
       toast.error('Please login to access admin panel');
-      navigate('/adminacers/login', { replace: true });
+      navigate('/aceagent/login', { replace: true });
       return;
     }
 
@@ -166,7 +166,7 @@ const AdminDashboard: React.FC = () => {
       if (parsedSession.expiresAt && Date.now() > parsedSession.expiresAt) {
         localStorage.removeItem('admin_session');
         toast.error('Session expired. Please login again.');
-        navigate('/adminacers/login', { replace: true });
+        navigate('/aceagent/login', { replace: true });
         return;
       }
       // Set agent balance from session if available
@@ -187,7 +187,7 @@ const AdminDashboard: React.FC = () => {
       sessionCheckedRef.current = true;
     } catch (error) {
       localStorage.removeItem('admin_session');
-      navigate('/adminacers/login', { replace: true });
+      navigate('/aceagent/login', { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array - only run once on mount, not on navigation or re-renders
@@ -238,7 +238,7 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
 
@@ -279,7 +279,7 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
       const response = await axios.get(`${API_BASE_URL}/admin/users`, {
@@ -305,7 +305,7 @@ const AdminDashboard: React.FC = () => {
       setVerifying(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
 
@@ -341,7 +341,7 @@ const AdminDashboard: React.FC = () => {
     try {
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
 
@@ -375,7 +375,7 @@ const AdminDashboard: React.FC = () => {
     try {
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
 
@@ -413,7 +413,7 @@ const AdminDashboard: React.FC = () => {
       const token = getAdminToken();
       if (!token) {
         toast.error('Admin session expired. Please login again.');
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
 
@@ -424,7 +424,7 @@ const AdminDashboard: React.FC = () => {
         if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
           toast.error('Admin session expired. Please login again.');
           localStorage.removeItem('admin_session');
-          navigate('/adminacers/login');
+          navigate('/aceagent/login');
           return;
         }
       }
@@ -467,7 +467,7 @@ const AdminDashboard: React.FC = () => {
         if (errorMessage.includes('session') || errorMessage.includes('token') || errorMessage.includes('Access denied')) {
           localStorage.removeItem('admin_session');
           setTimeout(() => {
-            navigate('/adminacers/login');
+            navigate('/aceagent/login');
           }, 2000);
         }
       } else {
@@ -493,7 +493,7 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
       const response = await axios.post(
@@ -538,7 +538,7 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
       const response = await axios.post(
@@ -583,7 +583,7 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
       const response = await axios.get(
@@ -623,7 +623,7 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
       const response = await axios.get(
@@ -670,7 +670,7 @@ const AdminDashboard: React.FC = () => {
 
       const token = getAdminToken();
       if (!token) {
-        navigate('/adminacers/login');
+        navigate('/aceagent/login');
         return;
       }
       const response = await axios.get(
@@ -826,7 +826,7 @@ const AdminDashboard: React.FC = () => {
                 onClick={() => {
                   localStorage.removeItem('admin_session');
                   toast.success('Logged out successfully');
-                  navigate('/adminacers/login');
+                  navigate('/aceagent/login');
                 }}
                 className="p-2 sm:px-3 sm:py-2 bg-white/20 active:bg-white/30 rounded-lg transition-all duration-200 backdrop-blur-sm flex items-center justify-center min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] hover:bg-white/25"
                 title="Logout"
@@ -1923,4 +1923,4 @@ const AdminDashboard: React.FC = () => {
   );
 };
 
-export default AdminDashboard;
+export default AceagentDashboard;

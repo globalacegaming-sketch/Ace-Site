@@ -3,10 +3,10 @@ import { Shield, Loader2, Lock, User } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getApiBaseUrl } from '../utils/api';
-import { useMusic } from '../contexts/MusicContext';
+import { getApiBaseUrl } from '../../utils/api';
+import { useMusic } from '../../contexts/MusicContext';
 
-const AdminLogin: React.FC = () => {
+const AceagentLogin: React.FC = () => {
   const [agentName, setAgentName] = useState('');
   const [agentPassword, setAgentPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +28,7 @@ const AdminLogin: React.FC = () => {
         // Check if session is still valid
         if (parsedSession.expiresAt && Date.now() < parsedSession.expiresAt) {
           // Already logged in, redirect to dashboard
-          navigate('/adminacers', { replace: true });
+          navigate('/aceagent', { replace: true });
           return;
         } else {
           // Session expired, remove it
@@ -75,7 +75,7 @@ const AdminLogin: React.FC = () => {
         
         console.log('✅ Admin session stored', { agentBalance: adminSession.agentBalance });
         toast.success(`Admin login successful! Agent Balance: $${parseFloat(adminSession.agentBalance).toFixed(2)}`);
-        navigate('/adminacers');
+        navigate('/aceagent');
       } else {
         console.error('❌ Login failed:', response.data.message);
         toast.error(response.data.message || 'Login failed');
@@ -128,7 +128,7 @@ const AdminLogin: React.FC = () => {
               <Shield className="w-12 h-12 text-white" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold casino-text-primary mb-2">Admin Login</h1>
+          <h1 className="text-3xl font-bold casino-text-primary mb-2">Agent Login</h1>
           <p className="casino-text-secondary">Enter your FortunePanda agent credentials</p>
         </div>
 
@@ -177,7 +177,7 @@ const AdminLogin: React.FC = () => {
             ) : (
               <>
                 <Shield className="w-5 h-5" />
-                Login to Admin Panel
+                Login to Agent Panel
               </>
             )}
           </button>
@@ -185,7 +185,7 @@ const AdminLogin: React.FC = () => {
 
         <div className="mt-6 text-center">
           <p className="text-sm casino-text-secondary">
-            Use your FortunePanda agent credentials to access the admin dashboard
+            Use your FortunePanda agent credentials to access the agent dashboard
           </p>
         </div>
       </div>
@@ -193,5 +193,4 @@ const AdminLogin: React.FC = () => {
   );
 };
 
-export default AdminLogin;
-
+export default AceagentLogin;
