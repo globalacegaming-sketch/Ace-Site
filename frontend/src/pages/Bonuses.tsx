@@ -4,6 +4,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl } from '../utils/api';
+import { PageMeta } from '../components/PageMeta';
 
 interface Bonus {
   _id: string;
@@ -127,6 +128,7 @@ const Offers = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pt-16">
+      <PageMeta title="Bonuses & Promotions | Global Ace Gaming" description="Discover bonuses and promotions. Use them across our online slots, fish, and table games. See current offers." />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="text-center mb-12">

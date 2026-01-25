@@ -5,6 +5,7 @@ import axios from 'axios';
 import { getGamesApiUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 import { useMusic } from '../contexts/MusicContext';
+import { PageMeta } from '../components/PageMeta';
 
 interface Game {
   kindId: number;
@@ -123,6 +124,10 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
+      <PageMeta
+        title="Online Slots, Fish & Table Games | Play in One Place | Global Ace Gaming"
+        description="Play online slots, online fish games, and online table games in one platform. Global Ace Gaming offers bonuses and support. Desktop and mobile."
+      />
       {/* Hero Header Section */}
       <section className="py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 relative overflow-hidden min-h-[70vh] flex items-center justify-center" style={{ 
         background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 50%, #8B5CF6 100%)'
@@ -242,6 +247,24 @@ const Home = () => {
               <div className="h-px w-24 sm:w-32 md:w-40 bg-gradient-to-r from-transparent via-yellow-500/30 to-transparent"></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* SEO: Play online slots, fish, table games in one place */}
+      <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8" style={{ background: 'linear-gradient(135deg, #0A0A0F 0%, #1B1B2F 100%)' }}>
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-lg sm:text-xl font-bold casino-text-primary mb-3">
+            Play online slots, online fish games, and online table games in one place
+          </h2>
+          <p className="text-sm sm:text-base casino-text-secondary mb-4">
+            Global Ace Gaming gives you slots, fish-style games, table games, and sports in a single platform. Create an account, pick a category in the lobby, and start playing. See <Link to="/games" className="text-yellow-400 hover:underline">Games</Link> to explore and <Link to="/bonuses" className="text-yellow-400 hover:underline">Bonuses</Link> for current offers. Need help? <Link to="/support" className="text-yellow-400 hover:underline">Support</Link>.
+          </p>
+          <ul className="text-left inline-block text-sm casino-text-secondary space-y-1">
+            <li><strong className="casino-text-primary">Online slots</strong> — Video slot–style games, multiple themes and features.</li>
+            <li><strong className="casino-text-primary">Online fish games</strong> — Fish table and arcade-style games similar to Milkyway, Orionstars, Juwa, Gamevault, and Firekirin.</li>
+            <li><strong className="casino-text-primary">Online table games</strong> — Live and table-style games.</li>
+            <li><strong className="casino-text-primary">Sports</strong> — Sports-themed options in the same lobby.</li>
+          </ul>
         </div>
       </section>
 

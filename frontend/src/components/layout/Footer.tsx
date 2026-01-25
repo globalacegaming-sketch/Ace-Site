@@ -17,9 +17,8 @@ const Footer = () => {
               <span className="text-xl font-bold">Global Ace Gaming</span>
             </div>
             <p className="text-gray-300 mb-4 max-w-md">
-              Experience the ultimate online gaming platform with FortunePanda integration. 
-              Play your favorite games, enjoy secure transactions, and win big with our 
-              comprehensive gaming ecosystem.
+              Play online slots, online fish games, and online table games in one platform. 
+              Bonuses, support, and a secure gaming experience.
             </p>
             <div className="flex space-x-4">
               <a href="#" className="text-gray-400 hover:text-white transition-colors duration-200">
@@ -49,12 +48,17 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/about" className="text-gray-300 hover:text-white transition-colors duration-200">
+                <Link to="/bonuses" className="text-gray-300 hover:text-white transition-colors duration-200">
+                  Bonuses
+                </Link>
+              </li>
+              <li>
+                <Link to="/about-us" className="text-gray-300 hover:text-white transition-colors duration-200">
                   About Us
                 </Link>
               </li>
               <li>
-                <Link to="/contact" className="text-gray-300 hover:text-white transition-colors duration-200">
+                <Link to="/support" className="text-gray-300 hover:text-white transition-colors duration-200">
                   Contact
                 </Link>
               </li>

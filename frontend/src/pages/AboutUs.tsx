@@ -1,4 +1,5 @@
 import { Users, Award, Shield, Globe, Heart, Target } from 'lucide-react';
+import { PageMeta } from '../components/PageMeta';
 
 const AboutUs = () => {
   const stats = [
@@ -34,6 +35,7 @@ const AboutUs = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pt-16">
+      <PageMeta title="About Global Ace Gaming | Our Platform & Games" description="Learn about Global Ace Gaming: online slots, fish, table games, and our commitment to safe, transparent play." />
       {/* Hero Section */}
       <div className="bg-gradient-to-r from-primary-600 to-secondary-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
