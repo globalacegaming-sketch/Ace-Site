@@ -31,8 +31,9 @@ const WalletPage = () => {
     setBalanceLoading(true);
     try {
       const res = await walletApi.getBalance();
-      if (res.success && res.data) {
-        setBalance(res.data.balance);
+      if (res.success) {
+        const raw = res.data?.balance;
+        setBalance(typeof raw === 'number' ? raw : Number(raw) || 0);
       }
     } catch {
       toast.error('Failed to load balance');

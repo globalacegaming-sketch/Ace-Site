@@ -21,7 +21,7 @@ import {
   Info
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
-import { useBalancePolling } from '../../hooks/useBalancePolling';
+import { useWalletBalance } from '../../hooks/useWalletBalance';
 import axios from 'axios';
 import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 import { io, Socket } from 'socket.io-client';
@@ -50,7 +50,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   const { isAuthenticated, user, logout, token } = useAuthStore();
-  const { balance, isLoading: balanceLoading, fetchBalance } = useBalancePolling(30000);
+  const { display: balance, isLoading: balanceLoading, fetchBalance } = useWalletBalance(30000);
   const location = useLocation();
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -414,7 +414,7 @@ const Layout = ({ children }: LayoutProps) => {
                 <div className="flex items-center space-x-1">
                   <Coins className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span className="font-bold text-xs sm:text-sm">
-                    ${balance || '0.00'}
+                    ${balance}
                   </span>
                 </div>
                 <button

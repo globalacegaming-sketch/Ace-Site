@@ -43,8 +43,8 @@ router.get('/balance', authenticate, async (req: Request, res: Response) => {
     const userId = req.user!._id;
     const wallet = await getOrCreateWallet(userId);
     return sendSuccess(res, 'Balance retrieved', {
-      balance: wallet.balance,
-      currency: wallet.currency,
+      balance: Number(wallet.balance) || 0,
+      currency: wallet.currency || 'USD',
       updatedAt: wallet.updatedAt
     });
   } catch (e) {
