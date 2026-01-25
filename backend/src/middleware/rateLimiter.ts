@@ -37,6 +37,18 @@ export const passwordResetLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Rate limiter for crypto payment creation - prevents abuse
+export const paymentCreateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 payment creations per 15 min per IP
+  message: {
+    success: false,
+    message: 'Too many payment requests. Please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Strict rate limiter for registration
 export const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour

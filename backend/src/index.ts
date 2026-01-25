@@ -40,6 +40,8 @@ import emailPromotionsRoutes from './routes/emailPromotions';
 import wheelRoutes from './routes/wheel';
 import adminWheelRoutes from './routes/adminWheel';
 import agentWheelRoutes from './routes/agentWheel';
+import webhooksRoutes from './routes/webhooks';
+import walletRoutes from './routes/wallet';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -275,6 +277,10 @@ app.use(cors({
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
+
+// Webhooks must be mounted before express.json so NowPayments IPN gets raw body for signature verification
+app.use('/api/webhooks', webhooksRoutes);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -442,6 +448,7 @@ app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/email-promotions', emailPromotionsRoutes);
 app.use('/api/wheel', wheelRoutes);
 app.use('/api/agent/wheel', agentWheelRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // WebSocket connection handling
 io.use(async (socket, next) => {
@@ -590,6 +597,11 @@ const startServer = async () => {
       // Service logs its own success message
     } catch (error) {
       logger.warn('⚠️ Fortune Panda service initialization failed, but continuing:', error);
+    }
+
+    // NowPayments (crypto wallet): warn if not configured
+    if (!process.env.NOWPAYMENTS_API_KEY || !process.env.NOWPAYMENTS_IPN_SECRET) {
+      logger.warn('⚠️ NowPayments not configured: set NOWPAYMENTS_API_KEY and NOWPAYMENTS_IPN_SECRET in .env to enable crypto wallet loading. POST /api/wallet/create-crypto-payment will return 503 until then.');
     }
     
     // Services are now ready for game list fetching

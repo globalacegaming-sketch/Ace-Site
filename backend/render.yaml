@@ -46,6 +46,14 @@ services:
         sync: false
       - key: PRODUCTION_FRONTEND_URL
         sync: false
+      # NowPayments (crypto wallet loading)
+      - key: NOWPAYMENTS_API_KEY
+        sync: false
+      - key: NOWPAYMENTS_IPN_SECRET
+        sync: false
+      # Backend base URL for webhook callback (e.g. https://global-ace-gaming-backend.onrender.com)
+      - key: BACKEND_URL
+        sync: false
 
 databases:
   - name: global-ace-gaming-db

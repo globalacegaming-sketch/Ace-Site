@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import fortunePandaService from '../services/fortunePandaService';
 import agentLoginService from '../services/agentLoginService';
 import User from '../models/User';
+import Wallet from '../models/Wallet';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { createAdminSession } from '../services/adminSessionService';
@@ -383,6 +384,53 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Get user error:', error);
+    return sendError(res, 'Internal server error', 500);
+  }
+});
+
+// Adjust internal wallet balance (from agent/admin panel). For deducting when user plays or manual adjust.
+router.put('/users/:userId/wallet-adjust', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { amount, note } = req.body;
+
+    const amountNum = typeof amount === 'string' ? parseFloat(amount) : Number(amount);
+    if (isNaN(amountNum) || !isFinite(amountNum)) {
+      return sendError(res, 'Amount must be a valid number', 400);
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    let wallet = await Wallet.findOne({ userId: user._id });
+    if (!wallet) {
+      wallet = await Wallet.create({ userId: user._id, balance: 0, currency: 'USD' });
+    }
+
+    const newBalance = wallet.balance + amountNum;
+    if (newBalance < 0) {
+      return sendError(res, `Insufficient wallet balance. Current: ${wallet.balance.toFixed(2)}`, 400);
+    }
+
+    wallet.balance = Math.round(newBalance * 100) / 100;
+    await wallet.save();
+
+    logger.info('Wallet adjusted by admin/agent', {
+      userId: userId,
+      amount: amountNum,
+      newBalance: wallet.balance,
+      note: note || ''
+    });
+
+    return sendSuccess(res, 'Wallet adjusted', {
+      balance: wallet.balance,
+      amount: amountNum,
+      note: note || ''
+    });
+  } catch (error) {
+    logger.error('Wallet adjust error:', error);
     return sendError(res, 'Internal server error', 500);
   }
 });
