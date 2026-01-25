@@ -59,6 +59,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const baseAllowedOrigins = [
   "https://www.globalacegaming.com",
   "https://globalacegaming.com",
+  "https://aceadmin.globalacegaming.com",
+  "https://aceagent.globalacegaming.com",
   process.env.FRONTEND_URL,
   process.env.PRODUCTION_FRONTEND_URL
 ].filter(Boolean); // Remove any undefined values
