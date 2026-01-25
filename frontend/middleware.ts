@@ -1,6 +1,3 @@
-/// <reference path="./next-server.d.ts" />
-import { NextResponse } from 'next/server';
-
 const MAIN_DOMAINS = ['globalacegaming.com', 'www.globalacegaming.com'];
 /** aceadmin — /aceadmin/login, /aceadmin/dashboard */
 const AGENT_SUBDOMAIN = 'aceadmin.globalacegaming.com';
@@ -19,6 +16,10 @@ function pathIsBlocked(pathname: string): boolean {
   );
 }
 
+function redirect(url: URL, path: string, status = 302): Response {
+  return Response.redirect(new URL(path, url.origin).href, status);
+}
+
 export function middleware(request: Request) {
   const url = new URL(request.url);
   const hostname = url.hostname;
@@ -26,7 +27,7 @@ export function middleware(request: Request) {
 
   // Local dev: allow all routes (no hostname-based blocking)
   if (isLocalDev(hostname)) {
-    return NextResponse.next();
+    return; // pass-through to origin (no Response = continue)
   }
 
   const isMain = MAIN_DOMAINS.includes(hostname);
@@ -35,30 +36,30 @@ export function middleware(request: Request) {
 
   // Main domain: block role-based paths → redirect to /
   if (isMain && pathIsBlocked(pathname)) {
-    return NextResponse.redirect(new URL('/', url.origin), 302);
+    return redirect(url, '/');
   }
 
   // aceadmin (agent): / → /aceadmin/login; block /aceagent*
   if (isAgentSubdomain) {
     if (pathname === '/' || pathname === '') {
-      return NextResponse.redirect(new URL('/aceadmin/login', url.origin), 302);
+      return redirect(url, '/aceadmin/login');
     }
     if (pathname.startsWith('/aceagent')) {
-      return NextResponse.redirect(new URL('/aceadmin/login', url.origin), 302);
+      return redirect(url, '/aceadmin/login');
     }
   }
 
   // aceagent (admin): / → /aceagent/login; block /aceadmin*
   if (isAdminSubdomain) {
     if (pathname === '/' || pathname === '') {
-      return NextResponse.redirect(new URL('/aceagent/login', url.origin), 302);
+      return redirect(url, '/aceagent/login');
     }
     if (pathname.startsWith('/aceadmin')) {
-      return NextResponse.redirect(new URL('/aceagent/login', url.origin), 302);
+      return redirect(url, '/aceagent/login');
     }
   }
 
-  return NextResponse.next();
+  return; // pass-through to origin
 }
 
 export const config = {
