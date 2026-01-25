@@ -7,6 +7,7 @@ import ClickSoundProvider from './components/ClickSoundProvider';
 import Layout from './components/layout/Layout';
 import UserChatWidget from './components/chat/UserChatWidget';
 import OneSignalAuthSync from './components/OneSignalAuthSync';
+import IOSAddToHomeScreenBanner from './components/IOSAddToHomeScreenBanner';
 import WheelOfFortune from './components/wheel/WheelOfFortune';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -280,6 +281,7 @@ function App() {
         </Routes>
         
         <UserChatWidget />
+        <IOSAddToHomeScreenBanner />
         <WheelOfFortune />
           </div>
         </Router>
