@@ -76,6 +76,7 @@ const AceagentDashboard: React.FC = () => {
   const [agentBalance, setAgentBalance] = useState<string>('0.00');
   const [showUserModal, setShowUserModal] = useState(false);
   const [modalAction, setModalAction] = useState<'recharge' | 'redeem' | null>(null);
+  const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
   
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
@@ -475,6 +476,59 @@ const AceagentDashboard: React.FC = () => {
       }
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleFixFortunePandaAccount = async (userId: string) => {
+    if (!window.confirm('This will assign a new unique Fortune Panda username and create/retry the account. Continue?')) {
+      return;
+    }
+
+    try {
+      setFixingFpAccount(userId);
+      const token = getAdminToken();
+      if (!token) {
+        toast.error('Admin session expired. Please login again.');
+        navigate('/aceagent/login');
+        return;
+      }
+
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/users/${userId}/fix-fortune-panda`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        const newUsername = response.data.data?.newUsername || 'N/A';
+        toast.success(`Fortune Panda account fixed! New username: ${newUsername}`);
+        loadUsers(); // Refresh to show updated FP username
+      } else {
+        toast.error(response.data.message || 'Failed to fix account');
+      }
+    } catch (error: any) {
+      console.error('Failed to fix Fortune Panda account:', error);
+      
+      if (error.response?.status === 401) {
+        const errorMessage = error.response?.data?.message || 'Admin session expired or invalid';
+        toast.error(errorMessage);
+        if (errorMessage.includes('session') || errorMessage.includes('token') || errorMessage.includes('Access denied')) {
+          localStorage.removeItem('admin_session');
+          setTimeout(() => {
+            navigate('/aceagent/login');
+          }, 2000);
+        }
+      } else {
+        const errorMsg = error.response?.data?.message || 'Failed to fix Fortune Panda account';
+        toast.error(errorMsg);
+      }
+    } finally {
+      setFixingFpAccount(null);
     }
   };
 
@@ -1147,6 +1201,9 @@ const AceagentDashboard: React.FC = () => {
                         </div>
                         <p className="text-xs sm:text-sm text-gray-600 truncate">{user.email}</p>
                         <p className="text-xs text-gray-500 truncate">@{user.username} • ID: {user._id.substring(0, 8)}...</p>
+                        {user.fortunePandaUsername && (
+                          <p className="text-xs text-gray-500 truncate">FP: {user.fortunePandaUsername}</p>
+                        )}
                         {user.isBanned && user.banReason && (
                           <p className="text-xs text-red-600 mt-1">Banned: {user.banReason}</p>
                         )}
@@ -1163,6 +1220,26 @@ const AceagentDashboard: React.FC = () => {
                             <span className="sm:hidden">{verifying ? 'Verifying...' : 'Verify'}</span>
                           </button>
                         )}
+                        <button
+                          onClick={() => handleFixFortunePandaAccount(user._id)}
+                          disabled={fixingFpAccount === user._id}
+                          className="px-3 py-2.5 sm:py-1.5 bg-purple-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-purple-700 active:bg-purple-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
+                          title="Assign new unique Fortune Panda username and create account"
+                        >
+                          {fixingFpAccount === user._id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span className="hidden sm:inline">Fixing...</span>
+                              <span className="sm:hidden">Fixing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Shield className="w-4 h-4" />
+                              <span className="hidden sm:inline">Fix FP Account</span>
+                              <span className="sm:hidden">Fix FP</span>
+                            </>
+                          )}
+                        </button>
                         <button
                           onClick={() => {
                             setSelectedUserForVerification(user);
