@@ -242,6 +242,13 @@ class FortunePandaService {
 
   // Create Fortune Panda user account (Demo API format - {firstname}_Aces9F)
   async createFortunePandaUser(firstName: string, password: string): Promise<{ success: boolean; message: string; data?: any }> {
+    // Generate Fortune Panda username: {firstname}_Aces9F
+    const account = `${firstName}_Aces9F`;
+    return this.createFortunePandaUserWithAccount(account, password);
+  }
+
+  // Create Fortune Panda user account with custom username
+  async createFortunePandaUserWithAccount(account: string, password: string): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       // Check if we have a cached agentKey, if not login
       if (!this.agentKeyCache) {
@@ -249,8 +256,6 @@ class FortunePandaService {
         await this.loginAgent();
       }
 
-      // Generate Fortune Panda username: {firstname}_Aces9F
-      const account = `${firstName}_Aces9F`;
       const time = Date.now();
       const passwdMd5 = this.generateMD5(password);
       const sign = this.generateSignature(

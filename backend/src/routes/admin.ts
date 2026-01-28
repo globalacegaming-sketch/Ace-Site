@@ -1182,6 +1182,153 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
   }
 });
 
+// Fix duplicate Fortune Panda usernames and retry account creation
+router.post('/fix-fortune-panda-usernames', async (req: Request, res: Response) => {
+  try {
+    logger.info('🔧 Starting Fortune Panda username fix process...');
+
+    // Find all users with Fortune Panda usernames
+    const users = await User.find({
+      fortunePandaUsername: { $exists: true, $ne: null }
+    }).select('_id firstName fortunePandaUsername fortunePandaPassword').sort({ createdAt: 1 });
+
+    // Group by Fortune Panda username to find duplicates
+    const usernameMap = new Map<string, typeof users>();
+    for (const user of users) {
+      const fpUsername = user.fortunePandaUsername?.trim();
+      if (!fpUsername) continue;
+      
+      if (!usernameMap.has(fpUsername)) {
+        usernameMap.set(fpUsername, []);
+      }
+      usernameMap.get(fpUsername)!.push(user);
+    }
+
+    const duplicates: Array<{ username: string; users: typeof users }> = [];
+    for (const [username, userList] of usernameMap.entries()) {
+      if (userList.length > 1) {
+        duplicates.push({ username, users: userList });
+      }
+    }
+
+    logger.info(`Found ${duplicates.length} duplicate Fortune Panda usernames`);
+
+    const results = {
+      duplicatesFixed: 0,
+      accountsCreated: 0,
+      errors: [] as Array<{ userId: string; error: string }>
+    };
+
+    // Helper to generate unique Fortune Panda username
+    const generateUniqueFortunePandaUsername = async (baseFirstName: string): Promise<string> => {
+      const baseUsername = `${baseFirstName}_Aces9F`;
+      let candidate = baseUsername;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 20;
+
+      while (attempts < MAX_ATTEMPTS) {
+        const existing = await User.findOne({ fortunePandaUsername: candidate });
+        if (!existing) {
+          return candidate;
+        }
+        const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+        candidate = `${baseFirstName}_Aces9F${suffix}`;
+        attempts++;
+      }
+      return `${baseFirstName}_Aces9F${Date.now().toString().slice(-6)}`;
+    };
+
+    // Fix duplicates: keep first user, fix the rest
+    for (const { username, users: userList } of duplicates) {
+      logger.info(`Fixing duplicate: ${username} (${userList.length} users)`);
+      
+      // Keep the first user (oldest), fix the rest
+      for (let i = 1; i < userList.length; i++) {
+        const user = userList[i];
+        try {
+          const newUsername = await generateUniqueFortunePandaUsername(user.firstName || 'User');
+          user.fortunePandaUsername = newUsername;
+          
+          // Generate new password if missing
+          if (!user.fortunePandaPassword) {
+            user.fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
+          }
+          
+          await user.save();
+          results.duplicatesFixed++;
+          logger.info(`✅ Fixed user ${user._id}: ${username} → ${newUsername}`);
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          results.errors.push({ userId: user._id.toString(), error: `Failed to fix: ${errorMsg}` });
+          logger.error(`❌ Failed to fix user ${user._id}:`, error);
+        }
+      }
+    }
+
+    // Retry creating Fortune Panda accounts for users without passwords or with failed accounts
+    const usersNeedingAccount = await User.find({
+      $or: [
+        { fortunePandaPassword: { $exists: false } },
+        { fortunePandaPassword: null },
+        { fortunePandaPassword: '' }
+      ],
+      fortunePandaUsername: { $exists: true, $ne: null }
+    }).select('_id firstName fortunePandaUsername fortunePandaPassword');
+
+    logger.info(`Found ${usersNeedingAccount.length} users needing Fortune Panda account creation`);
+
+    for (const user of usersNeedingAccount) {
+      try {
+        if (!user.fortunePandaUsername || !user.firstName) {
+          continue;
+        }
+
+        // Generate password if missing
+        if (!user.fortunePandaPassword) {
+          user.fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
+        }
+
+        // Try to create Fortune Panda account
+        const createResult = await fortunePandaService.createFortunePandaUserWithAccount(
+          user.fortunePandaUsername,
+          user.fortunePandaPassword
+        );
+
+        if (createResult.success) {
+          await user.save();
+          results.accountsCreated++;
+          logger.info(`✅ Created Fortune Panda account for user ${user._id}: ${user.fortunePandaUsername}`);
+        } else {
+          results.errors.push({
+            userId: user._id.toString(),
+            error: `Failed to create FP account: ${createResult.message}`
+          });
+          logger.warn(`⚠️ Failed to create FP account for user ${user._id}: ${createResult.message}`);
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        results.errors.push({ userId: user._id.toString(), error: `Exception: ${errorMsg}` });
+        logger.error(`❌ Error creating FP account for user ${user._id}:`, error);
+      }
+    }
+
+    return sendSuccess(res, 'Fortune Panda username fix completed', {
+      duplicatesFound: duplicates.length,
+      duplicatesFixed: results.duplicatesFixed,
+      accountsCreated: results.accountsCreated,
+      errors: results.errors,
+      summary: {
+        totalProcessed: duplicates.reduce((sum, d) => sum + d.users.length, 0) + usersNeedingAccount.length,
+        successful: results.duplicatesFixed + results.accountsCreated,
+        failed: results.errors.length
+      }
+    });
+  } catch (error) {
+    logger.error('Fix Fortune Panda usernames error:', error);
+    return sendError(res, 'Internal server error', 500);
+  }
+});
+
 // Unban user
 router.put('/users/:userId/unban', async (req: Request, res: Response) => {
   try {

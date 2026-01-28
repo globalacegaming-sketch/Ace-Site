@@ -87,8 +87,29 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
       return result;
     };
 
-    // Generate Fortune Panda credentials using {firstName}_Aces9F format
-    const fortunePandaUsername = `${firstName}_Aces9F`;
+    // Generate unique Fortune Panda username using {firstName}_Aces9F format
+    // If username already exists, append random suffix to ensure uniqueness
+    const generateUniqueFortunePandaUsername = async (baseFirstName: string): Promise<string> => {
+      const baseUsername = `${baseFirstName}_Aces9F`;
+      let candidate = baseUsername;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 20;
+
+      while (attempts < MAX_ATTEMPTS) {
+        const existing = await User.findOne({ fortunePandaUsername: candidate });
+        if (!existing) {
+          return candidate;
+        }
+        // Append random suffix: _Aces9F + 3 random alphanumeric chars
+        const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+        candidate = `${baseFirstName}_Aces9F${suffix}`;
+        attempts++;
+      }
+      // Fallback: use timestamp if all attempts fail
+      return `${baseFirstName}_Aces9F${Date.now().toString().slice(-6)}`;
+    };
+
+    const fortunePandaUsername = await generateUniqueFortunePandaUsername(firstName);
     const fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
 
     // Generate 6-digit verification code
