@@ -3,7 +3,7 @@ import {
   Plus, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
   Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
   ChevronDown, CheckCircle, Ticket, FileText, Clock, CheckCircle2, XCircle,
-  Send, Upload} from 'lucide-react';
+  Send, Upload, Wrench} from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -92,6 +92,7 @@ const AceadminDashboard: React.FC = () => {
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState<string>('all');
+  const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
   
   // Email promotions states
   const [emailForm, setEmailForm] = useState({
@@ -294,6 +295,36 @@ const AceadminDashboard: React.FC = () => {
       if (response.data.success) setContacts(response.data.data || []);
     } catch (error) {
       console.error('Failed to load contacts');
+    }
+  };
+
+  const fixFortunePandaAccount = async (userId: string) => {
+    if (!window.confirm('This will assign a new unique Fortune Panda username and create/retry the account. Continue?')) {
+      return;
+    }
+
+    try {
+      setFixingFpAccount(userId);
+      const token = getAgentToken();
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/users/${userId}/fix-fortune-panda`,
+        {},
+        {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        }
+      );
+
+      if (response.data.success) {
+        toast.success(`Fortune Panda account fixed! New username: ${response.data.data?.newUsername || 'N/A'}`);
+        loadContacts(); // Refresh to show updated FP name
+      } else {
+        toast.error(response.data.message || 'Failed to fix account');
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || 'Failed to fix Fortune Panda account';
+      toast.error(errorMsg);
+    } finally {
+      setFixingFpAccount(null);
     }
   };
 
@@ -609,6 +640,7 @@ const AceadminDashboard: React.FC = () => {
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Phone</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Referral Code</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Referred By</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -620,6 +652,26 @@ const AceadminDashboard: React.FC = () => {
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.phone}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.referralCode}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.referredBy || 'N/A'}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <button
+                      onClick={() => fixFortunePandaAccount(contact._id)}
+                      disabled={fixingFpAccount === contact._id}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      title="Assign new unique Fortune Panda username and create account"
+                    >
+                      {fixingFpAccount === contact._id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Fixing...
+                        </>
+                      ) : (
+                        <>
+                          <Wrench className="w-3 h-3" />
+                          Fix FP Account
+                        </>
+                      )}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

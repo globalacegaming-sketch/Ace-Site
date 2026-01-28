@@ -1182,6 +1182,85 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
   }
 });
 
+// Fix single user's Fortune Panda account (assign new unique username and create account)
+router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    if (!user.firstName) {
+      return sendError(res, 'User missing firstName. Cannot generate Fortune Panda username.', 400);
+    }
+
+    // Generate unique Fortune Panda username
+    const generateUniqueFortunePandaUsername = async (baseFirstName: string): Promise<string> => {
+      const baseUsername = `${baseFirstName}_Aces9F`;
+      let candidate = baseUsername;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 20;
+
+      while (attempts < MAX_ATTEMPTS) {
+        const existing = await User.findOne({ 
+          fortunePandaUsername: candidate,
+          _id: { $ne: userId } // Exclude current user
+        });
+        if (!existing) {
+          return candidate;
+        }
+        const suffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+        candidate = `${baseFirstName}_Aces9F${suffix}`;
+        attempts++;
+      }
+      return `${baseFirstName}_Aces9F${Date.now().toString().slice(-6)}`;
+    };
+
+    const newUsername = await generateUniqueFortunePandaUsername(user.firstName);
+    
+    // Generate password if missing
+    if (!user.fortunePandaPassword) {
+      user.fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
+    }
+
+    // Try to create Fortune Panda account
+    const createResult = await fortunePandaService.createFortunePandaUserWithAccount(
+      newUsername,
+      user.fortunePandaPassword
+    );
+
+    if (createResult.success) {
+      user.fortunePandaUsername = newUsername;
+      await user.save();
+      
+      logger.info(`✅ Fixed Fortune Panda account for user ${userId}: ${newUsername}`);
+      
+      return sendSuccess(res, 'Fortune Panda account fixed successfully', {
+        userId: user._id.toString(),
+        newUsername,
+        message: 'Account created and username assigned'
+      });
+    } else {
+      // Still update username even if creation fails (might already exist)
+      user.fortunePandaUsername = newUsername;
+      await user.save();
+      
+      logger.warn(`⚠️ Updated username but FP creation failed for user ${userId}: ${createResult.message}`);
+      
+      return sendSuccess(res, 'Username updated, but Fortune Panda account creation failed', {
+        userId: user._id.toString(),
+        newUsername,
+        warning: createResult.message
+      }, 200);
+    }
+  } catch (error) {
+    logger.error('Fix user Fortune Panda account error:', error);
+    return sendError(res, 'Internal server error', 500);
+  }
+});
+
 // Fix duplicate Fortune Panda usernames and retry account creation
 router.post('/fix-fortune-panda-usernames', async (req: Request, res: Response) => {
   try {
