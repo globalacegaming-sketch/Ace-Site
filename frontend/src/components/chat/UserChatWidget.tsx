@@ -192,9 +192,12 @@ const UserChatWidget = () => {
       return;
     }
 
+    // withCredentials sends session cookie for shared session auth;
+    // auth.token kept as fallback for backward compatibility.
     const socket = io(WS_BASE_URL, {
       transports: ['websocket'],
       auth: { token },
+      withCredentials: true,
       autoConnect: true
     });
 

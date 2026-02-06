@@ -65,11 +65,16 @@ const Login = () => {
       // Call the backend API for authentication
       const API_BASE_URL = getApiBaseUrl();
       
+      // credentials: 'include' tells the browser to accept and store the
+      // session cookie returned by the server (httpOnly, secure).
+      // This cookie is then sent automatically with every subsequent request
+      // and Socket.io handshake, enabling shared session auth.
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           email: data.email,
           password: data.password,

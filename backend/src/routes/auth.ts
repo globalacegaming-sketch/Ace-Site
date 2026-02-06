@@ -173,6 +173,19 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
     // Generate tokens immediately (don't wait for async operations)
     const tokens = generateTokens(user);
 
+    // ── Store user identity in session (same as login) ──
+    req.session.user = {
+      id: (user._id as any).toString(),
+      username: user.username,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+    };
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
+
     // Send verification email with code (fire and forget - don't block response)
     emailService.sendVerificationCodeEmail(email, emailVerificationCode, firstName).catch((error) => {
       logger.warn('Failed to send verification email:', error);
@@ -277,8 +290,28 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     user.lastLoginIP = clientIP;
     await user.save();
 
-    // Generate tokens
+    // Generate tokens (kept for backward compatibility with existing clients)
     const tokens = generateTokens(user);
+
+    // ── Store user identity in the server-side session ──
+    // This creates a MongoDB-backed session document and sets an httpOnly
+    // cookie on the response. Subsequent requests (including Socket.io
+    // handshakes) automatically include this cookie, so the server can
+    // identify the user without requiring a Bearer token.
+    req.session.user = {
+      id: (user._id as any).toString(),
+      username: user.username,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+    };
+
+    // Force the session to save before responding, so the cookie is set
+    // and the session document exists in MongoDB immediately.
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
 
     return sendSuccess(res, 'Login successful', {
       user: {
@@ -361,12 +394,26 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// Logout (client-side token removal, but we can add token blacklisting here if needed)
+// Logout – destroys the server-side session and clears the cookie.
+// The authenticate middleware is kept so existing Bearer-token clients
+// still hit this route, but we also handle cookie-only sessions.
 router.post('/logout', authenticate, async (req: Request, res: Response) => {
   try {
-    // In a more sophisticated setup, you might want to blacklist the token
-    // For now, we'll just return success and let the client handle token removal
-    
+    // ── Destroy the MongoDB session document ──
+    // This removes the session from the store and invalidates the cookie.
+    await new Promise<void>((resolve, reject) => {
+      req.session.destroy((err) => (err ? reject(err) : resolve()));
+    });
+
+    // ── Clear the session cookie on the client ──
+    // Use the same cookie name ('gag.sid') configured in config/session.ts.
+    res.clearCookie('gag.sid', {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' as const : 'lax' as const,
+    });
+
     return sendSuccess(res, 'Logged out successfully');
   } catch (error) {
     logger.error('Logout error:', error);

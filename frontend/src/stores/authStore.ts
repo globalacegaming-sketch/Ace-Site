@@ -3,8 +3,12 @@ import { persist } from 'zustand/middleware';
 import type { User, UserSession } from '../types';
 import { isTokenExpired } from '../utils/jwt';
 
-// Session timeout: 30 minutes of inactivity
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+// Session timeout: 24 hours of inactivity on the client side.
+// The server-side session in MongoDB has a 7-day TTL and is the source of truth.
+// This client-side timeout is only a safety net; the server cookie handles
+// actual session expiry. Previously this was 30 minutes, which caused
+// users to be logged out too frequently.
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface AuthState {
   user: User | null;

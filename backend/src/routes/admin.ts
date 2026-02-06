@@ -82,17 +82,31 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       logger.warn('⚠️ Admin can still access panel, but FortunePanda operations may fail until agent login succeeds');
     }
 
-    // Create a simple session token (in production, use JWT)
+    // Create a session token for backward-compatible Bearer-token auth
     const sessionToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
-    logger.info('✅ Admin login successful, creating session token');
+    logger.info('✅ Admin login successful, creating session');
 
-    // Store session (in production, use Redis or database)
+    // ── Store admin session in MongoDB via express-session ──
+    // This makes the admin session persistent across server restarts and
+    // allows Socket.io to read it from the session cookie.
+    req.session.adminSession = {
+      agentName,
+      token: sessionToken,
+      expiresAt,
+    };
+
+    // Also keep the in-memory store as a fallback for Bearer-token clients
     createAdminSession({
       agentName,
       token: sessionToken,
       expiresAt
+    });
+
+    // Force session save before responding
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
     });
 
     // Return session information to client

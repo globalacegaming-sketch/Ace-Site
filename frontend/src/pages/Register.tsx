@@ -58,9 +58,11 @@ const Register = () => {
         throw new Error('API base URL is not configured');
       }
       
+      // credentials: 'include' stores the session cookie from registration
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(data),
       });
 

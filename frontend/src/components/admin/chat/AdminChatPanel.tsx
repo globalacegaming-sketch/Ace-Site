@@ -617,9 +617,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
     reconnectAttemptsRef.current = 0;
 
+    // withCredentials sends session cookie for shared session auth;
+    // auth.adminToken kept as fallback for backward compatibility.
     const socket = io(wsBaseUrl, {
       transports: ['websocket'],
       auth: { adminToken },
+      withCredentials: true,
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,

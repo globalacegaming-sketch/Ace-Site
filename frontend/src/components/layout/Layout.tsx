@@ -175,8 +175,12 @@ const Layout = ({ children }: LayoutProps) => {
     if (!isAuthenticated || !token) return;
 
     const WS_BASE_URL = getWsBaseUrl();
+    // withCredentials: true sends the session cookie during the WebSocket
+    // handshake, so the server can identify the user from the shared session.
+    // auth.token is kept as a fallback for backward compatibility.
     const socket = io(WS_BASE_URL, {
       auth: { token },
+      withCredentials: true,
       transports: ['websocket', 'polling']
     });
 
@@ -272,8 +276,21 @@ const Layout = ({ children }: LayoutProps) => {
     };
   }, [isUserMenuOpen, isNotificationOpen]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm('Are you sure you want to logout?')) {
+      // Call the server logout endpoint with credentials to destroy the
+      // MongoDB session and clear the session cookie on the browser.
+      try {
+        const API_BASE_URL = getApiBaseUrl();
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        });
+      } catch {
+        // Best-effort – even if the server call fails, we still clear local state
+      }
+
       logout();
       setIsUserMenuOpen(false);
       // Navigate to home page after logout
@@ -333,13 +350,20 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4">
             {/* Search Bar - Hidden on mobile */}
             <div className="hidden lg:flex items-center">
-              <div className="relative">
+              <div className="relative group">
+                <Search 
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors duration-200" 
+                  style={{ color: 'var(--casino-text-secondary)' }} 
+                />
                 <input
                   type="text"
                   placeholder="Search Games"
-                  className="input-casino w-48"
+                  className="w-44 xl:w-56 pl-10 pr-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+                    bg-white/10 border border-white/20 text-[#F5F5F5] placeholder-[#B0B0B0]
+                    focus:outline-none focus:border-[#FFD700] focus:ring-2 focus:ring-[#FFD700]/30 focus:bg-white/15
+                    hover:border-white/30 hover:bg-white/12"
+                  aria-label="Search games"
                 />
-                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: '#B0B0B0' }} />
               </div>
             </div>
             

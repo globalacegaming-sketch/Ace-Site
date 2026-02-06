@@ -156,10 +156,13 @@ const Chat = () => {
       return;
     }
 
+    // withCredentials sends session cookie for shared session auth;
+    // auth.token kept as fallback for backward compatibility.
     const socket = io(WS_BASE_URL, {
       auth: {
         token
       },
+      withCredentials: true,
       transports: ['websocket', 'polling']
     });
 

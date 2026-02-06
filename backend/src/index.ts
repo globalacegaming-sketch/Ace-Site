@@ -54,6 +54,9 @@ import { validateAdminSession } from './services/adminSessionService';
 import logger from './utils/logger';
 import timeout from 'connect-timeout';
 
+// ── Session middleware (MongoDB-backed, shared with Socket.io) ──
+import sessionMiddleware from './config/session';
+
 // CORS configuration for multiple origins
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -284,6 +287,13 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// ── Mount session middleware ──
+// This must come AFTER body parsing but BEFORE routes.
+// It reads the session cookie, loads the session from MongoDB, and attaches
+// req.session to every request. Sessions are only created on login
+// (saveUninitialized: false), so unauthenticated visitors don't get cookies.
+app.use(sessionMiddleware);
+
 // Serve uploads with CORS headers for image previews
 // This must handle CORS properly for image fetching
 // Note: Images loaded in <img> tags don't send Origin header, so we need to be permissive
@@ -450,9 +460,40 @@ app.use('/api/wheel', wheelRoutes);
 app.use('/api/agent/wheel', agentWheelRoutes);
 app.use('/api/wallet', walletRoutes);
 
+// ── Share session with Socket.io ──
+// Wrap the Express session middleware so it runs on the Socket.io handshake
+// HTTP request. This parses the session cookie and loads the session from
+// MongoDB, making it available as socket.request.session.
+io.engine.use(sessionMiddleware);
+
 // WebSocket connection handling
+// Checks the MongoDB session FIRST (set by login cookie), then falls back
+// to token-based auth for backward compatibility (e.g. mobile clients).
 io.use(async (socket, next) => {
   try {
+    // ── 1. Try session cookie (preferred – shared with Express) ──
+    const session = (socket.request as any).session;
+
+    // Check if session has a logged-in user
+    if (session?.user?.id) {
+      socket.data.role = session.user.role === 'admin' ? 'admin' : 'user';
+      socket.data.user = {
+        id: session.user.id,
+        username: session.user.username,
+        email: session.user.email,
+        role: session.user.role,
+      };
+      return next();
+    }
+
+    // Check if session has an admin login
+    if (session?.adminSession && session.adminSession.expiresAt > Date.now()) {
+      socket.data.role = 'admin';
+      socket.data.adminSession = session.adminSession;
+      return next();
+    }
+
+    // ── 2. Fall back to token-based auth (backward compatibility) ──
     const auth = (socket.handshake.auth || {}) as {
       token?: string;
       adminToken?: string;
@@ -475,13 +516,13 @@ io.use(async (socket, next) => {
           : undefined;
 
     if (typeof adminToken === 'string') {
-      const session = validateAdminSession(adminToken);
-      if (!session) {
+      const adminSession = validateAdminSession(adminToken);
+      if (!adminSession) {
         return next(new Error('Unauthorized'));
       }
 
       socket.data.role = 'admin';
-      socket.data.adminSession = session;
+      socket.data.adminSession = adminSession;
       return next();
     }
 

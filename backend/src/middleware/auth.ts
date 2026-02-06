@@ -11,30 +11,50 @@ declare global {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// authenticate middleware
+// ──────────────────────────────────────────────────────────────────────────────
+// Checks for a valid user identity in this order:
+//   1. Server-side session cookie (MongoDB-backed, set on login).
+//   2. Bearer JWT token in the Authorization header (backward compatibility).
+//
+// If a session is found, the full user document is loaded from the DB and
+// attached to req.user (same as the JWT path), so downstream route handlers
+// don't need to care which method was used.
+// ──────────────────────────────────────────────────────────────────────────────
 export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        success: false,
-        message: 'Access denied. No token provided.'
-      });
-      return;
+    let userId: string | undefined;
+
+    // ── 1. Check session cookie first (preferred) ──
+    if (req.session?.user?.id) {
+      userId = req.session.user.id;
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
-    // Verify token
-    const decoded = verifyToken(token);
-    
-    // Get user from database (exclude main password but include Fortune Panda password)
-    const user = await User.findById(decoded.userId).select('-password +fortunePandaPassword');
-    
+    // ── 2. Fall back to Bearer JWT token ──
+    if (!userId) {
+      const authHeader = req.headers.authorization;
+
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.status(401).json({
+          success: false,
+          message: 'Access denied. No session or token provided.'
+        });
+        return;
+      }
+
+      const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+      const decoded = verifyToken(token);
+      userId = decoded.userId;
+    }
+
+    // ── Load the full user document ──
+    const user = await User.findById(userId).select('-password +fortunePandaPassword');
+
     if (!user) {
       res.status(401).json({
         success: false,
-        message: 'Token is valid but user no longer exists.'
+        message: 'User no longer exists.'
       });
       return;
     }
@@ -53,7 +73,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   } catch (error) {
     res.status(401).json({
       success: false,
-      message: 'Invalid or expired token.'
+      message: 'Invalid or expired session/token.'
     });
   }
 };
