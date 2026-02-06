@@ -57,30 +57,22 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
 
     logger.info('✅ Credentials verified successfully');
 
-    // Perform agent login to FortunePanda API to establish session
-    // This ensures agentKey is cached and ready for all admin operations
+    // Fire-and-forget FortunePanda API login — don't block the admin login response.
+    // The external API has a 30s timeout + 3 retries, which would make login feel
+    // frozen for up to 100+ seconds. The agent panel fetches balance separately.
     let agentBalance = '0.00';
-    try {
-      logger.debug('🔐 Performing agent login to FortunePanda API...');
-      const loginResult = await agentLoginService.loginAgent();
-      if (!loginResult.success) {
-        logger.warn('⚠️ FortunePanda agent login failed:', loginResult.message);
-        // Still allow admin login, but operations may fail
-        logger.warn('⚠️ Admin login allowed, but FortunePanda operations may not work until agent login succeeds');
-      } else {
-        logger.info('✅ FortunePanda agent login successful - agentKey cached and ready');
-        logger.info('✅ Agent session established for admin operations');
-        // Capture agent balance from login response
-        agentBalance = loginResult.data?.balance || loginResult.data?.Balance || '0.00';
-        logger.debug('💰 Agent balance from login:', agentBalance);
-      }
-    } catch (error) {
-      // If login fails, still allow admin access (credentials are correct)
-      // This handles cases where API might be temporarily unavailable
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('⚠️ FortunePanda agent login error, but allowing admin login:', errorMessage);
-      logger.warn('⚠️ Admin can still access panel, but FortunePanda operations may fail until agent login succeeds');
-    }
+    agentLoginService.loginAgent()
+      .then(loginResult => {
+        if (loginResult.success) {
+          logger.info('✅ FortunePanda agent login successful (background)');
+        } else {
+          logger.warn('⚠️ FortunePanda agent login failed (background):', loginResult.message);
+        }
+      })
+      .catch(error => {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn('⚠️ FortunePanda agent login error (background):', errorMessage);
+      });
 
     // Create a session token for backward-compatible Bearer-token auth
     const sessionToken = crypto.randomBytes(32).toString('hex');

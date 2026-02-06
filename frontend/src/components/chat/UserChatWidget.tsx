@@ -234,7 +234,13 @@ const UserChatWidget = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [WS_BASE_URL, isAuthenticated, token, isOpen, isAdminOrAgentPage, isAdminUser]);
+    // NOTE: isOpen is intentionally NOT in this dependency array.
+    // Previously it was, which caused the socket to disconnect and reconnect
+    // every time the widget was opened/closed (~500ms-1s overhead per toggle).
+    // The socket should stay connected regardless of widget visibility so
+    // real-time messages arrive even when the widget is closed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [WS_BASE_URL, isAuthenticated, token, isAdminOrAgentPage, isAdminUser]);
 
   const loadMessages = async () => {
     if (!token) return;
