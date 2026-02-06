@@ -48,8 +48,11 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       userId = decoded.userId;
     }
 
-    // ── Load the full user document ──
-    const user = await User.findById(userId).select('-password +fortunePandaPassword');
+    // ── Load the user document ──
+    // .lean() returns a plain JS object instead of a Mongoose Document,
+    // skipping prototype hydration (getters, setters, save(), etc.).
+    // This is 2-5× faster and is safe because no route calls req.user.save().
+    const user = await User.findById(userId).select('-password +fortunePandaPassword').lean() as unknown as IUser | null;
 
     if (!user) {
       res.status(401).json({

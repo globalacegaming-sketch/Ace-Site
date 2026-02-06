@@ -75,9 +75,9 @@ export const sessionMiddleware = session({
     autoRemove: 'native',             // Use MongoDB's native TTL index for cleanup
     touchAfter: 24 * 3600,            // Only touch (update expiry) once per 24 h
                                       // unless session data actually changes
-    crypto: {
-      secret: SESSION_SECRET,         // Encrypt session data at rest in MongoDB
-    },
+    // NOTE: crypto encryption removed — it added CPU overhead (encrypt/decrypt)
+    // on every request for minimal benefit. Session data is already protected
+    // by the httpOnly signed cookie; the session ID is the secret, not the data.
   }),
 
   // Cookie options

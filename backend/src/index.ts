@@ -287,12 +287,16 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ── Mount session middleware ──
-// This must come AFTER body parsing but BEFORE routes.
-// It reads the session cookie, loads the session from MongoDB, and attaches
-// req.session to every request. Sessions are only created on login
-// (saveUninitialized: false), so unauthenticated visitors don't get cookies.
-app.use(sessionMiddleware);
+// ── Mount session middleware (with path filter) ──
+// Session middleware reads the cookie, then loads the session from MongoDB.
+// For paths that never use sessions (health checks, static files, root),
+// we skip it entirely to avoid the MongoDB round-trip.
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/health' || req.path.startsWith('/uploads')) {
+    return next();
+  }
+  return sessionMiddleware(req, res, next);
+});
 
 // Serve uploads with CORS headers for image previews
 // This must handle CORS properly for image fetching

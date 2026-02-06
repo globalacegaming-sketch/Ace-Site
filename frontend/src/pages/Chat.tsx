@@ -211,7 +211,7 @@ const Chat = () => {
           Authorization: `Bearer ${token}`
         },
         params: {
-          limit: 1000,
+          limit: 50,
           page: 1
         }
       });

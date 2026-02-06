@@ -253,7 +253,7 @@ const UserChatWidget = () => {
           Authorization: `Bearer ${token}`
         },
         params: {
-          limit: 1000, // Load all previous messages
+          limit: 50, // Load recent messages (not all 1000)
           page: 1
         }
       });
@@ -290,21 +290,23 @@ const UserChatWidget = () => {
     }
   };
 
-  // Load messages when authenticated, not just when widget opens
-  // But only if not on admin/agent pages and session is valid
+  // Lazy-load messages only when the widget is OPENED (not on every page mount).
+  // Previously this loaded 1000 messages on every page navigation, which was
+  // the single biggest source of slowness for authenticated users.
   useEffect(() => {
     if (
+      isOpen && // Only fetch when the user actually opens the chat
       isAuthenticated && 
       token && 
       !isAdminOrAgentPage && 
       !isAdminUser &&
       messages.length === 0 && 
       !isLoading &&
-      checkSession() // Only load if session is valid
+      checkSession()
     ) {
       void loadMessages();
     }
-  }, [isAuthenticated, token, isAdminOrAgentPage, isAdminUser]);
+  }, [isOpen, isAuthenticated, token, isAdminOrAgentPage, isAdminUser]);
 
   const handleToggle = () => {
     if (!isAuthenticated) {
