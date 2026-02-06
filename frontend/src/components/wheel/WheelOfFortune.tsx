@@ -128,7 +128,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const size = wheelSize;
 
   // ── Auth / routing ──
-  const { isAuthenticated, token, checkSession, logout } = useAuthStore();
+  const { isAuthenticated, checkSession, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
 
