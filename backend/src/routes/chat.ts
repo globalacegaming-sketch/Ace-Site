@@ -251,15 +251,23 @@ router.post('/messages/:id/reactions', async (req: Request, res: Response) => {
     }
 
     const reactorId = req.user._id.toString();
-    const existingIdx = message.reactions.findIndex(
+    // Find if user already reacted with this exact emoji (toggle off) or any other emoji (replace)
+    const sameEmojiIdx = message.reactions.findIndex(
       (r: any) => r.emoji === emoji && r.reactorId === reactorId && r.reactorType === 'user'
     );
 
     let action: 'added' | 'removed';
-    if (existingIdx >= 0) {
-      message.reactions.splice(existingIdx, 1);
+    if (sameEmojiIdx >= 0) {
+      // Clicking same emoji again = remove it
+      message.reactions.splice(sameEmojiIdx, 1);
       action = 'removed';
     } else {
+      // Remove any previous reaction by this user (one reaction per user)
+      const prevIdx = message.reactions.findIndex(
+        (r: any) => r.reactorId === reactorId && r.reactorType === 'user'
+      );
+      if (prevIdx >= 0) message.reactions.splice(prevIdx, 1);
+
       let reactorName: string;
       if (req.user.firstName || req.user.lastName) {
         reactorName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
