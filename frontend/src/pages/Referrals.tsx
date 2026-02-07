@@ -169,7 +169,7 @@ export default function ReferralsPage() {
           >
             <Clock className="w-5 h-5 flex-shrink-0" style={{ color: '#F59E0B' }} />
             <p className="text-xs sm:text-sm" style={{ color: '#F59E0B' }}>
-              {data.pendingCount} referral{data.pendingCount > 1 ? 's' : ''} pending verification by our team.
+              {data?.pendingCount} referral{(data?.pendingCount ?? 0) > 1 ? 's' : ''} pending verification by our team.
             </p>
           </div>
         )}

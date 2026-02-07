@@ -419,7 +419,7 @@ router.post(
   chatAttachmentUpload.single('attachment'),
   async (req: Request, res: Response) => {
     try {
-      const { userId, message } = req.body;
+      const { userId, message, replyToMessageId } = req.body;
       const attachment = req.file;
 
       if (!userId || typeof userId !== 'string') {
@@ -454,7 +454,21 @@ router.post(
 
       // Sanitize message input to prevent XSS attacks
       const sanitizedMessage = message ? sanitizeText(message) : undefined;
-      
+
+      // Build replyTo snapshot if replying to a message
+      let replyTo: { messageId: string; message?: string; senderName?: string; senderType?: string } | undefined;
+      if (replyToMessageId && typeof replyToMessageId === 'string' && /^[0-9a-fA-F]{24}$/.test(replyToMessageId)) {
+        const originalMsg = await ChatMessage.findById(replyToMessageId).lean();
+        if (originalMsg) {
+          replyTo = {
+            messageId: replyToMessageId,
+            message: originalMsg.message ? originalMsg.message.substring(0, 500) : undefined,
+            senderName: originalMsg.name || undefined,
+            senderType: originalMsg.senderType
+          };
+        }
+      }
+
       // Upload to Cloudinary if attachment exists and Cloudinary is configured
       // Otherwise, fall back to local storage
       let attachmentUrl: string | undefined;
@@ -492,6 +506,7 @@ router.post(
         status: 'read',
         name: req.adminSession?.agentName,
         email: user.email,
+        ...(replyTo ? { replyTo } : {}),
         metadata: {
           ...(attachment
             ? {
@@ -685,5 +700,65 @@ router.put('/:id/status', async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+// Toggle reaction on a message (admin)
+router.post('/:id/reactions', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { emoji } = req.body;
 
+    if (!emoji || typeof emoji !== 'string' || emoji.length > 8) {
+      return res.status(400).json({ success: false, message: 'Valid emoji is required' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid message ID' });
+    }
+
+    const message = await ChatMessage.findById(id);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+
+    const reactorId = req.adminSession?.agentName || 'admin';
+    const existingIdx = message.reactions.findIndex(
+      (r: any) => r.emoji === emoji && r.reactorId === reactorId && r.reactorType === 'admin'
+    );
+
+    let action: 'added' | 'removed';
+    if (existingIdx >= 0) {
+      message.reactions.splice(existingIdx, 1);
+      action = 'removed';
+    } else {
+      message.reactions.push({
+        emoji,
+        reactorId,
+        reactorType: 'admin',
+        reactorName: req.adminSession?.agentName || 'Support',
+        createdAt: new Date()
+      } as any);
+      action = 'added';
+    }
+
+    await message.save();
+
+    const io = getSocketServerInstance();
+    const payload = {
+      messageId: id,
+      userId: message.userId.toString(),
+      reactions: message.reactions,
+      action,
+      emoji,
+      reactorId,
+      reactorType: 'admin' as const
+    };
+
+    io.to('admins').emit('chat:reaction:update', payload);
+    io.to(`user:${message.userId}`).emit('chat:reaction:update', payload);
+
+    res.json({ success: true, data: payload });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to toggle reaction', error: error.message });
+  }
+});
+
+export default router;

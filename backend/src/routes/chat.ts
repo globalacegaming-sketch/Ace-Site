@@ -102,7 +102,7 @@ router.post(
         });
       }
 
-      const { message } = req.body;
+      const { message, replyToMessageId } = req.body;
       const attachment = req.file;
 
       if (!message && !attachment) {
@@ -110,6 +110,20 @@ router.post(
           success: false,
           message: 'Message text or attachment is required'
         });
+      }
+
+      // Build replyTo snapshot if replying to a message
+      let replyTo: { messageId: string; message?: string; senderName?: string; senderType?: string } | undefined;
+      if (replyToMessageId && typeof replyToMessageId === 'string' && /^[0-9a-fA-F]{24}$/.test(replyToMessageId)) {
+        const originalMsg = await ChatMessage.findById(replyToMessageId).lean();
+        if (originalMsg) {
+          replyTo = {
+            messageId: replyToMessageId,
+            message: originalMsg.message ? originalMsg.message.substring(0, 500) : undefined,
+            senderName: originalMsg.name || undefined,
+            senderType: originalMsg.senderType
+          };
+        }
       }
 
       // Security: Users can only send 'user' type messages, never 'system' or 'admin'
@@ -175,7 +189,8 @@ router.post(
         attachmentSize: attachment?.size,
         status: 'unread',
         name,
-        email: req.user.email
+        email: req.user.email,
+        ...(replyTo ? { replyTo } : {})
       });
 
       const io = getSocketServerInstance();
@@ -206,6 +221,76 @@ router.post(
     }
   }
 );
+
+// Toggle reaction on a message (add or remove)
+router.post('/messages/:id/reactions', async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+    const { emoji } = req.body;
+
+    if (!emoji || typeof emoji !== 'string' || emoji.length > 8) {
+      return res.status(400).json({ success: false, message: 'Valid emoji is required' });
+    }
+
+    if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid message ID' });
+    }
+
+    const message = await ChatMessage.findById(id);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+
+    // Ensure user can only react to messages in their conversation
+    if (message.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const reactorId = req.user._id.toString();
+    const existingIdx = message.reactions.findIndex(
+      (r: any) => r.emoji === emoji && r.reactorId === reactorId && r.reactorType === 'user'
+    );
+
+    let action: 'added' | 'removed';
+    if (existingIdx >= 0) {
+      message.reactions.splice(existingIdx, 1);
+      action = 'removed';
+    } else {
+      let reactorName: string;
+      if (req.user.firstName || req.user.lastName) {
+        reactorName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+      } else {
+        reactorName = req.user.username || req.user.email?.split('@')[0] || 'User';
+      }
+      message.reactions.push({ emoji, reactorId, reactorType: 'user', reactorName, createdAt: new Date() } as any);
+      action = 'added';
+    }
+
+    await message.save();
+
+    const io = getSocketServerInstance();
+    const payload = {
+      messageId: id,
+      userId: message.userId.toString(),
+      reactions: message.reactions,
+      action,
+      emoji,
+      reactorId,
+      reactorType: 'user' as const
+    };
+
+    io.to('admins').emit('chat:reaction:update', payload);
+    io.to(`user:${message.userId}`).emit('chat:reaction:update', payload);
+
+    res.json({ success: true, data: payload });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Failed to toggle reaction', error: error.message });
+  }
+});
 
 export default router;
 

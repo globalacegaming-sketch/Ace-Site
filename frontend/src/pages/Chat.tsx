@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, Loader2, FileText, MessageCircle, Image as ImageIcon, X } from 'lucide-react';
+import { Send, Loader2, FileText, MessageCircle, Image as ImageIcon, X, Reply, SmilePlus } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
@@ -21,7 +21,21 @@ interface ChatMessage {
   updatedAt: string;
   name?: string;
   email?: string;
+  replyTo?: {
+    messageId: string;
+    message?: string;
+    senderName?: string;
+    senderType?: string;
+  };
+  reactions?: {
+    emoji: string;
+    reactorId: string;
+    reactorType: 'user' | 'admin';
+    reactorName?: string;
+  }[];
 }
+
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -34,9 +48,13 @@ const Chat = () => {
   const [attachment, setAttachment] = useState<File | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
   const WS_BASE_URL = useMemo(() => getWsBaseUrl(), []);
@@ -141,6 +159,34 @@ const Chat = () => {
     return decoded;
   }, []);
 
+  const handleReply = useCallback((msg: ChatMessage) => {
+    setReplyingTo(msg);
+    textareaRef.current?.focus();
+  }, []);
+
+  const scrollToMessage = useCallback((messageId: string) => {
+    const el = messageRefs.current[messageId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-yellow-400', 'ring-opacity-80');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-yellow-400', 'ring-opacity-80');
+      }, 2000);
+    }
+  }, []);
+
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!token) return;
+    try {
+      await axios.post(`${API_BASE_URL}/chat/messages/${messageId}/reactions`, { emoji }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch {
+      toast.error('Failed to react');
+    }
+    setEmojiPickerMsgId(null);
+  }, [token, API_BASE_URL]);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -186,6 +232,10 @@ const Chat = () => {
       if (message.senderType === 'admin') {
         playNotificationSound();
       }
+    });
+
+    socket.on('chat:reaction:update', (data: { messageId: string; reactions: ChatMessage['reactions'] }) => {
+      setMessages((prev) => prev.map((m) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
     });
 
     socket.on('disconnect', () => {
@@ -273,6 +323,9 @@ const Chat = () => {
       if (attachment) {
         formData.append('attachment', attachment);
       }
+      if (replyingTo) {
+        formData.append('replyToMessageId', replyingTo.id);
+      }
 
       await axios.post(`${API_BASE_URL}/chat/messages`, formData, {
         headers: {
@@ -283,6 +336,7 @@ const Chat = () => {
 
       setInputValue('');
       setAttachment(null);
+      setReplyingTo(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -369,7 +423,8 @@ const Chat = () => {
                 return (
                   <div
                     key={message.id}
-                    className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
+                    ref={(el) => { messageRefs.current[message.id] = el; }}
+                    className={`group flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg`}
                   >
                     {!isUser && (
                       <div 
@@ -385,6 +440,35 @@ const Chat = () => {
                       </div>
                     )}
                     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%] min-w-0`}>
+                      {/* Reply & React buttons */}
+                      <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-1 px-1">
+                        <button
+                          onClick={() => handleReply(message)}
+                          className="text-xs casino-text-secondary hover:casino-text-primary flex items-center gap-1"
+                          title="Reply"
+                        >
+                          <Reply className="w-3 h-3" />
+                          <span>Reply</span>
+                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === message.id ? null : message.id)}
+                            className="text-xs casino-text-secondary hover:casino-text-primary flex items-center gap-1"
+                            title="React"
+                          >
+                            <SmilePlus className="w-3 h-3" />
+                          </button>
+                          {emojiPickerMsgId === message.id && (
+                            <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 flex gap-1 px-2 py-1.5 rounded-full shadow-lg z-50 border`} style={{ backgroundColor: '#1A1A2E', borderColor: '#2A2A3E' }}>
+                              {QUICK_EMOJIS.map((emoji) => (
+                                <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-125 transition-transform px-0.5">
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <div
                         className={`rounded-2xl px-4 py-2 ${
                           isUser
@@ -404,6 +488,24 @@ const Chat = () => {
                             }
                         }
                       >
+                        {/* Quoted reply preview */}
+                        {message.replyTo && (
+                          <div
+                            onClick={() => scrollToMessage(message.replyTo!.messageId)}
+                            className="mb-2 px-3 py-2 rounded-lg cursor-pointer hover:opacity-80 transition-opacity border-l-2"
+                            style={isUser
+                              ? { backgroundColor: 'rgba(0,0,0,0.1)', borderColor: '#0A0A0F' }
+                              : { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: '#FFD700' }
+                            }
+                          >
+                            <p className="text-[11px] font-semibold mb-0.5" style={{ color: isUser ? '#0A0A0F' : '#FFD700' }}>
+                              {message.replyTo.senderName || (message.replyTo.senderType === 'user' ? 'You' : 'Support')}
+                            </p>
+                            <p className={`text-xs line-clamp-2 ${isUser ? 'text-[#0A0A0F]/70' : 'casino-text-secondary'}`}>
+                              {message.replyTo.message ? decodeHtmlEntities(message.replyTo.message) : '(Attachment)'}
+                            </p>
+                          </div>
+                        )}
                         {!isUser && (
                           <span className="text-xs font-semibold mb-1 block casino-text-primary opacity-90">
                             {displayName}
@@ -457,6 +559,34 @@ const Chat = () => {
                           </div>
                         )}
                       </div>
+                      {/* Reactions display */}
+                      {message.reactions && message.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1 px-1">
+                          {Object.entries(
+                            message.reactions.reduce<Record<string, { count: number; reactors: string[]; mine: boolean }>>((acc, r) => {
+                              if (!acc[r.emoji]) acc[r.emoji] = { count: 0, reactors: [], mine: false };
+                              acc[r.emoji].count++;
+                              acc[r.emoji].reactors.push(r.reactorName || r.reactorType);
+                              if (r.reactorId === user?._id && r.reactorType === 'user') acc[r.emoji].mine = true;
+                              return acc;
+                            }, {})
+                          ).map(([emoji, info]) => (
+                            <button
+                              key={emoji}
+                              onClick={() => toggleReaction(message.id, emoji)}
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                                info.mine
+                                  ? 'border-yellow-500/60 bg-yellow-500/15'
+                                  : 'border-gray-600 bg-white/5 hover:bg-white/10'
+                              }`}
+                              title={info.reactors.join(', ')}
+                            >
+                              <span>{emoji}</span>
+                              <span className="casino-text-secondary text-[10px]">{info.count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <span className="text-xs casino-text-secondary mt-1 px-1">
                         {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -487,6 +617,26 @@ const Chat = () => {
       <div className="casino-bg-secondary border-t casino-border px-4 py-3 flex-shrink-0" style={{ 
         zIndex: 55
       }}>
+        {/* Reply preview bar */}
+        {replyingTo && (
+          <div className="mb-2 flex items-center gap-2 p-2 rounded-lg border-l-2" style={{ backgroundColor: 'rgba(255,215,0,0.1)', borderColor: '#FFD700' }}>
+            <Reply className="w-4 h-4 flex-shrink-0" style={{ color: '#FFD700' }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold casino-text-primary">
+                {replyingTo.senderType === 'user' ? (user?.firstName || user?.username || 'You') : (replyingTo.name || 'Support')}
+              </p>
+              <p className="text-xs casino-text-secondary truncate">
+                {replyingTo.message ? decodeHtmlEntities(replyingTo.message) : '(Attachment)'}
+              </p>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              className="flex-shrink-0 casino-text-secondary hover:casino-text-primary transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         {attachment && (
           <div className="mb-2 flex items-center justify-between p-2 rounded-lg casino-bg-primary casino-border border">
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -522,6 +672,7 @@ const Chat = () => {
           />
           <div className="flex-1 relative">
             <textarea
+              ref={textareaRef}
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
@@ -530,7 +681,7 @@ const Chat = () => {
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
               }}
               onKeyPress={handleKeyPress}
-              placeholder="type here"
+              placeholder={replyingTo ? 'Type your reply...' : 'type here'}
               rows={1}
               className="input-casino w-full rounded-lg px-4 py-2.5 resize-none text-sm"
               style={{ minHeight: '44px', maxHeight: '120px' }}

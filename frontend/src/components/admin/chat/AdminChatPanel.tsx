@@ -15,7 +15,9 @@ import {
   ArrowLeft,
   Gift,
   ChevronUp,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Reply,
+  SmilePlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAttachmentUrl, isImageAttachment } from '../../../utils/api';
@@ -34,6 +36,18 @@ interface ChatMessage {
   updatedAt: string;
   name?: string;
   email?: string;
+  replyTo?: {
+    messageId: string;
+    message?: string;
+    senderName?: string;
+    senderType?: string;
+  };
+  reactions?: {
+    emoji: string;
+    reactorId: string;
+    reactorType: 'user' | 'admin';
+    reactorName?: string;
+  }[];
   metadata?: {
     type?: string;
     bonusId?: string;
@@ -43,6 +57,8 @@ interface ChatMessage {
     isSystemMessage?: boolean;
   };
 }
+
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
 interface ConversationSummary {
   userId: string;
@@ -77,11 +93,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [showConversations, setShowConversations] = useState(true);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [socketReconnecting, setSocketReconnecting] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const loadMoreButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedUserIdRef = useRef<string | null>(null);
   const playNotificationSoundRef = useRef<() => void>(() => {});
@@ -356,6 +375,33 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
+
+  const handleReply = useCallback((msg: ChatMessage) => {
+    setReplyingTo(msg);
+  }, []);
+
+  const scrollToMessage = useCallback((messageId: string) => {
+    const el = messageRefs.current[messageId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-indigo-400');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-indigo-400');
+      }, 2000);
+    }
+  }, []);
+
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!adminToken) return;
+    try {
+      await axios.post(`${apiBaseUrl}/admin/messages/${messageId}/reactions`, { emoji }, {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+    } catch {
+      toast.error('Failed to react');
+    }
+    setEmojiPickerMsgId(null);
+  }, [adminToken, apiBaseUrl]);
 
   useEffect(() => {
     scrollToBottom();
@@ -833,6 +879,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       );
     });
 
+    socket.on('chat:reaction:update', (data: { messageId: string; userId: string; reactions: ChatMessage['reactions'] }) => {
+      setConversationMessages((prev) => {
+        const msgs = prev[data.userId];
+        if (!msgs) return prev;
+        return { ...prev, [data.userId]: msgs.map((m) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m) };
+      });
+    });
+
     socketRef.current = socket;
 
     return () => {
@@ -856,6 +910,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
   const handleSelectConversation = (userId: string) => {
     setSelectedUserId(userId);
+    setReplyingTo(null);
     // Hide conversations sidebar on mobile when selecting a conversation
     // This ensures chat area takes full width on mobile
     setShowConversations(false);
@@ -893,6 +948,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       if (attachment) {
         formData.append('attachment', attachment);
       }
+      if (replyingTo) {
+        formData.append('replyToMessageId', replyingTo.id);
+      }
 
       await axios.post(`${apiBaseUrl}/admin/messages`, formData, {
         headers: {
@@ -904,6 +962,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       setMessageInput('');
       setAttachment(null);
       setAttachmentPreview(null);
+      setReplyingTo(null);
     } catch (error) {
       console.error('Failed to send admin message', error);
       toast.error('Failed to send message.');
@@ -1303,7 +1362,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                     // Special rendering for system messages (bonus claims, etc.)
                     if (isSystem) {
                       return (
-                        <div key={msg.id} className="flex justify-center my-4">
+                        <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="flex justify-center my-4">
                           <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-md bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
                             <div className="flex items-center gap-2 mb-2">
                               <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
@@ -1334,81 +1393,162 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                     }
                     
                     return (
-                      <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                          className={`max-w-[80%] sm:max-w-[70%] px-4 py-3 rounded-2xl shadow-sm ${
-                            isAdmin
-                              ? 'bg-indigo-600 text-white rounded-br-sm'
-                              : 'bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 text-xs mb-2 opacity-90 flex-wrap">
-                            <CircleDot className="w-3 h-3 flex-shrink-0" />
-                            <span className="font-medium truncate">
-                              {isAdmin ? (msg.name || 'Support Team') : (msg.name || 'User')}
-                            </span>
-                            <span>•</span>
-                            <span className="text-[11px]" title={formatFullTime(msg.createdAt)}>
-                              {formatTime(msg.createdAt)}
-                            </span>
+                      <div
+                        key={msg.id}
+                        ref={(el) => { messageRefs.current[msg.id] = el; }}
+                        className={`group flex ${isAdmin ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg`}
+                      >
+                        <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[80%] sm:max-w-[70%]`}>
+                          {/* Reply & React buttons */}
+                          <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
+                            <button
+                              onClick={() => handleReply(msg)}
+                              className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1"
+                              title="Reply"
+                            >
+                              <Reply className="w-3 h-3" />
+                              <span>Reply</span>
+                            </button>
+                            <div className="relative">
+                              <button
+                                onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                                className="text-xs text-gray-400 hover:text-indigo-600 flex items-center"
+                                title="React"
+                              >
+                                <SmilePlus className="w-3 h-3" />
+                              </button>
+                              {emojiPickerMsgId === msg.id && (
+                                <div className={`absolute ${isAdmin ? 'right-0' : 'left-0'} bottom-full mb-1 flex gap-1 px-2 py-1.5 rounded-full shadow-lg z-50 bg-white border border-gray-200`}>
+                                  {QUICK_EMOJIS.map((emoji) => (
+                                    <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-125 transition-transform px-0.5">
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          {msg.message && (
-                            <p className={`text-sm whitespace-pre-wrap break-words leading-relaxed ${
-                              isAdmin ? 'text-white' : 'text-gray-900'
-                            }`}>
-                              {decodeHtmlEntities(msg.message)}
-                            </p>
-                          )}
-                          {msg.attachmentUrl && (
-                            <div className="mt-3">
-                              {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
-                                <div className="space-y-2">
-                                  <div
-                                    onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
-                                    className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
-                                  >
-                                    <img
-                                      src={getAttachmentUrl(msg.attachmentUrl)}
-                                      alt={msg.attachmentName || 'Image attachment'}
-                                      className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
-                                      loading="lazy"
-                                    />
+                          <div
+                            className={`w-full px-4 py-3 rounded-2xl shadow-sm ${
+                              isAdmin
+                                ? 'bg-indigo-600 text-white rounded-br-sm'
+                                : 'bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
+                            }`}
+                          >
+                            {/* Quoted reply */}
+                            {msg.replyTo && (
+                              <div
+                                onClick={() => scrollToMessage(msg.replyTo!.messageId)}
+                                className="mb-2 px-3 py-2 rounded-lg cursor-pointer hover:opacity-80 transition-opacity border-l-2"
+                                style={isAdmin
+                                  ? { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.5)' }
+                                  : { backgroundColor: 'rgba(99,102,241,0.08)', borderColor: '#6366F1' }
+                                }
+                              >
+                                <p className="text-[11px] font-semibold mb-0.5" style={{ color: isAdmin ? 'rgba(255,255,255,0.9)' : '#6366F1' }}>
+                                  {msg.replyTo.senderName || (msg.replyTo.senderType === 'admin' ? 'Support Team' : 'User')}
+                                </p>
+                                <p className={`text-xs line-clamp-2 ${isAdmin ? 'text-indigo-100' : 'text-gray-500'}`}>
+                                  {msg.replyTo.message ? decodeHtmlEntities(msg.replyTo.message) : '(Attachment)'}
+                                </p>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 text-xs mb-2 opacity-90 flex-wrap">
+                              <CircleDot className="w-3 h-3 flex-shrink-0" />
+                              <span className="font-medium truncate">
+                                {isAdmin ? (msg.name || 'Support Team') : (msg.name || 'User')}
+                              </span>
+                              <span>•</span>
+                              <span className="text-[11px]" title={formatFullTime(msg.createdAt)}>
+                                {formatTime(msg.createdAt)}
+                              </span>
+                            </div>
+                            {msg.message && (
+                              <p className={`text-sm whitespace-pre-wrap break-words leading-relaxed ${
+                                isAdmin ? 'text-white' : 'text-gray-900'
+                              }`}>
+                                {decodeHtmlEntities(msg.message)}
+                              </p>
+                            )}
+                            {msg.attachmentUrl && (
+                              <div className="mt-3">
+                                {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
+                                  <div className="space-y-2">
+                                    <div
+                                      onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
+                                      className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
+                                    >
+                                      <img
+                                        src={getAttachmentUrl(msg.attachmentUrl)}
+                                        alt={msg.attachmentName || 'Image attachment'}
+                                        className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                    <a
+                                      href={getAttachmentUrl(msg.attachmentUrl)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      download={msg.attachmentName}
+                                      className={`inline-flex items-center gap-2 text-xs font-semibold underline transition ${
+                                        isAdmin ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
+                                      }`}
+                                    >
+                                      <ImageIcon className="w-3 h-3" />
+                                      <span>{msg.attachmentName || 'Download image'}</span>
+                                    </a>
                                   </div>
+                                ) : (
                                   <a
                                     href={getAttachmentUrl(msg.attachmentUrl)}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    download={msg.attachmentName}
                                     className={`inline-flex items-center gap-2 text-xs font-semibold underline transition ${
-                                      isAdmin ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
+                                      isAdmin ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
                                     }`}
                                   >
-                                    <ImageIcon className="w-3 h-3" />
-                                    <span>{msg.attachmentName || 'Download image'}</span>
+                                    <FileText className="w-4 h-4" />
+                                    <span>{msg.attachmentName || 'Download attachment'}</span>
                                   </a>
-                                </div>
-                              ) : (
-                                <a
-                                  href={getAttachmentUrl(msg.attachmentUrl)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`inline-flex items-center gap-2 text-xs font-semibold underline transition ${
-                                    isAdmin ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                                )}
+                              </div>
+                            )}
+                            <div
+                              className={`mt-2 text-[11px] capitalize ${
+                                isAdmin ? 'text-indigo-100' : 'text-gray-500'
+                              } flex items-center gap-2`}
+                            >
+                              <span>Status: {msg.status}</span>
+                            </div>
+                          </div>
+                          {/* Reactions display */}
+                          {msg.reactions && msg.reactions.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {Object.entries(
+                                msg.reactions.reduce<Record<string, { count: number; reactors: string[]; mine: boolean }>>((acc, r) => {
+                                  if (!acc[r.emoji]) acc[r.emoji] = { count: 0, reactors: [], mine: false };
+                                  acc[r.emoji].count++;
+                                  acc[r.emoji].reactors.push(r.reactorName || r.reactorType);
+                                  if (r.reactorType === 'admin') acc[r.emoji].mine = true;
+                                  return acc;
+                                }, {})
+                              ).map(([emoji, info]) => (
+                                <button
+                                  key={emoji}
+                                  onClick={() => toggleReaction(msg.id, emoji)}
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                                    info.mine
+                                      ? 'border-indigo-400 bg-indigo-50'
+                                      : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
                                   }`}
+                                  title={info.reactors.join(', ')}
                                 >
-                                  <FileText className="w-4 h-4" />
-                                  <span>{msg.attachmentName || 'Download attachment'}</span>
-                                </a>
-                              )}
+                                  <span className="text-xs">{emoji}</span>
+                                  <span className="text-[10px] text-gray-500">{info.count}</span>
+                                </button>
+                              ))}
                             </div>
                           )}
-                          <div
-                            className={`mt-2 text-[11px] capitalize ${
-                              isAdmin ? 'text-indigo-100' : 'text-gray-500'
-                            } flex items-center gap-2`}
-                          >
-                            <span>Status: {msg.status}</span>
-                          </div>
                         </div>
                       </div>
                     );
@@ -1419,6 +1559,26 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
             </div>
 
             <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
+              {/* Reply preview */}
+              {replyingTo && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl border-l-2 border-indigo-500">
+                  <Reply className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-indigo-700">
+                      Replying to {replyingTo.senderType === 'admin' ? (replyingTo.name || 'Support Team') : (replyingTo.name || 'User')}
+                    </p>
+                    <p className="text-xs text-indigo-500 truncate">
+                      {replyingTo.message ? decodeHtmlEntities(replyingTo.message) : '(Attachment)'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setReplyingTo(null)}
+                    className="text-indigo-400 hover:text-indigo-700 flex-shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               {attachment && (
                 <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-200">
                   {attachmentPreview ? (

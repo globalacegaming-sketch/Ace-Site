@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Image as ImageIcon, Download } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Image as ImageIcon, Download, Reply, SmilePlus } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
@@ -22,6 +22,18 @@ interface ChatMessage {
   updatedAt: string;
   name?: string;
   email?: string;
+  replyTo?: {
+    messageId: string;
+    message?: string;
+    senderName?: string;
+    senderType?: string;
+  };
+  reactions?: {
+    emoji: string;
+    reactorId: string;
+    reactorType: 'user' | 'admin';
+    reactorName?: string;
+  }[];
   metadata?: {
     type?: string;
     bonusId?: string;
@@ -31,6 +43,8 @@ interface ChatMessage {
     isSystemMessage?: boolean;
   };
 }
+
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
@@ -43,8 +57,11 @@ const UserChatWidget = () => {
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [isMobile, setIsMobile] = useState(false);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
 
@@ -176,6 +193,33 @@ const UserChatWidget = () => {
     return decoded;
   };
 
+  const handleReply = useCallback((msg: ChatMessage) => {
+    setReplyingTo(msg);
+  }, []);
+
+  const scrollToMessage = useCallback((messageId: string) => {
+    const el = messageRefs.current[messageId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-indigo-400');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-indigo-400');
+      }, 2000);
+    }
+  }, []);
+
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!token) return;
+    try {
+      await axios.post(`${API_BASE_URL}/chat/messages/${messageId}/reactions`, { emoji }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch {
+      toast.error('Failed to react');
+    }
+    setEmojiPickerMsgId(null);
+  }, [token, API_BASE_URL]);
+
   useEffect(() => {
     if (!isOpen) return;
     scrollToBottom();
@@ -226,6 +270,10 @@ const UserChatWidget = () => {
       setMessages((prev) =>
         prev.map((item) => (item.id === message.id ? { ...item, status: message.status } : item))
       );
+    });
+
+    socket.on('chat:reaction:update', (data: { messageId: string; reactions: ChatMessage['reactions'] }) => {
+      setMessages((prev) => prev.map((m) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
     });
 
     socketRef.current = socket;
@@ -368,6 +416,9 @@ const UserChatWidget = () => {
       if (attachment) {
         formData.append('attachment', attachment);
       }
+      if (replyingTo) {
+        formData.append('replyToMessageId', replyingTo.id);
+      }
 
       await axios.post(`${API_BASE_URL}/chat/messages`, formData, {
         headers: {
@@ -378,6 +429,7 @@ const UserChatWidget = () => {
 
       setInputValue('');
       setAttachment(null);
+      setReplyingTo(null);
       toast.success('Message sent');
     } catch (error: any) {
       console.error('Failed to send chat message', error);
@@ -485,74 +537,152 @@ const UserChatWidget = () => {
                   return (
                     <div
                       key={msg.id}
-                      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                      ref={(el) => { messageRefs.current[msg.id] = el; }}
+                      className={`group flex ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg`}
                     >
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
-                          isUser
-                            ? 'bg-indigo-600 text-white rounded-br-sm'
-                            : 'bg-white text-gray-900 border border-gray-100 rounded-bl-sm'
-                        }`}
-                      >
-                        <p className="text-xs font-semibold mb-1 opacity-90">
-                          {displayName}
-                        </p>
-                        {msg.message && (
-                          <p className="text-sm whitespace-pre-wrap break-words">
-                            {decodeHtmlEntities(msg.message)}
+                      <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                        {/* Reply & React buttons */}
+                        <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
+                          <button
+                            onClick={() => handleReply(msg)}
+                            className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1"
+                            title="Reply"
+                          >
+                            <Reply className="w-3 h-3" />
+                            <span>Reply</span>
+                          </button>
+                          <div className="relative">
+                            <button
+                              onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                              className="text-xs text-gray-400 hover:text-indigo-600 flex items-center"
+                              title="React"
+                            >
+                              <SmilePlus className="w-3 h-3" />
+                            </button>
+                            {emojiPickerMsgId === msg.id && (
+                              <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 flex gap-1 px-2 py-1.5 rounded-full shadow-lg z-50 bg-white border border-gray-200`}>
+                                {QUICK_EMOJIS.map((emoji) => (
+                                  <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-125 transition-transform px-0.5">
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div
+                          className={`rounded-2xl px-4 py-3 shadow-sm ${
+                            isUser
+                              ? 'bg-indigo-600 text-white rounded-br-sm'
+                              : 'bg-white text-gray-900 border border-gray-100 rounded-bl-sm'
+                          }`}
+                        >
+                          {/* Quoted reply */}
+                          {msg.replyTo && (
+                            <div
+                              onClick={() => scrollToMessage(msg.replyTo!.messageId)}
+                              className="mb-2 px-2.5 py-1.5 rounded-md cursor-pointer hover:opacity-80 transition-opacity border-l-2"
+                              style={isUser
+                                ? { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.5)' }
+                                : { backgroundColor: 'rgba(99,102,241,0.08)', borderColor: '#6366F1' }
+                              }
+                            >
+                              <p className="text-[10px] font-semibold mb-0.5" style={{ color: isUser ? 'rgba(255,255,255,0.9)' : '#6366F1' }}>
+                                {msg.replyTo.senderName || (msg.replyTo.senderType === 'user' ? 'You' : 'Support')}
+                              </p>
+                              <p className={`text-[11px] line-clamp-2 ${isUser ? 'text-indigo-100' : 'text-gray-500'}`}>
+                                {msg.replyTo.message ? decodeHtmlEntities(msg.replyTo.message) : '(Attachment)'}
+                              </p>
+                            </div>
+                          )}
+                          <p className="text-xs font-semibold mb-1 opacity-90">
+                            {displayName}
                           </p>
-                        )}
-                        {msg.attachmentUrl && (
-                          <div className="mt-3">
-                            {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
-                              <div className="space-y-2">
-                                <div
-                                  onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
-                                  className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
-                                >
-                                  <img
-                                    src={getAttachmentUrl(msg.attachmentUrl)}
-                                    alt={msg.attachmentName || 'Image attachment'}
-                                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
-                                    loading="lazy"
-                                  />
+                          {msg.message && (
+                            <p className="text-sm whitespace-pre-wrap break-words">
+                              {decodeHtmlEntities(msg.message)}
+                            </p>
+                          )}
+                          {msg.attachmentUrl && (
+                            <div className="mt-3">
+                              {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
+                                <div className="space-y-2">
+                                  <div
+                                    onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
+                                    className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
+                                  >
+                                    <img
+                                      src={getAttachmentUrl(msg.attachmentUrl)}
+                                      alt={msg.attachmentName || 'Image attachment'}
+                                      className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                  <a
+                                    href={getAttachmentUrl(msg.attachmentUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={msg.attachmentName}
+                                    className={`inline-flex items-center gap-2 text-xs font-medium underline ${
+                                      isUser ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
+                                    }`}
+                                  >
+                                    <ImageIcon className="w-3 h-3" />
+                                    <span>{msg.attachmentName || 'Download image'}</span>
+                                  </a>
                                 </div>
+                              ) : (
                                 <a
                                   href={getAttachmentUrl(msg.attachmentUrl)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  download={msg.attachmentName}
-                                  className={`inline-flex items-center gap-2 text-xs font-medium underline ${
-                                    isUser ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
+                                  className={`flex items-center gap-2 text-sm font-medium underline ${
+                                    isUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
                                   }`}
                                 >
-                                  <ImageIcon className="w-3 h-3" />
-                                  <span>{msg.attachmentName || 'Download image'}</span>
+                                  <FileText className="w-4 h-4" />
+                                  {msg.attachmentName || 'Download attachment'}
                                 </a>
-                              </div>
-                            ) : (
-                              <a
-                                href={getAttachmentUrl(msg.attachmentUrl)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`flex items-center gap-2 text-sm font-medium underline ${
-                                  isUser ? 'text-indigo-100 hover:text-white' : 'text-indigo-600 hover:text-indigo-700'
+                              )}
+                            </div>
+                          )}
+                          <div
+                            className={`mt-2 text-[11px] ${
+                              isUser ? 'text-indigo-100' : 'text-gray-500'
+                            } flex items-center justify-between gap-2`}
+                          >
+                            <span>{timestamp}</span>
+                            {!isUser && <span className="capitalize">{msg.status}</span>}
+                          </div>
+                        </div>
+                        {/* Reactions display */}
+                        {msg.reactions && msg.reactions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {Object.entries(
+                              msg.reactions.reduce<Record<string, { count: number; reactors: string[]; mine: boolean }>>((acc, r) => {
+                                if (!acc[r.emoji]) acc[r.emoji] = { count: 0, reactors: [], mine: false };
+                                acc[r.emoji].count++;
+                                acc[r.emoji].reactors.push(r.reactorName || r.reactorType);
+                                if (r.reactorId === user?._id && r.reactorType === 'user') acc[r.emoji].mine = true;
+                                return acc;
+                              }, {})
+                            ).map(([emoji, info]) => (
+                              <button
+                                key={emoji}
+                                onClick={() => toggleReaction(msg.id, emoji)}
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                                  info.mine
+                                    ? 'border-indigo-400 bg-indigo-50'
+                                    : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
                                 }`}
+                                title={info.reactors.join(', ')}
                               >
-                                <FileText className="w-4 h-4" />
-                                {msg.attachmentName || 'Download attachment'}
-                              </a>
-                            )}
+                                <span className="text-xs">{emoji}</span>
+                                <span className="text-[10px] text-gray-500">{info.count}</span>
+                              </button>
+                            ))}
                           </div>
                         )}
-                        <div
-                          className={`mt-2 text-[11px] ${
-                            isUser ? 'text-indigo-100' : 'text-gray-500'
-                          } flex items-center justify-between gap-2`}
-                        >
-                          <span>{timestamp}</span>
-                          {!isUser && <span className="capitalize">{msg.status}</span>}
-                        </div>
                       </div>
                     </div>
                   );
@@ -563,6 +693,28 @@ const UserChatWidget = () => {
           </div>
 
           <div className="border-t border-gray-200 bg-white p-4 space-y-3">
+            {/* Reply preview */}
+            {replyingTo && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl border-l-2 border-indigo-500">
+                <Reply className="w-4 h-4 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold">
+                    {replyingTo.senderType === 'user'
+                      ? (user?.firstName || user?.username || 'You')
+                      : (replyingTo.name || 'Support')}
+                  </p>
+                  <p className="text-xs text-indigo-500 truncate">
+                    {replyingTo.message ? decodeHtmlEntities(replyingTo.message) : '(Attachment)'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  className="text-indigo-400 hover:text-indigo-700 flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             {attachment && (
               <div className="flex items-center justify-between text-sm px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl">
                 <div className="flex items-center gap-2">

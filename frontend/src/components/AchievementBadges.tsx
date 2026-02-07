@@ -88,7 +88,6 @@ export default function AchievementBadges() {
       <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-3 sm:gap-4">
         {ALL_BADGES.map((badge) => {
           const isEarned = earnedIds.has(badge.id);
-          const earnedData = earned.find((a) => a.id === badge.id);
           const IconComponent = ICON_MAP[badge.icon] || Award;
           const isSelected = selectedBadge === badge.id;
 
