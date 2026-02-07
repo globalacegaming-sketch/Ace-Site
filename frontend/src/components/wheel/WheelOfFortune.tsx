@@ -1,18 +1,18 @@
 'use client';
 
 // ============================================
-// COSMIC SPINNER - WHEEL COMPONENT (v2)
+// CASINO WHEEL OF FORTUNE (v3 — Visual Overhaul)
 // ============================================
-// Key fixes over v1:
-// - Wheel spins IMMEDIATELY on click (no dead time waiting for API)
-// - Server picks the winner (security fix)
-// - Single API call instead of two
-// - Quintic ease-out: no overshoot, no jumps
-// - useRef for animation angle: ~300 fewer re-renders per spin
-// - Font preloaded in index.html (no @import flicker)
+// Casino-grade visual redesign with:
+//   - Glossy segments with rich radial gradients
+//   - Golden bulb ring with chase animation
+//   - Red casino stage/podium with multi-tier base
+//   - Spotlight beams and floating sparkle particles
+//   - Warm golden pointer (SVG)
+// Business logic UNCHANGED from v2.
 // ============================================
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { X, LogIn } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -108,6 +108,10 @@ const defaultAnimState = (): AnimState => ({
   isError: false,
 });
 
+// ── Visual constants ─────────────────────────────────────────────────────────
+
+const NUM_BULBS = 30;
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 interface WheelProps {
@@ -175,10 +179,26 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       .catch(e => console.error('Failed to load wheel config:', e));
   }, [API_BASE_URL, isAdminOrAgentPage, isAuthPage]);
 
-  // ── Canvas geometry ──
+  // ── Canvas geometry (casino frame layout) ──
   const centerX = size / 2;
   const centerY = size / 2;
-  const radius = size / 2 - 10;
+  const frameWidth = Math.max(14, size * 0.058);
+  const outerR = size / 2 - 2;
+  const wheelR = outerR - frameWidth;
+  const bulbRingR = (outerR + wheelR) / 2;
+  const bulbDotR = Math.max(2.5, frameWidth * 0.2);
+  const centerHubR = Math.max(18, size / 9.5);
+
+  // ── Sparkle particles (memoized) ──
+  const particles = useMemo(() =>
+    Array.from({ length: 20 }, (_, i) => ({
+      id: i,
+      left: 12 + Math.random() * 76,
+      delay: Math.random() * 6,
+      duration: 2.5 + Math.random() * 4,
+      size: 1.5 + Math.random() * 3,
+    })), []
+  );
 
   // ── Which segment index is under the pointer at 12-o'clock ──
   const getIndex = useCallback((angle: number): number => {
@@ -197,7 +217,10 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
     return `rgb(${r}, ${g}, ${b})`;
   }, []);
 
-  // ── Draw the wheel on canvas ──
+  // ══════════════════════════════════════════════════════════════════════════
+  // DRAW WHEEL — Casino-grade canvas rendering
+  // ══════════════════════════════════════════════════════════════════════════
+
   const drawWheel = useCallback(
     (angle: number, spinning: boolean, centerLabel?: string | null, centerColor?: string | null) => {
       const canvas = canvasRef.current;
@@ -208,110 +231,245 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       ctx.clearRect(0, 0, size, size);
       const normalizedAngle = ((angle % TAU) + TAU) % TAU;
       const segmentAngle = TAU / SEGMENTS.length;
-      const glowIntensity = spinning ? 25 : 15;
-      const borderGlow = spinning ? 12 : 8;
+      const now = Date.now();
 
-      // Draw segments
+      // ──── LAYER 1: Outer decorative frame (dark mahogany ring) ────
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, outerR, 0, TAU);
+      ctx.arc(centerX, centerY, wheelR + 1, 0, TAU, true);
+      const frameGrad = ctx.createRadialGradient(centerX, centerY, wheelR, centerX, centerY, outerR);
+      frameGrad.addColorStop(0, '#6B1515');
+      frameGrad.addColorStop(0.3, '#8B2222');
+      frameGrad.addColorStop(0.7, '#7A1A1A');
+      frameGrad.addColorStop(1, '#4A0A0A');
+      ctx.fillStyle = frameGrad;
+      ctx.fill();
+      ctx.restore();
+
+      // Gold trim outer edge
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, outerR, 0, TAU);
+      ctx.strokeStyle = '#DAA520';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Gold trim inner edge
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, wheelR + 1, 0, TAU);
+      ctx.strokeStyle = '#B8860B';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // ──── LAYER 2: Light bulbs with chase animation ────
+
+      for (let i = 0; i < NUM_BULBS; i++) {
+        const bAngle = (i / NUM_BULBS) * TAU - Math.PI / 2;
+        const bx = centerX + Math.cos(bAngle) * bulbRingR;
+        const by = centerY + Math.sin(bAngle) * bulbRingR;
+
+        // Chase: groups of 3, cycling at different speeds for spin vs idle
+        const group = i % 3;
+        const phase = spinning
+          ? Math.floor(now / 100) % 3
+          : Math.floor(now / 700) % 3;
+        const isLit = spinning ? group === phase : true;
+        const alpha = spinning ? (isLit ? 1.0 : 0.25) : 0.85;
+
+        // Warm glow halo (lit bulbs only)
+        if (isLit) {
+          ctx.beginPath();
+          ctx.arc(bx, by, bulbDotR * (spinning ? 3.5 : 2.5), 0, TAU);
+          const glowG = ctx.createRadialGradient(bx, by, 0, bx, by, bulbDotR * (spinning ? 3.5 : 2.5));
+          glowG.addColorStop(0, spinning ? 'rgba(255,220,80,0.7)' : 'rgba(255,200,50,0.4)');
+          glowG.addColorStop(1, 'rgba(255,165,0,0)');
+          ctx.fillStyle = glowG;
+          ctx.fill();
+        }
+
+        // Bulb body
+        ctx.beginPath();
+        ctx.arc(bx, by, bulbDotR, 0, TAU);
+        const bGrad = ctx.createRadialGradient(
+          bx - bulbDotR * 0.25, by - bulbDotR * 0.25, 0,
+          bx, by, bulbDotR
+        );
+        bGrad.addColorStop(0, `rgba(255,255,230,${alpha})`);
+        bGrad.addColorStop(0.4, `rgba(255,215,0,${alpha})`);
+        bGrad.addColorStop(1, `rgba(200,140,0,${alpha * 0.7})`);
+        ctx.fillStyle = bGrad;
+        ctx.fill();
+      }
+
+      // ──── LAYER 3: Wheel segments ────
+
       SEGMENTS.forEach((segment, i) => {
         const startA = normalizedAngle + i * segmentAngle;
         const endA = startA + segmentAngle;
 
+        // ── Segment fill with rich radial gradient ──
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, radius, startA, endA);
+        ctx.arc(centerX, centerY, wheelR - 1, startA, endA);
         ctx.closePath();
 
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-        gradient.addColorStop(0, adjustColor(segment.color, spinning ? 60 : 40));
-        gradient.addColorStop(0.6, segment.color);
-        gradient.addColorStop(1, adjustColor(segment.color, -40));
-        ctx.fillStyle = gradient;
+        const grad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, wheelR);
+        grad.addColorStop(0, adjustColor(segment.color, 75));
+        grad.addColorStop(0.25, adjustColor(segment.color, 45));
+        grad.addColorStop(0.65, segment.color);
+        grad.addColorStop(1, adjustColor(segment.color, -55));
+        ctx.fillStyle = grad;
         ctx.fill();
 
-        ctx.strokeStyle = spinning ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.4)';
-        ctx.lineWidth = spinning ? 3 : 2;
-        ctx.shadowColor = segment.color;
-        ctx.shadowBlur = borderGlow;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
+        // ── Glossy highlight overlay ──
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, wheelR - 1, startA, endA);
+        ctx.closePath();
+        ctx.clip();
 
-        // Slice text
+        const midA = startA + segmentAngle / 2;
+        const hlX = centerX + Math.cos(midA) * wheelR * 0.35;
+        const hlY = centerY + Math.sin(midA) * wheelR * 0.35;
+        const glossG = ctx.createRadialGradient(hlX, hlY, 0, hlX, hlY, wheelR * 0.55);
+        glossG.addColorStop(0, 'rgba(255,255,255,0.22)');
+        glossG.addColorStop(0.35, 'rgba(255,255,255,0.06)');
+        glossG.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glossG;
+        ctx.fill();
+        ctx.restore();
+
+        // ── Gold divider line ──
+        ctx.beginPath();
+        ctx.moveTo(
+          centerX + Math.cos(startA) * (centerHubR + 4),
+          centerY + Math.sin(startA) * (centerHubR + 4)
+        );
+        ctx.lineTo(
+          centerX + Math.cos(startA) * (wheelR - 1),
+          centerY + Math.sin(startA) * (wheelR - 1)
+        );
+        ctx.strokeStyle = 'rgba(255,215,0,0.65)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // ── Prize text ──
         const sliceText =
           'wheelLabel' in segment && (segment as { wheelLabel?: string }).wheelLabel != null
             ? (segment as { wheelLabel: string }).wheelLabel
             : segment.label;
-        const baseFontSize = Math.max(11, Math.round(size / 22));
-        const fontSize = sliceText.length > 10 ? Math.max(9, Math.round(size / 26)) : baseFontSize;
+        const baseFontSize = Math.max(10, Math.round(size / 26));
+        const fontSize = sliceText.length > 10 ? Math.max(8, Math.round(size / 31)) : baseFontSize;
+
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(startA + segmentAngle / 2);
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${fontSize}px 'Orbitron', monospace`;
-        ctx.shadowColor = spinning ? segment.color : 'rgba(0, 0, 0, 0.8)';
-        ctx.shadowBlur = spinning ? 8 : 4;
-        ctx.shadowOffsetX = 1;
-        ctx.shadowOffsetY = 1;
-        ctx.fillText(sliceText, radius - Math.max(8, size / 28), 0);
+
+        // Text drop shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.font = `bold ${fontSize}px 'Orbitron', sans-serif`;
+        ctx.fillText(sliceText, wheelR - Math.max(8, size / 22) + 1, 1);
+
+        // Main text
+        ctx.fillStyle = '#FFFFFF';
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = spinning ? 6 : 3;
+        ctx.fillText(sliceText, wheelR - Math.max(8, size / 22), 0);
+        ctx.shadowBlur = 0;
         ctx.restore();
       });
 
-      // Outer glow ring
+      // ──── LAYER 4: Inner shadow ring (depth illusion) ────
+
       ctx.beginPath();
-      ctx.arc(centerX, centerY, radius + 3, 0, TAU);
-      ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = spinning ? 4 : 3;
-      ctx.shadowColor = '#00ffff';
-      ctx.shadowBlur = glowIntensity;
+      ctx.arc(centerX, centerY, wheelR - 1, 0, TAU);
+      const innerShadow = ctx.createRadialGradient(centerX, centerY, wheelR * 0.82, centerX, centerY, wheelR);
+      innerShadow.addColorStop(0, 'rgba(0,0,0,0)');
+      innerShadow.addColorStop(1, 'rgba(0,0,0,0.22)');
+      ctx.fillStyle = innerShadow;
+      ctx.fill();
+
+      // Gold rim around segments
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, wheelR - 1, 0, TAU);
+      ctx.strokeStyle = '#B8860B';
+      ctx.lineWidth = 2.5;
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      // Additional neon ring when spinning
-      if (spinning) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius + 8, 0, TAU);
-        ctx.strokeStyle = '#ff00ff';
-        ctx.lineWidth = 2;
-        ctx.shadowColor = '#ff00ff';
-        ctx.shadowBlur = 20;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
+      // ──── LAYER 5: Center hub ────
 
-      // Center circle
-      const centerRad = size / 12;
+      // Hub outer trim ring (gold)
       ctx.beginPath();
-      ctx.arc(centerX, centerY, centerRad, 0, TAU);
-      if (centerColor) {
-        ctx.fillStyle = centerColor;
-        ctx.shadowColor = centerColor;
-      } else {
-        const cg = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, centerRad);
-        cg.addColorStop(0, '#FF1493');
-        cg.addColorStop(0.5, '#FF69B4');
-        cg.addColorStop(1, '#DA70D6');
-        ctx.fillStyle = cg;
-        ctx.shadowColor = '#FF1493';
-      }
-      ctx.shadowBlur = 20;
+      ctx.arc(centerX, centerY, centerHubR + 5, 0, TAU);
+      const hubTrimG = ctx.createRadialGradient(centerX, centerY, centerHubR, centerX, centerY, centerHubR + 5);
+      hubTrimG.addColorStop(0, '#FFD700');
+      hubTrimG.addColorStop(0.5, '#DAA520');
+      hubTrimG.addColorStop(1, '#8B6914');
+      ctx.fillStyle = hubTrimG;
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 8;
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 3;
+
+      // Hub body
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, centerHubR, 0, TAU);
+      if (centerColor) {
+        const cg = ctx.createRadialGradient(
+          centerX - centerHubR * 0.2, centerY - centerHubR * 0.2, 0,
+          centerX, centerY, centerHubR
+        );
+        cg.addColorStop(0, adjustColor(centerColor, 80));
+        cg.addColorStop(0.5, centerColor);
+        cg.addColorStop(1, adjustColor(centerColor, -50));
+        ctx.fillStyle = cg;
+      } else {
+        const cg = ctx.createRadialGradient(
+          centerX - centerHubR * 0.2, centerY - centerHubR * 0.2, 0,
+          centerX, centerY, centerHubR
+        );
+        cg.addColorStop(0, '#FFF8DC');
+        cg.addColorStop(0.2, '#FFD700');
+        cg.addColorStop(0.6, '#DAA520');
+        cg.addColorStop(1, '#8B6914');
+        ctx.fillStyle = cg;
+      }
+      ctx.fill();
+
+      // Hub highlight ring
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
 
+      // Hub specular highlight (tiny bright spot top-left)
+      ctx.beginPath();
+      ctx.arc(centerX - centerHubR * 0.25, centerY - centerHubR * 0.25, centerHubR * 0.3, 0, TAU);
+      const specG = ctx.createRadialGradient(
+        centerX - centerHubR * 0.25, centerY - centerHubR * 0.25, 0,
+        centerX - centerHubR * 0.25, centerY - centerHubR * 0.25, centerHubR * 0.3
+      );
+      specG.addColorStop(0, 'rgba(255,255,255,0.35)');
+      specG.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = specG;
+      ctx.fill();
+
+      // Hub text
       const text = centerLabel != null && centerLabel !== '' ? centerLabel : 'SPIN';
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${Math.max(12, Math.round(size / 18))}px sans-serif`;
+      const hubFontSize = Math.max(9, Math.round(centerHubR * 0.62));
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `bold ${hubFontSize}px 'Orbitron', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
       ctx.shadowBlur = 4;
       ctx.fillText(text, centerX, centerY);
       ctx.shadowBlur = 0;
     },
-    [size, centerX, centerY, radius, adjustColor]
+    [size, centerX, centerY, wheelR, outerR, bulbRingR, bulbDotR, centerHubR, adjustColor]
   );
 
   // ── Calculate target angle for a given segment index ──
@@ -542,9 +700,13 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
     return null;
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════════════════════
+
   return (
     <>
-      {/* Floating Button */}
+      {/* ─── Floating Button ─── */}
       <div className="fixed z-[100] top-1/2 -translate-y-[calc(50%-2px)] right-4 sm:right-6">
         <button
           onClick={() => setIsOpen(true)}
@@ -555,13 +717,12 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         </button>
       </div>
 
-      {/* Wheel Modal */}
+      {/* ─── Wheel Modal ─── */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 overflow-y-auto overscroll-contain"
+          className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto overscroll-contain"
           style={{
-            background:
-              'radial-gradient(circle at center, rgba(0, 20, 40, 0.95) 0%, rgba(0, 0, 0, 0.98) 100%)',
+            background: 'rgba(0, 0, 0, 0.85)',
             paddingTop: 'max(1rem, env(safe-area-inset-top))',
             paddingBottom: 'max(5rem, calc(4rem + env(safe-area-inset-bottom)))',
           }}
@@ -573,12 +734,62 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
             }
           }}
         >
+          {/* ── Spotlight beams ── */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div
+              className="casino-spotlight-left"
+              style={{
+                position: 'absolute',
+                top: '-15%',
+                left: '-5%',
+                width: '50%',
+                height: '130%',
+                background: 'linear-gradient(155deg, rgba(255,255,200,0.10) 0%, rgba(255,255,200,0.03) 30%, transparent 55%)',
+                transform: 'rotate(-2deg)',
+                filter: 'blur(25px)',
+              }}
+            />
+            <div
+              className="casino-spotlight-right"
+              style={{
+                position: 'absolute',
+                top: '-15%',
+                right: '-5%',
+                width: '50%',
+                height: '130%',
+                background: 'linear-gradient(205deg, rgba(255,255,200,0.10) 0%, rgba(255,255,200,0.03) 30%, transparent 55%)',
+                transform: 'rotate(2deg)',
+                filter: 'blur(25px)',
+              }}
+            />
+          </div>
+
+          {/* ── Sparkle particles ── */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            {particles.map(p => (
+              <div
+                key={p.id}
+                className="absolute rounded-full"
+                style={{
+                  left: `${p.left}%`,
+                  bottom: '8%',
+                  width: p.size,
+                  height: p.size,
+                  background: 'radial-gradient(circle, #FFD700, #FF8C00)',
+                  opacity: 0,
+                  animation: `sparkleFloat ${p.duration}s ${p.delay}s ease-in-out infinite`,
+                  boxShadow: '0 0 3px 1px rgba(255,215,0,0.5)',
+                }}
+              />
+            ))}
+          </div>
+
+          {/* ── Main content wrapper ── */}
           <div
-            className="relative flex-shrink-0 flex flex-col items-center -translate-y-10 sm:translate-y-0"
-            style={{ width: size }}
+            className="relative flex-shrink-0 flex flex-col items-center"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Wheel and overlay elements */}
+            {/* Wheel container */}
             <div
               className="relative"
               style={{ width: size, height: size, minWidth: size, minHeight: size }}
@@ -590,56 +801,67 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                   setIsOpen(false);
                   setShowLoginModal(false);
                 }}
-                className="absolute -top-10 sm:-top-12 right-0 sm:right-0 text-white hover:text-gray-300 active:text-gray-400 transition-colors z-10 p-3 sm:p-2 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center touch-manipulation"
+                className="absolute -top-10 sm:-top-12 right-0 text-white/70 hover:text-white active:text-gray-400 transition-colors z-10 p-3 sm:p-2 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center touch-manipulation"
                 aria-label="Close"
               >
                 <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
 
-              {/* Glow effect behind wheel */}
+              {/* Warm radial glow behind wheel */}
               <div
-                className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-300 ${
-                  isSpinning ? 'animate-pulse' : 'opacity-50'
-                }`}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
                 style={{
-                  width: isSpinning ? size + 80 : size + 40,
-                  height: isSpinning ? size + 80 : size + 40,
+                  width: size * 1.35,
+                  height: size * 1.35,
                   background: isSpinning
-                    ? 'radial-gradient(circle, rgba(0, 255, 255, 0.6) 0%, rgba(255, 0, 255, 0.4) 30%, transparent 70%)'
-                    : 'radial-gradient(circle, rgba(0, 255, 255, 0.3) 0%, transparent 70%)',
-                  filter: 'blur(20px)',
-                  animation: isSpinning ? 'neonPulse 1s ease-in-out infinite' : 'none',
+                    ? 'radial-gradient(circle, rgba(255,180,30,0.30) 0%, rgba(200,50,0,0.18) 35%, transparent 68%)'
+                    : 'radial-gradient(circle, rgba(255,180,30,0.14) 0%, rgba(200,50,0,0.08) 35%, transparent 68%)',
+                  filter: 'blur(18px)',
+                  transition: 'all 0.6s ease',
+                  animation: isSpinning ? 'casinoGlow 1.5s ease-in-out infinite' : 'none',
                 }}
               />
 
-              {/* Pointer at top */}
+              {/* Golden pointer (SVG) */}
               <div
                 className="absolute left-1/2 z-10 pointer-events-none"
-                style={{
-                  top: size < 380 ? -10 : -14,
-                  transform: 'translateX(-50%)',
-                  width: 0,
-                  height: 0,
-                  borderLeft: size < 380 ? '9px solid transparent' : '12px solid transparent',
-                  borderRight: size < 380 ? '9px solid transparent' : '12px solid transparent',
-                  borderBottom: 'none',
-                  borderTop: size < 380 ? '18px solid #ffd700' : '24px solid #ffd700',
-                  filter: 'drop-shadow(0 0 8px #ffd700)',
-                }}
-                aria-hidden
-              />
+                style={{ top: -4, transform: 'translateX(-50%)' }}
+              >
+                <svg
+                  width={size < 380 ? 26 : 34}
+                  height={size < 380 ? 34 : 44}
+                  viewBox="0 0 34 44"
+                  style={{ filter: 'drop-shadow(0 0 6px rgba(255,215,0,0.8)) drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }}
+                >
+                  <defs>
+                    <linearGradient id="ptrGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FFF8DC" />
+                      <stop offset="30%" stopColor="#FFD700" />
+                      <stop offset="70%" stopColor="#DAA520" />
+                      <stop offset="100%" stopColor="#8B6914" />
+                    </linearGradient>
+                  </defs>
+                  <polygon
+                    points="17,44 2,6 17,14 32,6"
+                    fill="url(#ptrGrad)"
+                    stroke="#B8860B"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
 
               {/* Canvas */}
               <canvas
                 ref={canvasRef}
                 width={size}
                 height={size}
-                className="relative z-[1] cursor-pointer transition-all duration-300 touch-manipulation"
+                className="relative z-[1] cursor-pointer touch-manipulation"
                 style={{
                   filter: isSpinning
-                    ? 'drop-shadow(0 0 40px rgba(0, 255, 255, 0.8)) drop-shadow(0 0 60px rgba(255, 0, 255, 0.6))'
-                    : 'drop-shadow(0 0 20px rgba(0, 255, 255, 0.5))',
-                  transform: isSpinning ? 'scale(1.02)' : 'scale(1)',
+                    ? 'drop-shadow(0 0 25px rgba(255,170,0,0.5)) drop-shadow(0 0 50px rgba(180,20,0,0.35))'
+                    : 'drop-shadow(0 0 12px rgba(255,170,0,0.25))',
+                  transition: 'filter 0.6s ease',
                 }}
                 onClick={handleSpinClick}
               />
@@ -647,18 +869,18 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
               {/* Login Modal */}
               {showLoginModal && (
                 <div className="absolute inset-0 bg-black bg-opacity-90 rounded-full flex items-center justify-center z-30 p-3 sm:p-4">
-                  <div className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl p-5 sm:p-8 text-center max-w-xs w-full mx-2 sm:mx-4">
+                  <div className="bg-gradient-to-br from-red-900 to-red-700 rounded-2xl p-5 sm:p-8 text-center max-w-xs w-full mx-2 sm:mx-4 border border-yellow-600/30">
                     <div className="text-4xl sm:text-5xl mb-3 sm:mb-4">🔒</div>
                     <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">
                       Sign In Required
                     </h3>
-                    <p className="text-white text-sm sm:text-base mb-4 sm:mb-6">
+                    <p className="text-white/90 text-sm sm:text-base mb-4 sm:mb-6">
                       Please sign in to spin the wheel!
                     </p>
                     <div className="flex gap-3 sm:gap-4 flex-col sm:flex-row">
                       <button
                         onClick={() => setShowLoginModal(false)}
-                        className="flex-1 min-h-[44px] px-4 py-3 sm:py-2 bg-gray-600 text-white font-semibold rounded-full hover:bg-gray-700 active:bg-gray-800 transition-colors touch-manipulation"
+                        className="flex-1 min-h-[44px] px-4 py-3 sm:py-2 bg-gray-700 text-white font-semibold rounded-full hover:bg-gray-600 active:bg-gray-800 transition-colors touch-manipulation"
                       >
                         Cancel
                       </button>
@@ -668,7 +890,11 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                           setShowLoginModal(false);
                           navigate('/login');
                         }}
-                        className="flex-1 min-h-[44px] px-4 py-3 sm:py-2 bg-indigo-600 text-white font-semibold rounded-full hover:bg-indigo-700 active:bg-indigo-800 transition-colors flex items-center justify-center gap-2 touch-manipulation"
+                        className="flex-1 min-h-[44px] px-4 py-3 sm:py-2 font-semibold rounded-full transition-colors flex items-center justify-center gap-2 touch-manipulation text-black"
+                        style={{
+                          background: 'linear-gradient(135deg, #FFD700, #FFA000)',
+                          boxShadow: '0 0 12px rgba(255,215,0,0.3)',
+                        }}
                       >
                         <LogIn className="w-4 h-4" />
                         Sign In
@@ -678,9 +904,10 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                 </div>
               )}
             </div>
+
           </div>
 
-          {/* Result card */}
+          {/* ─── Result card ─── */}
           {showResult &&
             lastResult &&
             (() => {
@@ -690,17 +917,18 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                   : SEGMENTS.find((s) => s.type === lastResult.rewardType) || SEGMENTS[0];
               return (
                 <div
-                  className="fixed z-[60] max-w-[280px] sm:max-w-sm mx-auto rounded-xl sm:rounded-2xl px-3 py-2.5 sm:p-6 text-center border border-[#2C2C3A]"
+                  className="fixed z-[60] max-w-[280px] sm:max-w-sm mx-auto rounded-xl sm:rounded-2xl px-3 py-2.5 sm:p-6 text-center"
                   style={{
                     bottom: 'max(7rem, calc(6rem + env(safe-area-inset-bottom)))',
                     left: 'max(1rem, env(safe-area-inset-left))',
                     right: 'max(1rem, env(safe-area-inset-right))',
                     marginLeft: 'auto',
                     marginRight: 'auto',
-                    background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
+                    background: 'linear-gradient(135deg, #4A0000 0%, #8B0000 50%, #4A0000 100%)',
+                    border: '1px solid rgba(255,215,0,0.3)',
                     boxShadow:
-                      '0 0 30px rgba(106, 27, 154, 0.4), 0 0 20px rgba(0, 176, 255, 0.25), 0 4px 20px rgba(0,0,0,0.3)',
-                    animation: 'neonFlicker 0.5s ease-in-out',
+                      '0 0 30px rgba(139,0,0,0.5), 0 0 15px rgba(255,215,0,0.15), 0 4px 20px rgba(0,0,0,0.4)',
+                    animation: 'resultAppear 0.4s ease-out',
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -732,7 +960,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                   <div className="flex gap-2 sm:gap-3 justify-center flex-wrap">
                     <button
                       onClick={() => stopAndReset()}
-                      className="min-h-[40px] sm:min-h-[44px] px-3 py-2 sm:px-5 sm:py-2.5 bg-white/95 text-[#0A0A0F] font-bold text-sm sm:text-base rounded-full hover:scale-105 active:scale-95 transition-transform touch-manipulation"
+                      className="min-h-[40px] sm:min-h-[44px] px-3 py-2 sm:px-5 sm:py-2.5 bg-white/90 text-[#0A0A0F] font-bold text-sm sm:text-base rounded-full hover:scale-105 active:scale-95 transition-transform touch-manipulation"
                     >
                       Close
                     </button>
@@ -746,7 +974,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                       style={{
                         background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
                         color: '#0A0A0F',
-                        boxShadow: '0 0 15px rgba(255, 215, 0, 0.3)',
+                        boxShadow: '0 0 15px rgba(255,215,0,0.3)',
                       }}
                     >
                       Spin Again
@@ -758,27 +986,31 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         </div>
       )}
 
+      {/* ─── Keyframe animations ─── */}
       <style>{`
+        @keyframes sparkleFloat {
+          0%   { transform: translateY(0) scale(0); opacity: 0; }
+          12%  { transform: translateY(-15px) scale(1); opacity: 0.75; }
+          85%  { opacity: 0.5; }
+          100% { transform: translateY(-220px) scale(0.3); opacity: 0; }
+        }
+        @keyframes casinoGlow {
+          0%, 100% {
+            opacity: 0.7;
+            transform: translate(-50%, -50%) scale(1);
+          }
+          50% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.06);
+          }
+        }
+        @keyframes resultAppear {
+          0%   { transform: translateY(20px) scale(0.92); opacity: 0; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
         @keyframes neonFlicker {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.8; }
-        }
-        @keyframes neonPulse {
-          0%, 100% { 
-            opacity: 0.6;
-            transform: translate(-50%, -50%) scale(1);
-          }
-          50% { 
-            opacity: 0.9;
-            transform: translate(-50%, -50%) scale(1.1);
-          }
-        }
-        @keyframes neonSpin {
-          0% { filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.5)); }
-          25% { filter: drop-shadow(0 0 40px rgba(255, 0, 255, 0.8)); }
-          50% { filter: drop-shadow(0 0 30px rgba(0, 255, 255, 0.9)); }
-          75% { filter: drop-shadow(0 0 50px rgba(255, 255, 0, 0.7)); }
-          100% { filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.5)); }
         }
       `}</style>
     </>

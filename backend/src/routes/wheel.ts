@@ -90,14 +90,10 @@ async function sendRewardToChat(
 // ── GET /config — public (check if enabled + serve segment data) ────────────
 router.get('/config', async (req: Request, res: Response) => {
   try {
-    // Try new campaign system first
+    // Campaign status is the single source of truth for visibility.
+    // Dates are informational only — the toggle (status field) controls show/hide.
     const campaign = await WheelCampaign.findOne({ status: 'live' });
     if (campaign) {
-      const now = new Date();
-      if ((campaign.startDate && now < campaign.startDate) ||
-          (campaign.endDate && now > campaign.endDate)) {
-        return res.json({ success: true, data: { isEnabled: false } });
-      }
       return res.json({
         success: true,
         data: {

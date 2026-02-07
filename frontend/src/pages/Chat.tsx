@@ -318,13 +318,12 @@ const Chat = () => {
   return (
     <div className="flex flex-col overflow-hidden" style={{ 
       background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-      height: isMobile ? 'calc(100vh - 80px - 64px)' : 'calc(100vh - 80px)',
       width: '100%',
       position: 'absolute',
       top: '50px',
       left: 0,
       right: 0,
-      bottom: isMobile ? '64px' : '0'
+      bottom: isMobile ? 'calc(56px + env(safe-area-inset-bottom, 0px))' : '0'
     }}>
       {/* Decorative glowing orbs - static to prevent blinking */}
       <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
@@ -348,9 +347,7 @@ const Chat = () => {
       </div>
 
       {/* Scrollable Messages Container */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 relative" style={{ 
-        paddingBottom: isMobile ? '140px' : '0'
-      }}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 relative min-h-0">
         <div className="max-w-4xl mx-auto space-y-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
@@ -387,7 +384,7 @@ const Chat = () => {
                         </span>
                       </div>
                     )}
-                    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%] min-w-0`}>
                       <div
                         className={`rounded-2xl px-4 py-2 ${
                           isUser
@@ -413,7 +410,7 @@ const Chat = () => {
                           </span>
                         )}
                         {message.message && (
-                          <p className={`text-sm whitespace-pre-wrap break-words ${isUser ? 'text-[#0A0A0F]' : 'casino-text-primary'}`}>
+                          <p className={`text-sm whitespace-pre-wrap break-words ${isUser ? 'text-[#0A0A0F]' : 'casino-text-primary'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                             {decodeHtmlEntities(message.message)}
                           </p>
                         )}
@@ -486,16 +483,9 @@ const Chat = () => {
         </div>
       </div>
 
-      {/* Fixed Input Area at Bottom - Positioned directly above mobile nav with no gap */}
+      {/* Input Area at Bottom — stays in flex flow, no position:fixed needed */}
       <div className="casino-bg-secondary border-t casino-border px-4 py-3 flex-shrink-0" style={{ 
-        zIndex: 55,
-        position: isMobile ? 'fixed' : 'relative',
-        bottom: isMobile ? '64px' : 'auto',
-        left: isMobile ? '0' : 'auto',
-        right: isMobile ? '0' : 'auto',
-        width: isMobile ? '100%' : 'auto',
-        marginBottom: '0',
-        borderBottom: isMobile ? 'none' : undefined
+        zIndex: 55
       }}>
         {attachment && (
           <div className="mb-2 flex items-center justify-between p-2 rounded-lg casino-bg-primary casino-border border">
