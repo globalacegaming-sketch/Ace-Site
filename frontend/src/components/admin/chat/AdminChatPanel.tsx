@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Gift,
   ChevronUp,
+  ChevronDown,
   Image as ImageIcon,
   Reply,
   SmilePlus
@@ -58,7 +59,18 @@ interface ChatMessage {
   };
 }
 
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '😢'];
+const MORE_EMOJIS  = ['😮', '🎉', '👏', '🙏', '😍', '💯', '👎', '😡', '🤔', '✅'];
+
+/** Format a date for the divider between message groups */
+const formatDateDivider = (date: Date): string => {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 interface ConversationSummary {
   userId: string;
@@ -95,8 +107,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [emojiExpanded, setEmojiExpanded] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [socketReconnecting, setSocketReconnecting] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [newMsgCount, setNewMsgCount] = useState(0);
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); // userId -> name
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingEmitRef = useRef(0);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -370,11 +388,23 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     return decoded;
   };
 
-  const scrollToBottom = () => {
+  const isNearBottom = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  };
+    setNewMsgCount(0);
+    setShowScrollBottom(false);
+  }, []);
+
+  const handleAdminScroll = useCallback(() => {
+    setShowScrollBottom(!isNearBottom());
+  }, [isNearBottom]);
 
   const handleReply = useCallback((msg: ChatMessage) => {
     setReplyingTo(msg);
@@ -391,21 +421,39 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
   }, []);
 
+  const emitTyping = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < 2000) return;
+    lastTypingEmitRef.current = now;
+    socketRef.current?.emit('chat:typing:start', { userId: selectedUserId });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socketRef.current?.emit('chat:typing:stop', { userId: selectedUserId });
+    }, 3000);
+  }, [selectedUserId]);
+
   const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!adminToken) return;
     try {
       await axios.post(`${apiBaseUrl}/admin/messages/${messageId}/reactions`, { emoji }, {
-        headers: { Authorization: `Bearer ${adminToken}` }
+        headers: { Authorization: `Bearer ${adminToken}` },
+        withCredentials: true
       });
-    } catch {
-      toast.error('Failed to react');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to react';
+      console.error('Reaction error:', err?.response?.status, msg);
+      toast.error(msg);
     }
     setEmojiPickerMsgId(null);
   }, [adminToken, apiBaseUrl]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [selectedUserId, conversationMessages]);
+    if (isNearBottom()) {
+      scrollToBottom();
+    } else if (selectedUserId) {
+      setNewMsgCount((c) => c + 1);
+    }
+  }, [selectedUserId, conversationMessages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -887,6 +935,21 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       });
     });
 
+    socket.on('chat:typing:start', (data: { senderType: string; userId?: string; name?: string }) => {
+      if (data.senderType === 'user' && data.userId) {
+        setTypingUsers((prev) => ({ ...prev, [data.userId!]: data.name || 'User' }));
+      }
+    });
+    socket.on('chat:typing:stop', (data: { senderType: string; userId?: string }) => {
+      if (data.senderType === 'user' && data.userId) {
+        setTypingUsers((prev) => {
+          const next = { ...prev };
+          delete next[data.userId!];
+          return next;
+        });
+      }
+    });
+
     socketRef.current = socket;
 
     return () => {
@@ -1130,6 +1193,29 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     }
   };
 
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          if (file.size > MAX_ATTACHMENT_SIZE) {
+            toast.error('Pasted image must be under 10MB.');
+            return;
+          }
+          setAttachment(file);
+          const reader = new FileReader();
+          reader.onloadend = () => setAttachmentPreview(reader.result as string);
+          reader.readAsDataURL(file);
+          toast.success('Image pasted from clipboard');
+        }
+        break;
+      }
+    }
+  }, []);
+
   return (
     <div className="h-full flex flex-col lg:flex-row gap-2 sm:gap-4 lg:gap-6">
       {/* Conversations Sidebar */}
@@ -1250,6 +1336,11 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                       }`}
                     >
                       <div className="flex items-start gap-2 sm:gap-3">
+                        {/* User avatar */}
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs sm:text-sm font-semibold"
+                          style={{ backgroundColor: `hsl(${(conversation.name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360}, 65%, 55%)` }}>
+                          {(conversation.name || '?').charAt(0).toUpperCase()}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1">
                             <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
@@ -1322,7 +1413,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
             <div 
               ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-white sm:bg-gray-50 min-h-0 relative"
+              onScroll={handleAdminScroll}
+              className="flex-1 overflow-y-auto p-3 sm:p-4 bg-white sm:bg-gray-50 min-h-0 relative"
             >
               {selectedConversationMessages.length === 0 && !loadingMore ? (
                 <div className="text-center text-gray-500 py-12">
@@ -1355,52 +1447,80 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                       </button>
                     </div>
                   )}
-                  {selectedConversationMessages.map((msg) => {
+                  {selectedConversationMessages.map((msg, index) => {
                     const isAdmin = msg.senderType === 'admin';
                     const isSystem = msg.senderType === 'system';
+
+                    // Grouping logic
+                    const prev = index > 0 ? selectedConversationMessages[index - 1] : null;
+                    const next = index < selectedConversationMessages.length - 1 ? selectedConversationMessages[index + 1] : null;
+                    const msgDate = new Date(msg.createdAt);
+                    const prevDate = prev ? new Date(prev.createdAt) : null;
+                    const showDateDivider = !prev || msgDate.toDateString() !== prevDate?.toDateString();
+                    const isFirstInGroup = showDateDivider || !prev || prev.senderType !== msg.senderType ||
+                      (msgDate.getTime() - (prevDate?.getTime() || 0)) > 120000;
+                    const isLastInGroup = !next || next.senderType !== msg.senderType ||
+                      (new Date(next.createdAt).getTime() - msgDate.getTime()) > 120000 ||
+                      msgDate.toDateString() !== new Date(next.createdAt).toDateString();
                     
                     // Special rendering for system messages (bonus claims, etc.)
                     if (isSystem) {
                       return (
-                        <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="flex justify-center my-4">
-                          <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-md bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                              <span className="text-xs font-semibold text-yellow-800">{msg.name || 'User'}</span>
-                              <span className="text-[10px] text-yellow-600">•</span>
-                              <span className="text-[10px] text-yellow-600" title={formatFullTime(msg.createdAt)}>
-                                {formatTime(msg.createdAt)}
-                              </span>
+                        <div key={msg.id}>
+                          {showDateDivider && (
+                            <div className="flex items-center justify-center my-3">
+                              <div className="flex-1 border-t border-gray-200" />
+                              <span className="px-3 text-[11px] font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
+                              <div className="flex-1 border-t border-gray-200" />
                             </div>
-                            {msg.message && (
-                              <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">
-                                {decodeHtmlEntities(msg.message)}
-                              </p>
-                            )}
-                            {msg.metadata?.bonusTitle && (
-                              <div className="mt-2 pt-2 border-t border-yellow-300">
-                                <p className="text-xs text-yellow-700">
-                                  <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
-                                  {msg.metadata.bonusValue && (
-                                    <span className="ml-2">({msg.metadata.bonusValue})</span>
-                                  )}
-                                </p>
+                          )}
+                          <div ref={(el) => { messageRefs.current[msg.id] = el; }} className="flex justify-center my-4">
+                            <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-md bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                                <span className="text-xs font-semibold text-yellow-800">{msg.name || 'User'}</span>
+                                <span className="text-[10px] text-yellow-600">•</span>
+                                <span className="text-[10px] text-yellow-600" title={formatFullTime(msg.createdAt)}>
+                                  {formatTime(msg.createdAt)}
+                                </span>
                               </div>
-                            )}
+                              {msg.message && (
+                                <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">
+                                  {decodeHtmlEntities(msg.message)}
+                                </p>
+                              )}
+                              {msg.metadata?.bonusTitle && (
+                                <div className="mt-2 pt-2 border-t border-yellow-300">
+                                  <p className="text-xs text-yellow-700">
+                                    <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
+                                    {msg.metadata.bonusValue && (
+                                      <span className="ml-2">({msg.metadata.bonusValue})</span>
+                                    )}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
                     }
                     
                     return (
-                      <div
-                        key={msg.id}
-                        ref={(el) => { messageRefs.current[msg.id] = el; }}
-                        className={`group flex ${isAdmin ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg`}
-                      >
-                        <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[80%] sm:max-w-[70%]`}>
-                          {/* Reply & React buttons */}
-                          <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
+                      <div key={msg.id}>
+                        {showDateDivider && (
+                          <div className="flex items-center justify-center my-3">
+                            <div className="flex-1 border-t border-gray-200" />
+                            <span className="px-3 text-[11px] font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
+                            <div className="flex-1 border-t border-gray-200" />
+                          </div>
+                        )}
+                        <div
+                          ref={(el) => { messageRefs.current[msg.id] = el; }}
+                          className={`group flex ${isAdmin ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                        >
+                          <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[80%] sm:max-w-[70%]`}>
+                          {/* Reply & React buttons — visible on mobile, hover on desktop */}
+                          <div className="opacity-60 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
                             <button
                               onClick={() => handleReply(msg)}
                               className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1"
@@ -1411,19 +1531,33 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                             </button>
                             <div className="relative">
                               <button
-                                onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                                onClick={() => { setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id); setEmojiExpanded(false); }}
                                 className="text-xs text-gray-400 hover:text-indigo-600 flex items-center"
                                 title="React"
                               >
                                 <SmilePlus className="w-3 h-3" />
                               </button>
                               {emojiPickerMsgId === msg.id && (
-                                <div className={`absolute ${isAdmin ? 'right-0' : 'left-0'} bottom-full mb-1 flex gap-1 px-2 py-1.5 rounded-full shadow-lg z-50 bg-white border border-gray-200`}>
-                                  {QUICK_EMOJIS.map((emoji) => (
-                                    <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-125 transition-transform px-0.5">
-                                      {emoji}
-                                    </button>
-                                  ))}
+                                <div className={`absolute ${isAdmin ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] bg-white border border-gray-200 p-1.5`}>
+                                  <div className="flex items-center gap-0.5">
+                                    {QUICK_EMOJIS.map((emoji) => (
+                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                    {!emojiExpanded && (
+                                      <button onClick={() => setEmojiExpanded(true)} className="text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded p-1 transition-all" title="More emojis">+</button>
+                                    )}
+                                  </div>
+                                  {emojiExpanded && (
+                                    <div className="flex items-center gap-0.5 mt-0.5">
+                                      {MORE_EMOJIS.map((emoji) => (
+                                        <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                          {emoji}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1453,16 +1587,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                                 </p>
                               </div>
                             )}
-                            <div className="flex items-center gap-2 text-xs mb-2 opacity-90 flex-wrap">
-                              <CircleDot className="w-3 h-3 flex-shrink-0" />
-                              <span className="font-medium truncate">
-                                {isAdmin ? (msg.name || 'Support Team') : (msg.name || 'User')}
-                              </span>
-                              <span>•</span>
-                              <span className="text-[11px]" title={formatFullTime(msg.createdAt)}>
-                                {formatTime(msg.createdAt)}
-                              </span>
-                            </div>
+                            {isFirstInGroup && (
+                              <div className="flex items-center gap-2 text-xs mb-2 opacity-90 flex-wrap">
+                                <CircleDot className="w-3 h-3 flex-shrink-0" />
+                                <span className="font-medium truncate">
+                                  {isAdmin ? (msg.name || 'Support Team') : (msg.name || 'User')}
+                                </span>
+                              </div>
+                            )}
                             {msg.message && (
                               <p className={`text-sm whitespace-pre-wrap break-words leading-relaxed ${
                                 isAdmin ? 'text-white' : 'text-gray-900'
@@ -1513,13 +1645,17 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                                 )}
                               </div>
                             )}
-                            <div
-                              className={`mt-2 text-[11px] capitalize ${
-                                isAdmin ? 'text-indigo-100' : 'text-gray-500'
-                              } flex items-center gap-2`}
-                            >
-                              <span>Status: {msg.status}</span>
-                            </div>
+                            {isLastInGroup && (
+                              <div
+                                className={`mt-2 text-[11px] capitalize ${
+                                  isAdmin ? 'text-indigo-100' : 'text-gray-500'
+                                } flex items-center gap-2`}
+                              >
+                                <span title={formatFullTime(msg.createdAt)}>{formatTime(msg.createdAt)}</span>
+                                <span>•</span>
+                                <span>{msg.status}</span>
+                              </div>
+                            )}
                           </div>
                           {/* Reactions display */}
                           {msg.reactions && msg.reactions.length > 0 && (
@@ -1551,11 +1687,40 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                           )}
                         </div>
                       </div>
+                      </div>
                     );
                   })}
                 </>
               )}
+              {/* Typing indicator */}
+              {selectedUserId && typingUsers[selectedUserId] && (
+                <div className="flex justify-start mt-2">
+                  <div className="rounded-2xl rounded-bl-sm bg-white border border-gray-200 px-4 py-2.5 shadow-sm">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-gray-500 mr-1">{typingUsers[selectedUserId]}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
+              {/* Scroll-to-bottom floating button */}
+              {showScrollBottom && (
+                <button
+                  onClick={scrollToBottom}
+                  className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto"
+                  title="Scroll to latest"
+                >
+                  <ChevronDown className="w-5 h-5 text-indigo-600" />
+                  {newMsgCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold">
+                      {newMsgCount > 9 ? '9+' : newMsgCount}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
@@ -1643,12 +1808,21 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   id="message-input"
                   name="message-input"
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={(e) => { setMessageInput(e.target.value); emitTyping(); }}
+                  onPaste={handlePaste}
                   onKeyDown={handleKeyDown}
                   rows={2}
                   placeholder="Type your message...."
                   className="flex-1 rounded-lg sm:rounded-xl border border-gray-200 px-3 sm:px-4 py-2 sm:py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-white sm:bg-gray-50"
+                  maxLength={2000}
                 />
+                {messageInput.length > 1500 && (
+                  <span className={`text-[10px] mt-0.5 ml-1 ${
+                    messageInput.length > 1950 ? 'text-red-500' : messageInput.length > 1800 ? 'text-yellow-500' : 'text-gray-400'
+                  }`}>
+                    {messageInput.length}/2000
+                  </span>
+                )}
                 <div className="flex flex-row sm:flex-col gap-1.5 sm:gap-2">
                   <label htmlFor="attachment-input" className="flex items-center justify-center text-gray-600 cursor-pointer hover:text-indigo-600 transition p-2 sm:p-2 rounded-lg hover:bg-gray-100 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0">
                     <Paperclip className="w-5 h-5" />
@@ -1664,7 +1838,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   <button
                     onClick={() => void handleSendMessage()}
                     disabled={sending || (!messageInput.trim() && !attachment)}
-                    className="inline-flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0"
+                    className="inline-flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0"
                   >
                     {sending ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -1705,7 +1879,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
         {/* Image Modal */}
         {imageModal && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
             onClick={() => setImageModal(null)}
           >
             <div className="relative w-full h-full flex items-center justify-center">

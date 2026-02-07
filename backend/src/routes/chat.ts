@@ -70,9 +70,15 @@ router.get('/messages', async (req: Request, res: Response) => {
       return msg;
     });
 
+    // .lean() returns raw MongoDB objects with _id but no id virtual — normalize
+    const normalized = fixedMessages.map((msg: any) => ({
+      ...msg,
+      id: msg._id.toString(),
+    }));
+
     res.json({
       success: true,
-      data: fixedMessages,
+      data: normalized,
       pagination: {
         total,
         page: pageNumber,
@@ -296,6 +302,7 @@ router.post('/messages/:id/reactions', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: payload });
   } catch (error: any) {
+    logger.error('Failed to toggle reaction:', error);
     res.status(500).json({ success: false, message: 'Failed to toggle reaction', error: error.message });
   }
 });

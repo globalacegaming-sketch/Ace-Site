@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Image as ImageIcon, Download, Reply, SmilePlus } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Image as ImageIcon, Download, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
@@ -44,9 +44,20 @@ interface ChatMessage {
   };
 }
 
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '😢'];
+const MORE_EMOJIS  = ['😮', '🎉', '👏', '🙏', '😍', '💯', '👎', '😡', '🤔', '✅'];
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+
+/** Format a date for the divider between message groups */
+const formatDateDivider = (date: Date): string => {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 const UserChatWidget = () => {
   const { isAuthenticated, token, user, checkSession, logout } = useAuthStore();
@@ -59,9 +70,20 @@ const UserChatWidget = () => {
   const [attachment, setAttachment] = useState<File | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [emojiExpanded, setEmojiExpanded] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false); // true while widget is visible (for animation)
+  const [isClosing, setIsClosing] = useState(false);     // true during close animation
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const isOpenRef = useRef(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [newMsgCount, setNewMsgCount] = useState(0);
+  const [isAdminTyping, setIsAdminTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingEmitRef = useRef(0);
   const [isMobile, setIsMobile] = useState(false);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
 
@@ -173,11 +195,23 @@ const UserChatWidget = () => {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const scrollToBottom = () => {
+  const isNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  };
+    setNewMsgCount(0);
+    setShowScrollBottom(false);
+  }, []);
+
+  const handleScrollEvent = useCallback(() => {
+    setShowScrollBottom(!isNearBottom());
+  }, [isNearBottom]);
 
   // Decode HTML entities (like &#x27; for apostrophe) for display
   // This safely decodes entities that were escaped by the backend sanitization
@@ -208,22 +242,40 @@ const UserChatWidget = () => {
     }
   }, []);
 
+  const emitTyping = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < 2000) return;
+    lastTypingEmitRef.current = now;
+    socketRef.current?.emit('chat:typing:start');
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socketRef.current?.emit('chat:typing:stop');
+    }, 3000);
+  }, []);
+
   const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!token) return;
     try {
       await axios.post(`${API_BASE_URL}/chat/messages/${messageId}/reactions`, { emoji }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        withCredentials: true
       });
-    } catch {
-      toast.error('Failed to react');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to react';
+      console.error('Reaction error:', err?.response?.status, msg);
+      toast.error(msg);
     }
     setEmojiPickerMsgId(null);
   }, [token, API_BASE_URL]);
 
   useEffect(() => {
     if (!isOpen) return;
-    scrollToBottom();
-  }, [messages, isOpen]);
+    if (isNearBottom()) {
+      scrollToBottom();
+    } else {
+      setNewMsgCount((c) => c + 1);
+    }
+  }, [messages.length, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Disconnect if not authenticated, on admin/agent pages, or if user is admin
@@ -260,6 +312,10 @@ const UserChatWidget = () => {
         // Play notification sound if message is from admin
         if (message.senderType === 'admin') {
           playNotificationSound();
+          // Increment unread badge if widget is closed
+          if (!isOpenRef.current) {
+            setUnreadCount((c) => c + 1);
+          }
         }
         
         return updated;
@@ -274,6 +330,13 @@ const UserChatWidget = () => {
 
     socket.on('chat:reaction:update', (data: { messageId: string; reactions: ChatMessage['reactions'] }) => {
       setMessages((prev) => prev.map((m) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+    });
+
+    socket.on('chat:typing:start', (data: { senderType: string }) => {
+      if (data.senderType === 'admin') setIsAdminTyping(true);
+    });
+    socket.on('chat:typing:stop', (data: { senderType: string }) => {
+      if (data.senderType === 'admin') setIsAdminTyping(false);
     });
 
     socketRef.current = socket;
@@ -362,15 +425,26 @@ const UserChatWidget = () => {
     }
   }, [isOpen, isAuthenticated, token, isAdminOrAgentPage, isAdminUser]);
 
+  // Keep ref in sync so socket handler reads latest value
+  useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
+
   const handleToggle = () => {
     if (!isAuthenticated) {
       toast.error('Please sign in to contact support.');
       return;
     }
-    const opening = !isOpen;
-    setIsOpen((prev) => !prev);
-    // Request push permission when opening chat (contextual, non-blocking)
-    if (opening) {
+    if (isOpen) {
+      // Start close animation
+      setIsClosing(true);
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsAnimating(false);
+        setIsClosing(false);
+      }, 250); // match CSS transition duration
+    } else {
+      setIsOpen(true);
+      setIsAnimating(true);
+      setUnreadCount(0);
       oneSignalRequestPermission().catch(() => {});
     }
   };
@@ -390,6 +464,26 @@ const UserChatWidget = () => {
 
     setAttachment(file);
   };
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          if (file.size > MAX_ATTACHMENT_SIZE) {
+            toast.error('Pasted image must be under 10MB.');
+            return;
+          }
+          setAttachment(file);
+          toast.success('Image pasted from clipboard');
+        }
+        break;
+      }
+    }
+  }, []);
 
   const handleSendMessage = async () => {
     if (!token || sending) return;
@@ -453,16 +547,20 @@ const UserChatWidget = () => {
     }
   };
 
-  // Don't show widget if not authenticated, on admin/agent pages, if user is admin, or on mobile
+  // Don't show widget if not authenticated, on admin/agent pages, if user is admin, or on mobile (use /chat page instead)
   if (!isAuthenticated || isAdminOrAgentPage || isAdminUser || isMobile) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 hidden lg:block">
-      {isOpen && (
-        <div className="mb-4 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-4 py-3 flex items-center justify-between">
+    <div className="fixed bottom-6 right-6 z-[60]">
+      {(isOpen || isClosing) && (
+        <div className={`mb-4 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-250 ease-out ${
+          isClosing
+            ? 'opacity-0 translate-y-4 scale-95'
+            : 'opacity-100 translate-y-0 scale-100'
+        }`}>
+          <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
             <div>
               <p className="text-sm font-medium opacity-80">Support Chat</p>
               <p className="text-lg font-semibold">Global Ace Gaming</p>
@@ -475,11 +573,19 @@ const UserChatWidget = () => {
             </button>
           </div>
 
-          <div className="flex-1 max-h-96 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          <div ref={scrollContainerRef} onScroll={handleScrollEvent} className="flex-1 max-h-96 overflow-y-auto p-4 bg-gray-50 relative">
             {isLoading ? (
-              <div className="flex items-center justify-center py-10 text-gray-500">
-                <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                Loading conversation...
+              <div className="space-y-3 py-2">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`rounded-2xl px-4 py-3 ${
+                      i % 2 === 0 ? 'bg-white border border-gray-100 rounded-bl-sm' : 'bg-indigo-100 rounded-br-sm'
+                    }`}>
+                      <div className="h-2.5 rounded bg-gray-200 animate-pulse mb-1.5" style={{ width: `${70 + (i % 3) * 30}px` }} />
+                      <div className="h-2.5 rounded bg-gray-200/60 animate-pulse" style={{ width: `${50 + (i % 2) * 40}px` }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : messages.length === 0 ? (
               <div className="rounded-xl bg-white shadow-sm p-6 text-center text-gray-500">
@@ -489,7 +595,7 @@ const UserChatWidget = () => {
               </div>
             ) : (
               <>
-                {messages.map((msg) => {
+                {messages.map((msg, index) => {
                   const isUser = msg.senderType === 'user';
                   const isSystem = msg.senderType === 'system';
                   const timestamp = formatTime(msg.createdAt);
@@ -498,6 +604,18 @@ const UserChatWidget = () => {
                         ? `${user.firstName} ${user.lastName}`.trim() 
                         : user?.username || 'You') 
                     : (msg.name || 'Support Team');
+
+                  // Grouping logic
+                  const prev = index > 0 ? messages[index - 1] : null;
+                  const next = index < messages.length - 1 ? messages[index + 1] : null;
+                  const msgDate = new Date(msg.createdAt);
+                  const prevDate = prev ? new Date(prev.createdAt) : null;
+                  const showDateDivider = !prev || msgDate.toDateString() !== prevDate?.toDateString();
+                  const isFirstInGroup = showDateDivider || !prev || prev.senderType !== msg.senderType ||
+                    (msgDate.getTime() - (prevDate?.getTime() || 0)) > 120000;
+                  const isLastInGroup = !next || next.senderType !== msg.senderType ||
+                    (new Date(next.createdAt).getTime() - msgDate.getTime()) > 120000 ||
+                    msgDate.toDateString() !== new Date(next.createdAt).toDateString();
 
                   // Special rendering for system messages (bonus claims, etc.)
                   if (isSystem) {
@@ -508,41 +626,57 @@ const UserChatWidget = () => {
                       : (msg.name || 'User');
                     
                     return (
-                      <div key={msg.id} className="flex justify-center my-3">
-                        <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-lg bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-yellow-800">{systemDisplayName}</span>
-                            <span className="text-[10px] text-yellow-600">•</span>
-                            <span className="text-[10px] text-yellow-600">{timestamp}</span>
+                      <div key={msg.id}>
+                        {showDateDivider && (
+                          <div className="flex items-center justify-center my-3">
+                            <div className="flex-1 border-t border-gray-200" />
+                            <span className="px-3 text-[11px] font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
+                            <div className="flex-1 border-t border-gray-200" />
                           </div>
-                          {msg.message && (
-                            <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{decodeHtmlEntities(msg.message)}</p>
-                          )}
-                          {msg.metadata?.bonusTitle && (
-                            <div className="mt-2 pt-2 border-t border-yellow-300">
-                              <p className="text-xs text-yellow-700">
-                                <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
-                                {msg.metadata.bonusValue && (
-                                  <span className="ml-2">({msg.metadata.bonusValue})</span>
-                                )}
-                              </p>
+                        )}
+                        <div className="flex justify-center my-3">
+                          <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-lg bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                              <span className="text-xs font-semibold text-yellow-800">{systemDisplayName}</span>
+                              <span className="text-[10px] text-yellow-600">•</span>
+                              <span className="text-[10px] text-yellow-600">{timestamp}</span>
                             </div>
-                          )}
+                            {msg.message && (
+                              <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{decodeHtmlEntities(msg.message)}</p>
+                            )}
+                            {msg.metadata?.bonusTitle && (
+                              <div className="mt-2 pt-2 border-t border-yellow-300">
+                                <p className="text-xs text-yellow-700">
+                                  <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
+                                  {msg.metadata.bonusValue && (
+                                    <span className="ml-2">({msg.metadata.bonusValue})</span>
+                                  )}
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
                   }
 
                   return (
-                    <div
-                      key={msg.id}
-                      ref={(el) => { messageRefs.current[msg.id] = el; }}
-                      className={`group flex ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg`}
-                    >
-                      <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
-                        {/* Reply & React buttons */}
-                        <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
+                    <div key={msg.id}>
+                      {showDateDivider && (
+                        <div className="flex items-center justify-center my-3">
+                          <div className="flex-1 border-t border-gray-200" />
+                          <span className="px-3 text-[11px] font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
+                          <div className="flex-1 border-t border-gray-200" />
+                        </div>
+                      )}
+                      <div
+                        ref={(el) => { messageRefs.current[msg.id] = el; }}
+                        className={`group flex ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                      >
+                        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                        {/* Reply & React buttons — visible on mobile, hover on desktop */}
+                        <div className="opacity-60 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
                           <button
                             onClick={() => handleReply(msg)}
                             className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1"
@@ -553,19 +687,33 @@ const UserChatWidget = () => {
                           </button>
                           <div className="relative">
                             <button
-                              onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                              onClick={() => { setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id); setEmojiExpanded(false); }}
                               className="text-xs text-gray-400 hover:text-indigo-600 flex items-center"
                               title="React"
                             >
                               <SmilePlus className="w-3 h-3" />
                             </button>
                             {emojiPickerMsgId === msg.id && (
-                              <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 flex gap-1 px-2 py-1.5 rounded-full shadow-lg z-50 bg-white border border-gray-200`}>
-                                {QUICK_EMOJIS.map((emoji) => (
-                                  <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-125 transition-transform px-0.5">
-                                    {emoji}
-                                  </button>
-                                ))}
+                              <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] bg-white border border-gray-200 p-1.5`}>
+                                <div className="flex items-center gap-0.5">
+                                  {QUICK_EMOJIS.map((emoji) => (
+                                    <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                  {!emojiExpanded && (
+                                    <button onClick={() => setEmojiExpanded(true)} className="text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded p-1 transition-all" title="More emojis">+</button>
+                                  )}
+                                </div>
+                                {emojiExpanded && (
+                                  <div className="flex items-center gap-0.5 mt-0.5">
+                                    {MORE_EMOJIS.map((emoji) => (
+                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -595,9 +743,11 @@ const UserChatWidget = () => {
                               </p>
                             </div>
                           )}
-                          <p className="text-xs font-semibold mb-1 opacity-90">
-                            {displayName}
-                          </p>
+                          {isFirstInGroup && (
+                            <p className="text-xs font-semibold mb-1 opacity-90">
+                              {displayName}
+                            </p>
+                          )}
                           {msg.message && (
                             <p className="text-sm whitespace-pre-wrap break-words">
                               {decodeHtmlEntities(msg.message)}
@@ -646,14 +796,21 @@ const UserChatWidget = () => {
                               )}
                             </div>
                           )}
-                          <div
-                            className={`mt-2 text-[11px] ${
-                              isUser ? 'text-indigo-100' : 'text-gray-500'
-                            } flex items-center justify-between gap-2`}
-                          >
-                            <span>{timestamp}</span>
-                            {!isUser && <span className="capitalize">{msg.status}</span>}
-                          </div>
+                          {isLastInGroup && (
+                            <div
+                              className={`mt-2 text-[11px] ${
+                                isUser ? 'text-indigo-100' : 'text-gray-500'
+                              } flex items-center gap-1.5`}
+                            >
+                              <span>{timestamp}</span>
+                              {isUser && (
+                                msg.status === 'read'
+                                  ? <CheckCheck className="w-3.5 h-3.5 text-indigo-300" />
+                                  : <Check className="w-3.5 h-3.5 text-indigo-200" />
+                              )}
+                              {!isUser && <span className="capitalize ml-auto">{msg.status}</span>}
+                            </div>
+                          )}
                         </div>
                         {/* Reactions display */}
                         {msg.reactions && msg.reactions.length > 0 && (
@@ -685,14 +842,42 @@ const UserChatWidget = () => {
                         )}
                       </div>
                     </div>
+                    </div>
                   );
                 })}
+              {/* Typing indicator */}
+              {isAdminTyping && (
+                <div className="flex justify-start mt-2">
+                  <div className="rounded-2xl rounded-bl-sm bg-white border border-gray-100 px-4 py-2.5 shadow-sm">
+                    <div className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
                 <div ref={messagesEndRef} />
               </>
             )}
+            {/* Scroll-to-bottom floating button */}
+            {showScrollBottom && (
+              <button
+                onClick={scrollToBottom}
+                className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto"
+                title="Scroll to latest"
+              >
+                <ChevronDown className="w-4 h-4 text-indigo-600" />
+                {newMsgCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold">
+                    {newMsgCount > 9 ? '9+' : newMsgCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
-          <div className="border-t border-gray-200 bg-white p-4 space-y-3">
+          <div className="border-t border-gray-200 bg-white p-4 space-y-3 flex-shrink-0">
             {/* Reply preview */}
             {replyingTo && (
               <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl border-l-2 border-indigo-500">
@@ -729,13 +914,24 @@ const UserChatWidget = () => {
                 </button>
               </div>
             )}
-            <textarea
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              rows={3}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-              placeholder="Type your message..."
-            />
+            <div className="relative">
+              <textarea
+                value={inputValue}
+                onChange={(e) => { setInputValue(e.target.value); emitTyping(); }}
+                onPaste={handlePaste}
+                rows={3}
+                maxLength={2000}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                placeholder="Type your message..."
+              />
+              {inputValue.length > 1500 && (
+                <span className={`absolute bottom-1 right-2 text-[10px] ${
+                  inputValue.length > 1950 ? 'text-red-500' : inputValue.length > 1800 ? 'text-yellow-500' : 'text-gray-400'
+                }`}>
+                  {inputValue.length}/2000
+                </span>
+              )}
+            </div>
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-indigo-600">
                 <Paperclip className="w-4 h-4" />
@@ -750,7 +946,7 @@ const UserChatWidget = () => {
               <button
                 onClick={() => void handleSendMessage()}
                 disabled={sending}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 Send
@@ -762,15 +958,20 @@ const UserChatWidget = () => {
 
       <button
         onClick={handleToggle}
-        className="flex items-center justify-center w-14 h-14 rounded-full shadow-lg bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:scale-105 transition-transform"
+        className="relative flex items-center justify-center w-14 h-14 rounded-full shadow-lg bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:scale-105 active:scale-95 transition-transform"
       >
-        <MessageCircle className="w-6 h-6" />
+        {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
+        {!isOpen && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold shadow-md animate-bounce-gentle">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
       </button>
 
       {/* Image Modal */}
       {imageModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
           onClick={() => setImageModal(null)}
         >
           <div className="relative w-full h-full flex items-center justify-center">

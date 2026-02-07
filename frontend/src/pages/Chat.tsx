@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, Loader2, FileText, MessageCircle, Image as ImageIcon, X, Reply, SmilePlus } from 'lucide-react';
+import { Send, Loader2, FileText, MessageCircle, Image as ImageIcon, X, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
@@ -35,9 +35,20 @@ interface ChatMessage {
   }[];
 }
 
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '😢'];
+const MORE_EMOJIS  = ['😮', '🎉', '👏', '🙏', '😍', '💯', '👎', '😡', '🤔', '✅'];
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+
+/** Format a date for the divider between message groups */
+const formatDateDivider = (date: Date): string => {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 const Chat = () => {
   const { isAuthenticated, token, user } = useAuthStore();
@@ -50,11 +61,18 @@ const Chat = () => {
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [emojiExpanded, setEmojiExpanded] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [newMsgCount, setNewMsgCount] = useState(0);
+  const [isAdminTyping, setIsAdminTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingEmitRef = useRef(0);
 
   const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
   const WS_BASE_URL = useMemo(() => getWsBaseUrl(), []);
@@ -140,10 +158,24 @@ const Chat = () => {
   }, []);
 
 
+  // Check if user is scrolled near the bottom
+  const isNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+  }, []);
+
   // Scroll to bottom of messages
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+    setNewMsgCount(0);
+    setShowScrollBottom(false);
+  }, []);
+
+  // Track scroll position
+  const handleScroll = useCallback(() => {
+    setShowScrollBottom(!isNearBottom());
+  }, [isNearBottom]);
 
   // Decode HTML entities (like &#x27; for apostrophe) for display
   // This safely decodes entities that were escaped by the backend sanitization
@@ -175,21 +207,41 @@ const Chat = () => {
     }
   }, []);
 
+  // Emit typing start/stop with debounce
+  const emitTyping = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < 2000) return; // throttle to 2s
+    lastTypingEmitRef.current = now;
+    socketRef.current?.emit('chat:typing:start');
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socketRef.current?.emit('chat:typing:stop');
+    }, 3000);
+  }, []);
+
   const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!token) return;
     try {
       await axios.post(`${API_BASE_URL}/chat/messages/${messageId}/reactions`, { emoji }, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        withCredentials: true
       });
-    } catch {
-      toast.error('Failed to react');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to react';
+      console.error('Reaction error:', err?.response?.status, msg);
+      toast.error(msg);
     }
     setEmojiPickerMsgId(null);
   }, [token, API_BASE_URL]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (isNearBottom()) {
+      scrollToBottom();
+    } else {
+      // If scrolled up and new messages come in, increment the badge
+      setNewMsgCount((c) => c + 1);
+    }
+  }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Socket connection
   useEffect(() => {
@@ -236,6 +288,13 @@ const Chat = () => {
 
     socket.on('chat:reaction:update', (data: { messageId: string; reactions: ChatMessage['reactions'] }) => {
       setMessages((prev) => prev.map((m) => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+    });
+
+    socket.on('chat:typing:start', (data: { senderType: string }) => {
+      if (data.senderType === 'admin') setIsAdminTyping(true);
+    });
+    socket.on('chat:typing:stop', (data: { senderType: string }) => {
+      if (data.senderType === 'admin') setIsAdminTyping(false);
     });
 
     socket.on('disconnect', () => {
@@ -304,6 +363,26 @@ const Chat = () => {
 
     setAttachment(file);
   };
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          if (file.size > MAX_ATTACHMENT_SIZE) {
+            toast.error('Pasted image must be under 10MB.');
+            return;
+          }
+          setAttachment(file);
+          toast.success('Image pasted from clipboard');
+        }
+        break;
+      }
+    }
+  }, []);
 
   const handleSendMessage = async () => {
     if (!token || sending) return;
@@ -401,11 +480,22 @@ const Chat = () => {
       </div>
 
       {/* Scrollable Messages Container */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 relative min-h-0">
-        <div className="max-w-4xl mx-auto space-y-4">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 relative min-h-0">
+        <div className="max-w-4xl mx-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin casino-text-secondary" />
+            <div className="space-y-4 py-4">
+              {/* Skeleton message placeholders */}
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className={`flex items-end gap-2 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                  {i % 2 === 0 && <div className="w-8 h-8 rounded-full bg-gray-700/40 animate-pulse flex-shrink-0" />}
+                  <div className={`rounded-2xl px-4 py-3 ${i % 2 === 0 ? 'rounded-bl-sm' : 'rounded-br-sm'}`}
+                    style={{ backgroundColor: i % 2 === 0 ? '#1B1B2F' : 'rgba(255,215,0,0.2)' }}>
+                    <div className="h-3 rounded bg-gray-600/40 animate-pulse mb-2" style={{ width: `${80 + (i % 3) * 40}px` }} />
+                    <div className="h-3 rounded bg-gray-600/30 animate-pulse" style={{ width: `${60 + (i % 2) * 50}px` }} />
+                  </div>
+                  {i % 2 !== 0 && <div className="w-8 h-8 rounded-full bg-gray-700/40 animate-pulse flex-shrink-0" />}
+                </div>
+              ))}
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -414,34 +504,57 @@ const Chat = () => {
             </div>
           ) : (
             <>
-              {messages.map((message) => {
+              {messages.map((message, index) => {
                 const isUser = message.senderType === 'user';
                 const displayName = isUser 
                   ? (user?.firstName || user?.username || 'You') 
                   : (message.name || 'Support');
+
+                // Grouping logic
+                const prev = index > 0 ? messages[index - 1] : null;
+                const next = index < messages.length - 1 ? messages[index + 1] : null;
+                const msgDate = new Date(message.createdAt);
+                const prevDate = prev ? new Date(prev.createdAt) : null;
+                const showDateDivider = !prev || msgDate.toDateString() !== prevDate?.toDateString();
+                const isFirstInGroup = showDateDivider || !prev || prev.senderType !== message.senderType ||
+                  (msgDate.getTime() - (prevDate?.getTime() || 0)) > 120000;
+                const isLastInGroup = !next || next.senderType !== message.senderType ||
+                  (new Date(next.createdAt).getTime() - msgDate.getTime()) > 120000 ||
+                  msgDate.toDateString() !== new Date(next.createdAt).toDateString();
                 
                 return (
-                  <div
-                    key={message.id}
-                    ref={(el) => { messageRefs.current[message.id] = el; }}
-                    className={`group flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg`}
-                  >
-                    {!isUser && (
-                      <div 
-                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{ 
-                          background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
-                          boxShadow: '0 0 10px rgba(106, 27, 154, 0.3)'
-                        }}
-                      >
-                        <span className="text-white text-xs font-semibold">
-                          {displayName.charAt(0).toUpperCase()}
-                        </span>
+                  <div key={message.id}>
+                    {showDateDivider && (
+                      <div className="flex items-center justify-center my-4">
+                        <div className="flex-1 border-t casino-border" />
+                        <span className="px-3 text-[11px] font-medium casino-text-secondary">{formatDateDivider(msgDate)}</span>
+                        <div className="flex-1 border-t casino-border" />
                       </div>
                     )}
+                    <div
+                      ref={(el) => { messageRefs.current[message.id] = el; }}
+                      className={`group flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg ${isFirstInGroup ? 'mt-4' : 'mt-1'}`}
+                    >
+                    {!isUser && (
+                      isFirstInGroup ? (
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ 
+                            background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
+                            boxShadow: '0 0 10px rgba(106, 27, 154, 0.3)'
+                          }}
+                        >
+                          <span className="text-white text-xs font-semibold">
+                            {displayName.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="w-8 flex-shrink-0" />
+                      )
+                    )}
                     <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%] min-w-0`}>
-                      {/* Reply & React buttons */}
-                      <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-1 px-1">
+                      {/* Reply & React buttons — visible on mobile, hover on desktop */}
+                      <div className="opacity-60 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-1 px-1">
                         <button
                           onClick={() => handleReply(message)}
                           className="text-xs casino-text-secondary hover:casino-text-primary flex items-center gap-1"
@@ -452,19 +565,33 @@ const Chat = () => {
                         </button>
                         <div className="relative">
                           <button
-                            onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === message.id ? null : message.id)}
+                            onClick={() => { setEmojiPickerMsgId(emojiPickerMsgId === message.id ? null : message.id); setEmojiExpanded(false); }}
                             className="text-xs casino-text-secondary hover:casino-text-primary flex items-center gap-1"
                             title="React"
                           >
                             <SmilePlus className="w-3 h-3" />
                           </button>
                           {emojiPickerMsgId === message.id && (
-                            <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 flex gap-1 px-2 py-1.5 rounded-full shadow-lg z-50 border`} style={{ backgroundColor: '#1A1A2E', borderColor: '#2A2A3E' }}>
-                              {QUICK_EMOJIS.map((emoji) => (
-                                <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-125 transition-transform px-0.5">
-                                  {emoji}
-                                </button>
-                              ))}
+                            <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] border p-1.5`} style={{ backgroundColor: '#1A1A2E', borderColor: '#2A2A3E' }}>
+                              <div className="flex items-center gap-0.5">
+                                {QUICK_EMOJIS.map((emoji) => (
+                                  <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-110 hover:bg-white/10 transition-all rounded p-1 text-center">
+                                    {emoji}
+                                  </button>
+                                ))}
+                                {!emojiExpanded && (
+                                  <button onClick={() => setEmojiExpanded(true)} className="text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded p-1 transition-all" title="More emojis">+</button>
+                                )}
+                              </div>
+                              {emojiExpanded && (
+                                <div className="flex items-center gap-0.5 mt-0.5">
+                                  {MORE_EMOJIS.map((emoji) => (
+                                    <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-110 hover:bg-white/10 transition-all rounded p-1 text-center">
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -506,7 +633,7 @@ const Chat = () => {
                             </p>
                           </div>
                         )}
-                        {!isUser && (
+                        {!isUser && isFirstInGroup && (
                           <span className="text-xs font-semibold mb-1 block casino-text-primary opacity-90">
                             {displayName}
                           </span>
@@ -587,30 +714,74 @@ const Chat = () => {
                           ))}
                         </div>
                       )}
-                      <span className="text-xs casino-text-secondary mt-1 px-1">
-                        {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      {isLastInGroup && (
+                        <span className="text-xs casino-text-secondary mt-1 px-1 inline-flex items-center gap-1">
+                          {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {isUser && (
+                            message.status === 'read'
+                              ? <CheckCheck className="w-3.5 h-3.5 inline-block" style={{ color: '#FFD700' }} />
+                              : <Check className="w-3.5 h-3.5 inline-block casino-text-secondary" />
+                          )}
+                        </span>
+                      )}
                     </div>
                     {isUser && (
-                      <div 
-                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{ 
-                          background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
-                          boxShadow: '0 0 10px rgba(106, 27, 154, 0.3)'
-                        }}
-                      >
-                        <span className="text-white text-xs font-semibold">
-                          {displayName.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
+                      isFirstInGroup ? (
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ 
+                            background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
+                            boxShadow: '0 0 10px rgba(106, 27, 154, 0.3)'
+                          }}
+                        >
+                          <span className="text-white text-xs font-semibold">
+                            {displayName.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="w-8 flex-shrink-0" />
+                      )
                     )}
+                  </div>
                   </div>
                 );
               })}
+              {/* Typing indicator */}
+              {isAdminTyping && (
+                <div className="flex items-end gap-2 justify-start mt-2">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)' }}>
+                    <span className="text-white text-xs font-semibold">S</span>
+                  </div>
+                  <div className="rounded-2xl rounded-bl-sm px-4 py-3" style={{ backgroundColor: '#1B1B2F', border: '1px solid #2C2C3A' }}>
+                    <div className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </>
           )}
         </div>
+        {/* Scroll-to-bottom floating button */}
+        {showScrollBottom && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-full shadow-lg transition-all duration-200 opacity-90 hover:opacity-100 hover:scale-105 active:scale-95"
+            style={{ backgroundColor: '#1B1B2F', border: '1px solid #2C2C3A' }}
+            title="Scroll to latest"
+          >
+            <ChevronDown className="w-5 h-5" style={{ color: '#FFD700' }} />
+            {newMsgCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                {newMsgCount > 9 ? '9+' : newMsgCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Input Area at Bottom — stays in flex flow, no position:fixed needed */}
@@ -676,21 +847,31 @@ const Chat = () => {
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
+                emitTyping();
                 // Auto-resize textarea
                 e.target.style.height = 'auto';
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
               }}
+              onPaste={handlePaste}
               onKeyPress={handleKeyPress}
-              placeholder={replyingTo ? 'Type your reply...' : 'type here'}
+              placeholder={replyingTo ? 'Type your reply...' : 'Type your message...'}
               rows={1}
               className="input-casino w-full rounded-lg px-4 py-2.5 resize-none text-sm"
               style={{ minHeight: '44px', maxHeight: '120px' }}
+              maxLength={2000}
             />
+            {inputValue.length > 1500 && (
+              <span className={`absolute bottom-1 right-2 text-[10px] ${
+                inputValue.length > 1950 ? 'text-red-400' : inputValue.length > 1800 ? 'text-yellow-400' : 'casino-text-secondary'
+              }`}>
+                {inputValue.length}/2000
+              </span>
+            )}
           </div>
           <button
             onClick={handleSendMessage}
             disabled={sending || (!inputValue.trim() && !attachment)}
-            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-90"
             style={(!inputValue.trim() && !attachment) 
               ? { 
                   backgroundColor: '#1B1B2F', 
@@ -717,7 +898,7 @@ const Chat = () => {
       {/* Image Modal */}
       {imageModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-90 p-2 sm:p-4"
           onClick={() => setImageModal(null)}
         >
           <div className="relative w-full h-full flex items-center justify-center">

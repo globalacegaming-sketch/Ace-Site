@@ -585,8 +585,45 @@ io.on('connection', (socket) => {
     });
   }
 
+  // Typing indicator events
+  socket.on('chat:typing:start', (data?: { userId?: string }) => {
+    if (socket.data.role === 'admin' && data?.userId) {
+      // Admin is typing → notify the user
+      io.to(`user:${data.userId}`).emit('chat:typing:start', {
+        senderType: 'admin',
+        name: socket.data.adminSession?.agentName || 'Support'
+      });
+    } else if (socket.data.user?.id) {
+      // User is typing → notify admins
+      io.to('admins').emit('chat:typing:start', {
+        senderType: 'user',
+        userId: socket.data.user.id,
+        name: socket.data.user.firstName || socket.data.user.username || 'User'
+      });
+    }
+  });
+
+  socket.on('chat:typing:stop', (data?: { userId?: string }) => {
+    if (socket.data.role === 'admin' && data?.userId) {
+      io.to(`user:${data.userId}`).emit('chat:typing:stop', {
+        senderType: 'admin'
+      });
+    } else if (socket.data.user?.id) {
+      io.to('admins').emit('chat:typing:stop', {
+        senderType: 'user',
+        userId: socket.data.user.id
+      });
+    }
+  });
+
   socket.on('disconnect', () => {
-    // Client disconnected
+    // Client disconnected — also stop any typing indicators
+    if (socket.data.user?.id) {
+      io.to('admins').emit('chat:typing:stop', {
+        senderType: 'user',
+        userId: socket.data.user.id
+      });
+    }
   });
   
   // Handle game-related events
