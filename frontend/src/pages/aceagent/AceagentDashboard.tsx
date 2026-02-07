@@ -64,7 +64,7 @@ const AceagentDashboard: React.FC = () => {
   
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'chat' | 'verification'>('chat');
+  const [activeTab, setActiveTab] = useState<'users' | 'chat' | 'verification' | 'referrals'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [verificationSearchQuery, setVerificationSearchQuery] = useState('');
@@ -91,6 +91,64 @@ const AceagentDashboard: React.FC = () => {
   const [jpRecords, setJpRecords] = useState<RecordData | null>(null);
   const [gameRecords, setGameRecords] = useState<RecordData | null>(null);
   const sessionCheckedRef = useRef(false);
+
+  // Referrals state
+  interface AgentReferral {
+    _id: string;
+    referredUser: { _id: string; username: string; email: string; firstName?: string; lastName?: string; createdAt: string } | null;
+    referredBy: { _id: string; username: string; email: string; firstName?: string; lastName?: string; referralCode?: string } | null;
+    referralCode: string;
+    status: 'pending' | 'verified';
+    bonusGranted: boolean;
+    bonusAmount: number;
+    verifiedAt?: string;
+    verifiedBy?: string;
+    createdAt: string;
+  }
+  const [referrals, setReferrals] = useState<AgentReferral[]>([]);
+  const [referralsLoading, setReferralsLoading] = useState(false);
+  const [referralFilter, setReferralFilter] = useState<'all' | 'pending' | 'verified'>('all');
+  const [verifyingReferral, setVerifyingReferral] = useState<string | null>(null);
+
+  // ── Referral helpers ──
+  const fetchReferrals = async () => {
+    setReferralsLoading(true);
+    try {
+      const session = JSON.parse(localStorage.getItem('admin_session') || '{}');
+      const statusParam = referralFilter === 'all' ? '' : `?status=${referralFilter}`;
+      const res = await axios.get(`${API_BASE_URL}/agent/referrals${statusParam}`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (res.data.success) setReferrals(res.data.data || []);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to load referrals');
+    } finally {
+      setReferralsLoading(false);
+    }
+  };
+
+  const handleVerifyReferral = async (id: string) => {
+    setVerifyingReferral(id);
+    try {
+      const session = JSON.parse(localStorage.getItem('admin_session') || '{}');
+      const res = await axios.post(`${API_BASE_URL}/agent/referrals/${id}/verify`, {}, {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (res.data.success) {
+        toast.success('Referral verified & bonus sent!');
+        fetchReferrals();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Verification failed');
+    } finally {
+      setVerifyingReferral(null);
+    }
+  };
+
+  // Fetch referrals when tab is switched to referrals or filter changes
+  useEffect(() => {
+    if (activeTab === 'referrals') fetchReferrals();
+  }, [activeTab, referralFilter]);
 
   // Stop music when admin dashboard loads
   useEffect(() => {
@@ -852,6 +910,16 @@ const AceagentDashboard: React.FC = () => {
                 }`}
               >
                 User Verification
+              </button>
+              <button
+                onClick={() => setActiveTab('referrals')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                  activeTab === 'referrals'
+                    ? 'bg-white text-indigo-600 shadow-md'
+                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                }`}
+              >
+                Referrals
               </button>
             </div>
 
@@ -1653,6 +1721,126 @@ const AceagentDashboard: React.FC = () => {
           </>
         )}
 
+        {/* Referrals Tab */}
+        {activeTab === 'referrals' && (
+          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 lg:p-6 border border-gray-100">
+            <div className="mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />
+                Referral Management
+              </h2>
+              <p className="text-sm text-gray-500">Review and verify user referrals. Verified referrals send a $10 bonus message to both users.</p>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-2 mb-4">
+              {(['all', 'pending', 'verified'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setReferralFilter(f)}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition ${
+                    referralFilter === f
+                      ? 'bg-indigo-600 text-white shadow'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+              <button
+                onClick={() => fetchReferrals()}
+                disabled={referralsLoading}
+                className="ml-auto px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${referralsLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+
+            {/* Table */}
+            {referralsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+              </div>
+            ) : referrals.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Gift className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-medium">No referrals found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto -mx-3 sm:-mx-4 lg:-mx-6">
+                <table className="w-full text-left min-w-[700px]">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="px-3 sm:px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">New User</th>
+                      <th className="px-3 sm:px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                      <th className="px-3 sm:px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Referred By</th>
+                      <th className="px-3 sm:px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-3 sm:px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-3 sm:px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {referrals.map((ref) => (
+                      <tr key={ref._id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-3 sm:px-4 py-3">
+                          <div className="font-medium text-sm text-gray-900">
+                            {ref.referredUser ? `${ref.referredUser.firstName || ''} ${ref.referredUser.lastName || ''}`.trim() || ref.referredUser.username : '—'}
+                          </div>
+                          <div className="text-xs text-gray-400">@{ref.referredUser?.username || '—'}</div>
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 text-sm text-gray-600">{ref.referredUser?.email || '—'}</td>
+                        <td className="px-3 sm:px-4 py-3">
+                          <div className="text-sm text-gray-900 font-medium">
+                            {ref.referredBy ? `@${ref.referredBy.username}` : '—'}
+                          </div>
+                          <div className="text-xs text-orange-600 font-mono">{ref.referralCode}</div>
+                        </td>
+                        <td className="px-3 sm:px-4 py-3">
+                          {ref.status === 'verified' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                              <CheckCircle className="w-3 h-3" />
+                              Verified
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+                              <XCircle className="w-3 h-3" />
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 text-xs text-gray-400">
+                          {new Date(ref.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 text-right">
+                          {ref.status === 'pending' ? (
+                            <button
+                              onClick={() => handleVerifyReferral(ref._id)}
+                              disabled={verifyingReferral === ref._id}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-50"
+                            >
+                              {verifyingReferral === ref._id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-3.5 h-3.5" />
+                              )}
+                              Verify
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              by {ref.verifiedBy || 'agent'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* User Update Modal */}
         {activeTab === 'users' && showUserModal && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
@@ -1991,6 +2179,30 @@ const AceagentDashboard: React.FC = () => {
               activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'
             }`}>
               Verify
+            </span>
+          </button>
+
+          {/* Referrals Tab */}
+          <button
+            onClick={() => setActiveTab('referrals')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
+              activeTab === 'referrals'
+                ? 'text-indigo-600'
+                : 'text-gray-500 active:text-gray-700'
+            }`}
+          >
+            <div className={`relative mb-1 transition-all duration-200 ${
+              activeTab === 'referrals' ? 'scale-110' : 'scale-100'
+            }`}>
+              <Gift className={`w-6 h-6 transition-colors ${activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'}`} />
+              {activeTab === 'referrals' && (
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
+              )}
+            </div>
+            <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
+              activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'
+            }`}>
+              Referrals
             </span>
           </button>
 

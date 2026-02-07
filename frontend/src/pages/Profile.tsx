@@ -17,6 +17,7 @@ import { useAuthStore } from '../stores/authStore';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
+import AchievementBadges from '../components/AchievementBadges';
 
 const ProfilePage = () => {
   const { user, setUser, token } = useAuthStore();
@@ -566,6 +567,9 @@ const ProfilePage = () => {
             )}
           </div>
         </div>
+
+        {/* Achievement Badges */}
+        <AchievementBadges />
 
         {/* Account Information */}
         <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 mt-4 sm:mt-6 casino-border shadow-lg">

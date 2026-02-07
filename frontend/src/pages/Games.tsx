@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Play, Loader2 } from 'lucide-react';
+import { Play, Loader2, ChevronDown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -12,6 +12,14 @@ import { LazyImage } from '../components/LazyImage';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { triggerHaptic } from '../utils/haptic';
+
+/* ── Game-type card data (visible above the fold) ── */
+const GAME_TYPE_CARDS = [
+  { icon: '🎰', title: 'Online Slots', desc: 'Video slot-style games with multiple themes. Play on desktop or mobile.' },
+  { icon: '🎣', title: 'Online Fish Games', desc: 'Fish table and arcade-style play. Skill-based with community jackpots.' },
+  { icon: '🎲', title: 'Online Table Games', desc: 'Live and table-style games for a social, real-time experience.' },
+  { icon: '⚽', title: 'Sports-Style Games', desc: 'Sports-themed games in the same lobby. One account, one place.' },
+] as const;
 
 interface Game {
   kindId: number;
@@ -356,62 +364,123 @@ const Games = () => {
           </div>
         )}
 
-        {/* ——— Below-the-fold SEO content ——— */}
-        <div className="border-t border-white/10 pt-8 sm:pt-10 mt-8 sm:mt-10">
-          <section id="game-types" className="mb-6 sm:mb-8">
-            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-2">What Kinds of Games Can You Play?</h2>
-            <p className="text-sm casino-text-secondary mb-3">We offer sweepstakes games across several types. Online slots, online fish games, online table games, and sports are all here.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
-              <div className="casino-bg-secondary/40 rounded-lg p-3"><h3 className="font-semibold casino-text-primary mb-0.5">Online Slots</h3><p className="casino-text-secondary text-xs sm:text-sm">Video slot-style games. Filter by category, try different themes, play on desktop or mobile.</p></div>
-              <div className="casino-bg-secondary/40 rounded-lg p-3"><h3 className="font-semibold casino-text-primary mb-0.5">Online Fish Games</h3><p className="casino-text-secondary text-xs sm:text-sm">Fish table and redemption-style play—similar to Milkyway, Orionstars, Juwa, Gamevault, Firekirin. Skill-based, community jackpots.</p></div>
-              <div className="casino-bg-secondary/40 rounded-lg p-3"><h3 className="font-semibold casino-text-primary mb-0.5">Online Table Games</h3><p className="casino-text-secondary text-xs sm:text-sm">Live and table-style play for a social, live feel without visiting multiple sites.</p></div>
-              <div className="casino-bg-secondary/40 rounded-lg p-3"><h3 className="font-semibold casino-text-primary mb-0.5">Sports-Style Games</h3><p className="casino-text-secondary text-xs sm:text-sm">Sports-themed options in the same lobby. Switch between slots, fish, table, and sports in one place.</p></div>
+        {/* ═══════════════════════════════════════════════════════════
+            SEO CONTENT — restructured for clean mobile UX:
+            1. Visible intro + compact game-type cards (always shown)
+            2. Expandable "Read more" via <details> (content in DOM for crawlers)
+            3. Full semantic structure (section > article, h2 > h3)
+           ═══════════════════════════════════════════════════════════ */}
+        <div className="border-t border-white/10 pt-6 sm:pt-8 mt-6 sm:mt-8">
+
+          {/* ── 1. Visible: Game-type cards ── */}
+          <section id="game-types" className="mb-6 sm:mb-8" aria-label="Game categories">
+            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-3 sm:mb-4">
+              What Kinds of Games Can You Play?
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              {GAME_TYPE_CARDS.map((card) => (
+                <article
+                  key={card.title}
+                  className="rounded-xl p-3 sm:p-4 border transition-colors duration-200"
+                  style={{
+                    backgroundColor: 'rgba(27, 27, 47, 0.6)',
+                    borderColor: '#2C2C3A',
+                  }}
+                >
+                  <span className="text-xl sm:text-2xl block mb-1.5" aria-hidden="true">{card.icon}</span>
+                  <h3 className="text-xs sm:text-sm font-semibold casino-text-primary mb-1 leading-tight">
+                    {card.title}
+                  </h3>
+                  <p className="text-[11px] sm:text-xs casino-text-secondary leading-snug">
+                    {card.desc}
+                  </p>
+                </article>
+              ))}
             </div>
           </section>
 
-          <section id="how-to-play" className="mb-6 sm:mb-8 casino-bg-secondary/40 rounded-xl p-3 sm:p-4 casino-border">
-            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-2">How to Get Started</h2>
-            <p className="text-sm casino-text-secondary mb-2">Getting started is straightforward. You don't need to be an expert to play online slots, online fish games, or online table games here.</p>
-            <ol className="list-decimal list-inside space-y-1 text-sm casino-text-secondary">
-              <li><strong className="casino-text-primary">Create an account</strong> — Register with your email and a few details. Quick and secure.</li>
-              <li><strong className="casino-text-primary">Explore the game lobby</strong> — Open the games section. Everything is grouped by type: slots, fish, table, and sports.</li>
-              <li><strong className="casino-text-primary">Choose a game and start</strong> — Click a game to see how it works, then start playing. For tips and FAQs, see <Link to="/support" className="text-yellow-400 hover:underline">Support</Link>.</li>
-            </ol>
-          </section>
+          {/* ── 2. Expandable: How to play, bonuses & more ── */}
+          <details className="group seo-details mb-3 sm:mb-4">
+            <summary
+              className="flex items-center justify-between gap-2 cursor-pointer select-none list-none rounded-xl px-4 py-3 text-sm sm:text-base font-semibold casino-text-primary transition-colors duration-200 touch-manipulation active:scale-[0.98]"
+              style={{ backgroundColor: 'rgba(27, 27, 47, 0.6)', border: '1px solid #2C2C3A' }}
+            >
+              <span>How to play, bonuses & more</span>
+              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 casino-text-secondary transition-transform duration-300 group-open:rotate-180 flex-shrink-0" />
+            </summary>
 
-          <section className="mb-6 sm:mb-8">
-            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-2">Bonuses and Promotions</h2>
-            <p className="text-sm casino-text-secondary">We run bonuses and promotions that can be used across our game types. To see what's currently available, check our <Link to="/bonuses" className="text-yellow-400 hover:underline">Bonuses</Link> page. Offers may change; terms are described clearly for each offer.</p>
-          </section>
+            <div className="pt-4 sm:pt-5 space-y-5 sm:space-y-6">
+              {/* How to Get Started */}
+              <section id="how-to-play" className="rounded-xl p-3 sm:p-4" style={{ backgroundColor: 'rgba(27, 27, 47, 0.5)', border: '1px solid #2C2C3A' }}>
+                <h2 className="text-sm sm:text-base font-bold casino-text-primary mb-2">How to Get Started</h2>
+                <p className="text-xs sm:text-sm casino-text-secondary mb-2">You don't need to be an expert to play online slots, online fish games, or online table games here.</p>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs sm:text-sm casino-text-secondary">
+                  <li><strong className="casino-text-primary">Create an account</strong> — Register with your email. Quick and secure.</li>
+                  <li><strong className="casino-text-primary">Explore the lobby</strong> — Games are grouped by type: slots, fish, table, and sports.</li>
+                  <li><strong className="casino-text-primary">Pick a game and play</strong> — For tips and FAQs, see <Link to="/support" className="text-yellow-400 hover:underline">Support</Link>.</li>
+                </ol>
+              </section>
 
-          <section className="mb-6 sm:mb-8 casino-bg-secondary/40 rounded-xl p-3 sm:p-4 casino-border">
-            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-2">Why Choose a Platform Like Global Ace Gaming?</h2>
-            <p className="text-sm casino-text-secondary mb-2">We aim to make it simpler: one place for online slots, online fish games, online table games, and sports, with clear rules and support.</p>
-            <ul className="space-y-1 text-sm casino-text-secondary">
-              <li><strong className="casino-text-primary">One place for multiple game types</strong> — Try online slots, fish, table, and sports here. One account, one lobby.</li>
-              <li><strong className="casino-text-primary">Play on desktop or mobile</strong> — Games work in the browser. No extra software unless we say so.</li>
-              <li><strong className="casino-text-primary">Support when you need it</strong> — Our <Link to="/support" className="text-yellow-400 hover:underline">Support</Link> team can help. We also share responsible gaming information and tips.</li>
-            </ul>
-          </section>
+              {/* Bonuses */}
+              <section>
+                <h2 className="text-sm sm:text-base font-bold casino-text-primary mb-1.5">Bonuses and Promotions</h2>
+                <p className="text-xs sm:text-sm casino-text-secondary">
+                  We run bonuses across all game types. See what's available on our{' '}
+                  <Link to="/bonuses" className="text-yellow-400 hover:underline">Bonuses</Link> page. Terms are described clearly for each offer.
+                </p>
+              </section>
 
-          <section className="mb-6 sm:mb-8">
-            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-2">Frequently Asked Questions</h2>
-            <dl className="space-y-2 text-sm">
-              {faqItems.map(({ q, a }) => (
-                <div key={q}>
-                  <dt className="font-semibold casino-text-primary">{q}</dt>
-                  <dd className="casino-text-secondary mt-0.5 pl-0">{a}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+              {/* Why Choose */}
+              <section className="rounded-xl p-3 sm:p-4" style={{ backgroundColor: 'rgba(27, 27, 47, 0.5)', border: '1px solid #2C2C3A' }}>
+                <h2 className="text-sm sm:text-base font-bold casino-text-primary mb-2">Why Choose Global Ace Gaming?</h2>
+                <ul className="space-y-1.5 text-xs sm:text-sm casino-text-secondary">
+                  <li><strong className="casino-text-primary">One place for all game types</strong> — Online slots, fish, table, and sports. One account, one lobby.</li>
+                  <li><strong className="casino-text-primary">Desktop & mobile</strong> — Games run in the browser. No extra software.</li>
+                  <li><strong className="casino-text-primary">Support when you need it</strong> — <Link to="/support" className="text-yellow-400 hover:underline">Contact our team</Link> or check responsible gaming resources.</li>
+                </ul>
+              </section>
 
-          <section className="text-center">
-            <h2 className="text-base sm:text-lg font-bold casino-text-primary mb-2">Ready to Explore Our Games?</h2>
-            <p className="text-sm casino-text-secondary">
-              You can <Link to="/games" className="text-yellow-400 hover:underline">browse our games</Link>,{' '}
-              <Link to="/bonuses" className="text-yellow-400 hover:underline">see our bonuses</Link>, or{' '}
-              <Link to="/support" className="text-yellow-400 hover:underline">contact support</Link> if you have questions.
+            </div>
+          </details>
+
+          {/* ── 3. Expandable: FAQ (separate section) ── */}
+          <details className="group seo-details mb-6 sm:mb-8">
+            <summary
+              className="flex items-center justify-between gap-2 cursor-pointer select-none list-none rounded-xl px-4 py-3 text-sm sm:text-base font-semibold casino-text-primary transition-colors duration-200 touch-manipulation active:scale-[0.98]"
+              style={{ backgroundColor: 'rgba(27, 27, 47, 0.6)', border: '1px solid #2C2C3A' }}
+            >
+              <span>Frequently Asked Questions</span>
+              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 casino-text-secondary transition-transform duration-300 group-open:rotate-180 flex-shrink-0" />
+            </summary>
+
+            <div className="pt-4 sm:pt-5">
+              <dl className="space-y-2">
+                {faqItems.map(({ q, a }) => (
+                  <details
+                    key={q}
+                    className="group/faq rounded-lg overflow-hidden"
+                    style={{ backgroundColor: 'rgba(27, 27, 47, 0.4)', border: '1px solid #2C2C3A' }}
+                  >
+                    <summary className="flex items-center justify-between gap-2 cursor-pointer select-none list-none px-3 py-2.5 text-xs sm:text-sm font-medium casino-text-primary touch-manipulation active:scale-[0.99]">
+                      <dt className="pr-2">{q}</dt>
+                      <ChevronDown className="w-3.5 h-3.5 casino-text-secondary transition-transform duration-200 group-open/faq:rotate-180 flex-shrink-0" />
+                    </summary>
+                    <dd className="px-3 pb-3 pt-0 text-xs sm:text-sm casino-text-secondary leading-relaxed">
+                      {a}
+                    </dd>
+                  </details>
+                ))}
+              </dl>
+            </div>
+          </details>
+
+          {/* ── CTA — always visible at the very bottom ── */}
+          <section className="text-center py-4 sm:py-6">
+            <h2 className="text-sm sm:text-base font-bold casino-text-primary mb-1.5">Ready to Explore?</h2>
+            <p className="text-xs sm:text-sm casino-text-secondary">
+              <Link to="/games" className="text-yellow-400 hover:underline">Browse games</Link>{' · '}
+              <Link to="/bonuses" className="text-yellow-400 hover:underline">See bonuses</Link>{' · '}
+              <Link to="/support" className="text-yellow-400 hover:underline">Get support</Link>
             </p>
           </section>
         </div>

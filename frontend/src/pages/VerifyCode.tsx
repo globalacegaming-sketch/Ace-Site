@@ -6,6 +6,8 @@ import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 
+const RESEND_COOLDOWN = 60; // seconds
+
 const VerifyCode = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -17,6 +19,7 @@ const VerifyCode = () => {
   const [codes, setCodes] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -32,6 +35,13 @@ const VerifyCode = () => {
       navigate('/register');
     }
   }, [email, navigate]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(() => setCooldown((c) => c - 1), 1000);
+    return () => clearInterval(id);
+  }, [cooldown]);
 
   const handleCodeChange = (index: number, value: string) => {
     // Only allow numbers
@@ -133,36 +143,31 @@ const VerifyCode = () => {
   };
 
   const handleResend = async () => {
+    if (cooldown > 0) return;
     setIsResending(true);
     try {
       if (token) {
-        // Authenticated user - use resend-verification endpoint
         const response = await axios.post(
           `${getApiBaseUrl()}/auth/resend-verification`,
           {},
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
+          { headers: { 'Authorization': `Bearer ${token}` } }
         );
-        
         if (response.data.success) {
           toast.success('Verification code sent! Please check your email.');
           setCodes(['', '', '', '', '', '']);
           inputRefs.current[0]?.focus();
+          setCooldown(RESEND_COOLDOWN);
         }
       } else {
-        // Unauthenticated user - use resend-verification-code endpoint
         const response = await axios.post(
           `${getApiBaseUrl()}/auth/resend-verification-code`,
           { email }
         );
-        
         if (response.data.success) {
           toast.success('Verification code sent! Please check your email.');
           setCodes(['', '', '', '', '', '']);
           inputRefs.current[0]?.focus();
+          setCooldown(RESEND_COOLDOWN);
         }
       }
     } catch (error: any) {
@@ -236,11 +241,15 @@ const VerifyCode = () => {
           <div className="mt-6 text-center space-y-3">
             <button
               onClick={handleResend}
-              disabled={isResending}
-              className="text-sm casino-text-secondary hover:casino-text-primary transition-colors flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+              disabled={isResending || cooldown > 0}
+              className="text-sm casino-text-secondary hover:casino-text-primary transition-colors flex items-center justify-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
             >
               <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
-              {isResending ? 'Sending...' : "Didn't receive code? Resend"}
+              {isResending
+                ? 'Sending...'
+                : cooldown > 0
+                  ? `Resend in ${cooldown}s`
+                  : "Didn't receive code? Resend"}
             </button>
 
             <div className="pt-4 border-t casino-border">

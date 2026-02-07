@@ -13,10 +13,14 @@ import {
   Calendar,
   Music,
   Play,
-  Pause
+  Pause,
+  Monitor
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useMusic } from '../contexts/MusicContext';
+import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter';
+import TwoFactorSetup from '../components/TwoFactorSetup';
+import ActiveSessions from '../components/ActiveSessions';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
@@ -157,7 +161,7 @@ const Settings = () => {
                     onChange={handleMusicToggle}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                  <div className="w-11 h-6 bg-[#2C2C3A] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FFD700]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-[#0A0A0F] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#B0B0B0] after:border-[#2C2C3A] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFD700] peer-checked:after:bg-[#0A0A0F]"></div>
                 </label>
               </div>
 
@@ -205,7 +209,7 @@ const Settings = () => {
                     value={musicVolume}
                     onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
                     disabled={!musicEnabled}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    className="w-full h-2 bg-[#2C2C3A] rounded-lg appearance-none cursor-pointer slider"
                     style={{
                       background: `linear-gradient(to right, #FFD700 0%, #FFD700 ${musicVolume * 100}%, #2C2C3A ${musicVolume * 100}%, #2C2C3A 100%)`
                     }}
@@ -262,6 +266,7 @@ const Settings = () => {
                     {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
+                <PasswordStrengthMeter password={passwordData.newPassword} />
               </div>
 
               <div>
@@ -292,6 +297,21 @@ const Settings = () => {
                 <span>{isLoading ? 'Changing Password...' : 'Change Password'}</span>
               </button>
             </div>
+
+            {/* Divider */}
+            <div className="my-8 border-t" style={{ borderColor: '#2C2C3A' }} />
+
+            {/* Two-Factor Authentication */}
+            <TwoFactorSetup />
+          </div>
+
+          {/* Active Sessions */}
+          <div className="casino-bg-secondary rounded-2xl p-8 casino-border shadow-lg">
+            <div className="flex items-center space-x-3 mb-6">
+              <Monitor className="w-6 h-6" style={{ color: '#FF6F00' }} />
+              <h2 className="text-xl font-semibold casino-text-primary">Active Sessions</h2>
+            </div>
+            <ActiveSessions />
           </div>
 
           {/* Notification Settings */}
@@ -314,7 +334,7 @@ const Settings = () => {
                     onChange={(e) => setNotificationSettings({ ...notificationSettings, emailNotifications: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-11 h-6 bg-[#2C2C3A] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FFD700]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-[#0A0A0F] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#B0B0B0] after:border-[#2C2C3A] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFD700] peer-checked:after:bg-[#0A0A0F]"></div>
                 </label>
               </div>
 
@@ -330,7 +350,7 @@ const Settings = () => {
                     onChange={(e) => setNotificationSettings({ ...notificationSettings, pushNotifications: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                  <div className="w-11 h-6 bg-[#2C2C3A] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FFD700]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-[#0A0A0F] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#B0B0B0] after:border-[#2C2C3A] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFD700] peer-checked:after:bg-[#0A0A0F]"></div>
                 </label>
               </div>
 
@@ -346,7 +366,7 @@ const Settings = () => {
                     onChange={(e) => setNotificationSettings({ ...notificationSettings, gameUpdates: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                  <div className="w-11 h-6 bg-[#2C2C3A] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FFD700]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-[#0A0A0F] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#B0B0B0] after:border-[#2C2C3A] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFD700] peer-checked:after:bg-[#0A0A0F]"></div>
                 </label>
               </div>
 
@@ -362,7 +382,7 @@ const Settings = () => {
                     onChange={(e) => setNotificationSettings({ ...notificationSettings, promotions: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
+                  <div className="w-11 h-6 bg-[#2C2C3A] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FFD700]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-[#0A0A0F] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#B0B0B0] after:border-[#2C2C3A] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FFD700] peer-checked:after:bg-[#0A0A0F]"></div>
                 </label>
               </div>
             </div>

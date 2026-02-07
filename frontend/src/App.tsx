@@ -10,6 +10,7 @@ import UserChatWidget from './components/chat/UserChatWidget';
 import OneSignalAuthSync from './components/OneSignalAuthSync';
 import IOSAddToHomeScreenBanner from './components/IOSAddToHomeScreenBanner';
 import WheelOfFortune from './components/wheel/WheelOfFortune';
+import CookieConsentBanner from './components/CookieConsentBanner';
 
 // ——— Lazy-loaded pages ———
 // Reduces initial JS bundle by ~40 %. Each page is fetched only when navigated to.
@@ -38,6 +39,10 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const VerifyCode = lazy(() => import('./pages/VerifyCode'));
 const Chat = lazy(() => import('./pages/Chat'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Cookies = lazy(() => import('./pages/Cookies'));
+const Referrals = lazy(() => import('./pages/Referrals'));
 
 /** Lightweight full-screen loader shown while a lazy chunk downloads */
 const PageLoader = () => (
@@ -225,7 +230,16 @@ function App() {
               </ProtectedRoute>
             } />
             
+            <Route path="/referrals" element={
+              <ProtectedRoute>
+                <Layout><Referrals /></Layout>
+              </ProtectedRoute>
+            } />
+
             <Route path="/support" element={<Layout><Support /></Layout>} />
+            <Route path="/terms" element={<Layout><Terms /></Layout>} />
+            <Route path="/privacy" element={<Layout><Privacy /></Layout>} />
+            <Route path="/cookies" element={<Layout><Cookies /></Layout>} />
             
             <Route path="/game/:id" element={
               <ProtectedRoute>
@@ -260,6 +274,7 @@ function App() {
         <UserChatWidget />
         <IOSAddToHomeScreenBanner />
         <WheelOfFortune />
+        <CookieConsentBanner />
           </div>
         </Router>
       </ClickSoundProvider>

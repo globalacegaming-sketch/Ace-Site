@@ -40,6 +40,7 @@ import emailPromotionsRoutes from './routes/emailPromotions';
 import wheelRoutes from './routes/wheel';
 import adminWheelRoutes from './routes/adminWheel';
 import agentWheelRoutes from './routes/agentWheel';
+import agentReferralRoutes from './routes/agentReferrals';
 import webhooksRoutes from './routes/webhooks';
 import walletRoutes from './routes/wallet';
 
@@ -462,6 +463,7 @@ app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/email-promotions', emailPromotionsRoutes);
 app.use('/api/wheel', wheelRoutes);
 app.use('/api/agent/wheel', agentWheelRoutes);
+app.use('/api/agent/referrals', agentReferralRoutes);
 app.use('/api/wallet', walletRoutes);
 
 // ── Share session with Socket.io ──
@@ -615,7 +617,26 @@ const startServer = async () => {
     logger.init('🗄️ Connecting to MongoDB...');
     await connectDB();
     logger.success('✅ MongoDB connected successfully');
-    
+
+    // One-time cleanup: drop sessions that were encrypted under the old crypto
+    // config. They contain raw certificate data instead of JSON and crash
+    // connect-mongo's unserialize(). Safe to remove — users just re-login.
+    try {
+      const mongoose = (await import('mongoose')).default;
+      const db = mongoose.connection.db;
+      if (db) {
+        const sessions = db.collection('sessions');
+        const result = await sessions.deleteMany({
+          session: { $not: { $regex: /^\{/ } },
+        });
+        if (result.deletedCount > 0) {
+          logger.warn(`🧹 Purged ${result.deletedCount} corrupted session(s) from MongoDB`);
+        }
+      }
+    } catch (cleanupErr) {
+      logger.warn('⚠️  Session cleanup skipped:', cleanupErr);
+    }
+
     // Start server first
     logger.init('🚀 Starting HTTP server...');
     server.listen(PORT, () => {

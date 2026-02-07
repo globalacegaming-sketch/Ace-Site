@@ -19,6 +19,16 @@ export interface User {
   fortunePandaPassword?: string;
   fortunePandaBalance?: number;
   fortunePandaLastSync?: string;
+  loginStreak?: number;
+  lastLoginDate?: string;
+  loginStreakRewardsClaimed?: number[];
+  achievements?: {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    earnedAt: string;
+  }[];
   referralCode?: string;
   referredBy?: string;
   isBanned?: boolean;

@@ -5,6 +5,10 @@ import { useAuthStore } from '../stores/authStore';
 import { useBalancePolling } from '../hooks/useBalancePolling';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
+import WelcomeBonusBanner from '../components/WelcomeBonusBanner';
+import PromoCarousel from '../components/PromoCarousel';
+import DailySpinCTA from '../components/DailySpinCTA';
+import LoginStreakCalendar from '../components/LoginStreakCalendar';
 
 const Dashboard = () => {
   const { user, lastRechargeStatus } = useAuthStore();
@@ -56,6 +60,18 @@ const Dashboard = () => {
             Ready to play? Choose your next adventure from our extensive game library.
           </p>
         </div>
+
+        {/* Promotional Carousel — top of dashboard */}
+        <PromoCarousel />
+
+        {/* Daily Spin CTA — visible only when wheel is enabled */}
+        <DailySpinCTA />
+
+        {/* Daily Login Streak Calendar */}
+        <LoginStreakCalendar />
+
+        {/* Welcome Bonus — visible for new users (< 7 days) */}
+        <WelcomeBonusBanner />
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-3 sm:gap-6 mb-6 sm:mb-8">

@@ -27,6 +27,28 @@ export interface IUser extends Document {
   fortunePandaBalance?: number;
   fortunePandaLastSync?: Date;
 
+  // Two-Factor Authentication
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  twoFactorBackupCodes?: string[];
+
+  // Bonus Spins (earned from Free Spin wins & streak rewards)
+  bonusSpins: number;
+
+  // Daily Login Streak
+  loginStreak: number;
+  lastLoginDate?: Date;
+  loginStreakRewardsClaimed: number[];
+
+  // Achievements / Badges
+  achievements: {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    earnedAt: Date;
+  }[];
+
   referralCode?: string;
   referredBy?: string;
   isBanned?: boolean;
@@ -184,6 +206,48 @@ const UserSchema = new Schema<IUser>({
   lastLoginIP: {
     type: String,
     trim: true
+  },
+  // Two-Factor Authentication
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorSecret: {
+    type: String,
+    select: false
+  },
+  twoFactorBackupCodes: {
+    type: [String],
+    select: false
+  },
+  // Bonus Spins (earned from Free Spin wins & streak rewards)
+  bonusSpins: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  // Daily Login Streak
+  loginStreak: {
+    type: Number,
+    default: 0
+  },
+  lastLoginDate: {
+    type: Date
+  },
+  loginStreakRewardsClaimed: {
+    type: [Number],
+    default: []
+  },
+  // Achievements / Badges
+  achievements: {
+    type: [{
+      id: { type: String, required: true },
+      name: { type: String, required: true },
+      description: { type: String, required: true },
+      icon: { type: String, required: true },
+      earnedAt: { type: Date, default: Date.now }
+    }],
+    default: []
   }
 }, {
   timestamps: true,

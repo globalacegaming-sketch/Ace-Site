@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 import { useMusic } from '../contexts/MusicContext';
+import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter';
 
 const registerSchema = z.object({
   firstName: z.string().min(2),
@@ -43,10 +44,13 @@ const Register = () => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
   });
+
+  const watchedPassword = watch('password', '');
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -320,6 +324,7 @@ const Register = () => {
                    {errors.password?.message || 'Invalid password'}
                  </p>
                )}
+               <PasswordStrengthMeter password={watchedPassword} />
           </div>
             <div>
                     <label htmlFor="confirmPassword" className="block text-sm font-medium casino-text-primary mb-2">
@@ -390,9 +395,9 @@ const Register = () => {
                 {/* Terms */}
                 <p className="casino-text-secondary text-xs lg:text-sm text-center">
                   By signing up, you agree to our{' '}
-                  <a href="#" className="casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4">Terms</a>,{' '}
-                  <a href="#" className="casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4">Data Policy</a> and{' '}
-                  <a href="#" className="casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4">Cookie Policy</a>.
+                  <Link to="/terms" className="casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4">Terms</Link>,{' '}
+                  <Link to="/privacy" className="casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4">Privacy Policy</Link> and{' '}
+                  <Link to="/cookies" className="casino-text-primary hover:text-yellow-400 transition-colors duration-200 underline decoration-2 underline-offset-4">Cookie Policy</Link>.
                 </p>
 
                 {/* Submit */}

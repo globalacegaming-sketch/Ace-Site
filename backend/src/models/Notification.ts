@@ -7,6 +7,7 @@ export interface INotification extends Document {
   type: 'info' | 'warning' | 'success' | 'error';
   isRead: boolean;
   readAt?: Date;
+  link?: string; // Actionable link e.g. '/wallet', '/bonuses', '/games'
   noticeId?: Types.ObjectId; // Reference to the notice that created this notification
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +46,11 @@ const NotificationSchema = new Schema<INotification>(
     },
     readAt: {
       type: Date
+    },
+    link: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Link cannot exceed 500 characters']
     },
     noticeId: {
       type: Schema.Types.ObjectId,

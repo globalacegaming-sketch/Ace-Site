@@ -25,6 +25,9 @@ declare module 'express-session' {
       lastName: string;
       role: string;
     };
+    /** Device info stored at login — used by Active Sessions UI */
+    userAgent?: string;
+    ip?: string;
     /** Populated after admin login */
     adminSession?: {
       agentName: string;
@@ -75,9 +78,19 @@ export const sessionMiddleware = session({
     autoRemove: 'native',             // Use MongoDB's native TTL index for cleanup
     touchAfter: 24 * 3600,            // Only touch (update expiry) once per 24 h
                                       // unless session data actually changes
-    // NOTE: crypto encryption removed — it added CPU overhead (encrypt/decrypt)
-    // on every request for minimal benefit. Session data is already protected
-    // by the httpOnly signed cookie; the session ID is the secret, not the data.
+
+    // Graceful deserialization — if a session document is corrupted (e.g. leftover
+    // encrypted data from the old crypto config), discard it instead of crashing
+    // the entire request. The user will simply get a fresh session.
+    serialize: (session: Record<string, unknown>) => JSON.stringify(session),
+    unserialize: (raw: string) => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        logger.warn('⚠️  Discarding corrupted session (unserialize failed)');
+        return {};
+      }
+    },
   }),
 
   // Cookie options

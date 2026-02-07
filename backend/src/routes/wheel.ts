@@ -188,37 +188,45 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
 
     const userId = new Types.ObjectId(req.user._id);
 
-    // Try campaign-based system first (server picks winner)
-    try {
-      const result = await wheelSpinService.spinWheel(userId, req.user.email, req.user.phone);
-
-      const spin = await WheelSpin.findById(result.spinId);
-      if (!spin) throw new Error('Spin record not found');
-
-      // Send bonus rewards to chat
-      let messageId: string | undefined;
-      if (result.rewardType.startsWith('bonus_')) {
-        messageId = await sendRewardToChat(userId, spin, result.rewardLabel, result.rewardType, result.rewardValue);
+    // ── Helper: award / consume bonus spins after a successful spin ──
+    const postSpinBookkeeping = async (rewardType: string, consumedBonusSpin: boolean) => {
+      let delta = 0;
+      if (rewardType === 'try_again') {
+        delta += 1; // Award +1 bonus spin for "Free Spin +1"
+        logger.info('🎰 Awarding +1 bonus spin (Free Spin win)', { userId: userId.toString() });
       }
+      if (consumedBonusSpin) {
+        delta -= 1; // Deduct the bonus spin that was used
+        logger.info('🎰 Consuming 1 bonus spin', { userId: userId.toString() });
+      }
+      if (delta !== 0) {
+        await User.updateOne({ _id: userId }, { $inc: { bonusSpins: delta } });
+      }
+    };
 
+    // ── Helper: build success response with current bonus spin count ──
+    const buildResponse = async (spinDoc: any, sliceOrder: number, rewardType: string, rewardLabel: string, rewardValue: string | null, rewardColor: string, messageId?: string) => {
+      const updatedUser = await User.findById(userId).select('bonusSpins');
+      const bonusSpins = (updatedUser as any)?.bonusSpins || 0;
       return res.json({
         success: true,
         message: 'Spin completed successfully',
         data: {
-          spinId: spin._id.toString(),
-          sliceOrder: result.sliceOrder,
-          rewardType: result.rewardType,
-          rewardLabel: result.rewardLabel,
-          rewardValue: result.rewardValue,
-          rewardColor: result.rewardColor,
-          bonusSent: spin.bonusSent,
-          messageId
+          spinId: spinDoc._id.toString(),
+          sliceOrder,
+          rewardType,
+          rewardLabel,
+          rewardValue,
+          rewardColor,
+          bonusSent: spinDoc.bonusSent,
+          messageId,
+          bonusSpins
         }
       });
-    } catch (newSystemError: any) {
-      // If campaign system fails (no campaign), fall back to old config system
-      logger.debug('Campaign system not available, falling back to old system:', newSystemError.message);
-      
+    };
+
+    // ── Helper: execute spin via old config system (skips limit checks if bypassLimits) ──
+    const doOldConfigSpin = async (bypassLimits: boolean) => {
       let config = await WheelConfig.findOne();
       if (!config) config = await WheelConfig.create({});
 
@@ -226,21 +234,20 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, message: 'Wheel of Fortune is currently disabled' });
       }
 
-      // Check spins per user limit
-      if (config.spinsPerUser !== -1) {
-        const userSpinCount = await WheelSpin.countDocuments({ userId });
-        if (userSpinCount >= config.spinsPerUser) {
-          return res.status(400).json({ success: false, message: 'You have already used all your spins' });
+      if (!bypassLimits) {
+        if (config.spinsPerUser !== -1) {
+          const userSpinCount = await WheelSpin.countDocuments({ userId });
+          if (userSpinCount >= config.spinsPerUser) {
+            return null; // signal: limit hit
+          }
         }
-      }
-
-      // Check spins per day limit
-      if (config.spinsPerDay !== -1) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todaySpinCount = await WheelSpin.countDocuments({ userId, createdAt: { $gte: today } });
-        if (todaySpinCount >= config.spinsPerDay) {
-          return res.status(400).json({ success: false, message: 'You have reached your daily spin limit' });
+        if (config.spinsPerDay !== -1) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todaySpinCount = await WheelSpin.countDocuments({ userId, createdAt: { $gte: today } });
+          if (todaySpinCount >= config.spinsPerDay) {
+            return null; // signal: limit hit
+          }
         }
       }
 
@@ -253,12 +260,9 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
       for (let i = 0; i < config.rewards.bonus10; i++) rewardPool.push('bonus_10');
       for (let i = 0; i < config.rewards.bonus50Percent; i++) rewardPool.push('bonus_50_percent');
 
-      // Server randomly selects a reward
-      const randomIndex = Math.floor(Math.random() * rewardPool.length);
-      const selectedReward = rewardPool[randomIndex];
+      const selectedReward = rewardPool[Math.floor(Math.random() * rewardPool.length)];
       const rewardInfo = REWARD_TYPES[selectedReward];
 
-      // Map to segment index using shared config
       const matchingIndices = WHEEL_SEGMENTS
         .map((seg, idx) => seg.type === selectedReward ? idx : -1)
         .filter(idx => idx >= 0);
@@ -266,7 +270,6 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
         ? matchingIndices[Math.floor(Math.random() * matchingIndices.length)]
         : 0;
 
-      // Create spin record
       const spin = await WheelSpin.create({
         userId,
         rewardType: selectedReward,
@@ -274,27 +277,80 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
         bonusSent: false
       });
 
-      // Send bonus rewards to chat
+      return { spin, sliceOrder, selectedReward, rewardInfo };
+    };
+
+    // ───────────────────────────────────────────────────────────────────────
+    // ATTEMPT 1: Try campaign system (it has its own eligibility checks)
+    // ───────────────────────────────────────────────────────────────────────
+    let campaignLimitHit = false;
+    try {
+      const result = await wheelSpinService.spinWheel(userId, req.user.email, req.user.phone);
+      const spin = await WheelSpin.findById(result.spinId);
+      if (!spin) throw new Error('Spin record not found');
+
+      await postSpinBookkeeping(result.rewardType, false);
+
       let messageId: string | undefined;
-      if (selectedReward.startsWith('bonus_')) {
-        messageId = await sendRewardToChat(userId, spin, rewardInfo.label, selectedReward, rewardInfo.value);
+      if (result.rewardType.startsWith('bonus_')) {
+        messageId = await sendRewardToChat(userId, spin, result.rewardLabel, result.rewardType, result.rewardValue);
       }
 
-      return res.json({
-        success: true,
-        message: 'Spin completed successfully',
-        data: {
-          spinId: spin._id.toString(),
-          sliceOrder,
-          rewardType: selectedReward,
-          rewardLabel: rewardInfo.label,
-          rewardValue: rewardInfo.value,
-          rewardColor: rewardInfo.color,
-          bonusSent: spin.bonusSent,
-          messageId
+      return await buildResponse(spin, result.sliceOrder, result.rewardType, result.rewardLabel, result.rewardValue, result.rewardColor, messageId);
+    } catch (campaignError: any) {
+      const msg = campaignError.message || '';
+      campaignLimitHit = msg.includes('already used') || msg.includes('not eligible');
+      if (!campaignLimitHit) {
+        logger.debug('Campaign system not available, falling back:', msg);
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // ATTEMPT 2: Old config system (normal limits)
+    // ───────────────────────────────────────────────────────────────────────
+    if (!campaignLimitHit) {
+      const result = await doOldConfigSpin(false);
+      if (result && 'spin' in result) {
+        await postSpinBookkeeping(result.selectedReward, false);
+
+        let messageId: string | undefined;
+        if (result.selectedReward.startsWith('bonus_')) {
+          messageId = await sendRewardToChat(userId, result.spin, result.rewardInfo.label, result.selectedReward, result.rewardInfo.value);
         }
+
+        return await buildResponse(result.spin, result.sliceOrder, result.selectedReward, result.rewardInfo.label, result.rewardInfo.value, result.rewardInfo.color, messageId);
+      }
+      // result === null means limit hit; fall through to bonus spin check
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // ATTEMPT 3: Use a bonus spin (user hit normal limits)
+    // ───────────────────────────────────────────────────────────────────────
+    const userDoc = await User.findById(userId).select('bonusSpins');
+    const bonusSpinsAvailable = (userDoc as any)?.bonusSpins || 0;
+
+    if (bonusSpinsAvailable <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have reached your daily spin limit'
       });
     }
+
+    // Force the spin through, bypassing limits (bonus spin pays for it)
+    const result = await doOldConfigSpin(true);
+    if (!result || !('spin' in result)) {
+      return res.status(400).json({ success: false, message: 'Wheel of Fortune is currently disabled' });
+    }
+
+    await postSpinBookkeeping(result.selectedReward, true);
+
+    let messageId: string | undefined;
+    if (result.selectedReward.startsWith('bonus_')) {
+      messageId = await sendRewardToChat(userId, result.spin, result.rewardInfo.label, result.selectedReward, result.rewardInfo.value);
+    }
+
+    return await buildResponse(result.spin, result.sliceOrder, result.selectedReward, result.rewardInfo.label, result.rewardInfo.value, result.rewardInfo.color, messageId);
+
   } catch (error: any) {
     logger.error('Error spinning wheel:', error);
     return res.status(500).json({ success: false, message: 'Failed to spin wheel', error: error.message });
@@ -302,6 +358,84 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
 });
 
 // ── GET /spins — authenticated, user's spin history ─────────────────────────
+// ── GET /spin-status — returns remaining spins & next reset for dashboard CTA ─
+router.get('/spin-status', authenticate, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const userId = req.user._id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Try new campaign system first
+    let spinsPerDay = -1;
+    let spinsPerUser = -1;
+    try {
+      const campaign = await WheelCampaign.findOne({ status: 'live' });
+      if (campaign) {
+        // Campaign system — use WheelConfig for per-day limits or campaign rules
+        const config = await WheelConfig.findOne();
+        if (config) {
+          spinsPerDay = config.spinsPerDay;
+          spinsPerUser = config.spinsPerUser;
+        }
+      }
+    } catch {
+      // Fall back to old config system
+    }
+
+    if (spinsPerDay === -1 && spinsPerUser === -1) {
+      const config = await WheelConfig.findOne();
+      if (config) {
+        spinsPerDay = config.spinsPerDay;
+        spinsPerUser = config.spinsPerUser;
+      }
+    }
+
+    const [todaySpinCount, totalSpinCount, userDoc] = await Promise.all([
+      WheelSpin.countDocuments({ userId, createdAt: { $gte: today } }),
+      WheelSpin.countDocuments({ userId }),
+      User.findById(userId).select('bonusSpins'),
+    ]);
+    const bonusSpins = (userDoc as any)?.bonusSpins || 0;
+
+    let spinsRemaining: number;
+    if (spinsPerDay !== -1) {
+      spinsRemaining = Math.max(0, spinsPerDay - todaySpinCount);
+    } else if (spinsPerUser !== -1) {
+      spinsRemaining = Math.max(0, spinsPerUser - totalSpinCount);
+    } else {
+      spinsRemaining = -1; // unlimited
+    }
+
+    // Total available = normal remaining + bonus spins
+    const totalAvailable = spinsRemaining === -1
+      ? -1
+      : spinsRemaining + bonusSpins;
+
+    return res.json({
+      success: true,
+      data: {
+        spinsRemaining,
+        bonusSpins,
+        totalAvailable,
+        spinsPerDay,
+        spinsPerUser,
+        todaySpins: todaySpinCount,
+        totalSpins: totalSpinCount,
+        nextResetTime: tomorrow.toISOString(),
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error fetching spin status:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch spin status' });
+  }
+});
+
 router.get('/spins', authenticate, async (req: Request, res: Response) => {
   try {
     if (!req.user) {

@@ -1,5 +1,5 @@
 import { type ReactNode, useState, useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Gamepad2,
   Menu,
@@ -9,6 +9,7 @@ import {
   Headphones,
   Bell,
   User,
+  Users,
   X,
   LogOut,
   Coins,
@@ -37,6 +38,7 @@ interface Notification {
   message: string;
   type: 'info' | 'warning' | 'success' | 'error';
   isRead: boolean;
+  link?: string;
   createdAt: string;
 }
 
@@ -53,6 +55,7 @@ const Layout = ({ children }: LayoutProps) => {
   const { isAuthenticated, user, logout, token } = useAuthStore();
   const { display: balance, isLoading: balanceLoading, fetchBalance } = useWalletBalance(30000);
   const location = useLocation();
+  const navigate = useNavigate();
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -198,6 +201,7 @@ const Layout = ({ children }: LayoutProps) => {
         message: data.message,
         type: data.type || 'info',
         isRead: false,
+        link: data.link || undefined,
         createdAt: data.createdAt || new Date().toISOString()
       };
 
@@ -304,6 +308,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Games', href: '/games', icon: Gamepad2 },
     { name: 'Platforms', href: '/platforms', icon: Settings },
     { name: 'Bonuses', href: '/bonuses', icon: Gift },
+    ...(isAuthenticated ? [{ name: 'Invite Friends', href: '/referrals', icon: Users }] : []),
     { name: 'About Us', href: '/about-us', icon: User },
     { name: 'Support', href: '/support', icon: Headphones },
   ];
@@ -316,12 +321,12 @@ const Layout = ({ children }: LayoutProps) => {
   ];
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#0A0A0F' }}>
+    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: 'var(--casino-primary-dark)' }}>
       {/* Full Width Navbar */}
       <header className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-sm border-b px-3 sm:px-4 pb-2 sm:pb-1.5 w-full" 
               style={{ 
                 backgroundColor: 'rgba(27, 27, 47, 0.95)', 
-                borderBottomColor: '#2C2C3A',
+                borderBottomColor: 'var(--casino-card-border)',
                 paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))'
               }}>
         <div className="flex items-center justify-between">
@@ -330,7 +335,7 @@ const Layout = ({ children }: LayoutProps) => {
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="mr-2 transition-colors duration-300 p-2 rounded-lg hover:bg-opacity-20"
-                style={{ color: '#B0B0B0', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                style={{ color: 'var(--casino-text-secondary)', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
               >
                 {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
@@ -343,8 +348,8 @@ const Layout = ({ children }: LayoutProps) => {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <span className="font-bold text-xs sm:text-sm lg:text-lg xl:text-xl hidden sm:block" style={{ color: '#F5F5F5' }}>GLOBAL ACE GAMING</span>
-              <span className="font-bold text-xs sm:hidden" style={{ color: '#F5F5F5' }}>GAG</span>
+              <span className="font-bold text-xs sm:text-sm lg:text-lg xl:text-xl hidden sm:block" style={{ color: 'var(--casino-text-primary)' }}>GLOBAL ACE GAMING</span>
+              <span className="font-bold text-xs sm:hidden" style={{ color: 'var(--casino-text-primary)' }}>GAG</span>
             </div>
           </div>
           
@@ -395,7 +400,7 @@ const Layout = ({ children }: LayoutProps) => {
                   }}
                   className="transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-opacity-20 active:scale-95 touch-manipulation relative" 
                   style={{ 
-                    color: '#B0B0B0', 
+                    color: 'var(--casino-text-secondary)', 
                     backgroundColor: 'rgba(255, 255, 255, 0.1)',
                     WebkitTapHighlightColor: 'transparent',
                     touchAction: 'manipulation',
@@ -418,7 +423,7 @@ const Layout = ({ children }: LayoutProps) => {
                   <Bell className="w-4 h-4 sm:w-5 sm:h-5 pointer-events-none" />
                   {unreadCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 text-white text-[10px] sm:text-xs rounded-full min-w-[16px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center font-semibold animate-pulse pointer-events-none" 
-                          style={{ backgroundColor: '#E53935' }}>
+                          style={{ backgroundColor: 'var(--casino-accent-red)' }}>
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
@@ -432,8 +437,8 @@ const Layout = ({ children }: LayoutProps) => {
               <div className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full shadow-lg border-2" 
                    style={{ 
                      background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-                     color: '#0A0A0F',
-                     borderColor: '#FFD700',
+                     color: 'var(--casino-primary-dark)',
+                     borderColor: 'var(--casino-highlight-gold)',
                      boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)'
                    }}>
                 <div className="flex items-center space-x-1">
@@ -455,7 +460,7 @@ const Layout = ({ children }: LayoutProps) => {
                 >
                   <RefreshCw className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${balanceLoading ? 'animate-spin' : ''}`} />
                 </button>
-                <div className="text-xs font-medium hidden sm:block" style={{ color: '#0A0A0F' }}>
+                <div className="text-xs font-medium hidden sm:block" style={{ color: 'var(--casino-primary-dark)' }}>
                   {user?.firstName ? `${user.firstName}_Aces9F` : 'Player'}
                 </div>
               </div>
@@ -468,7 +473,7 @@ const Layout = ({ children }: LayoutProps) => {
                   className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-transform duration-300 hover:scale-110 text-sm sm:text-lg border-2"
                   style={{ 
                     background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-                    borderColor: '#FFD700',
+                    borderColor: 'var(--casino-highlight-gold)',
                     boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)'
                   }}
                 >
@@ -487,7 +492,7 @@ const Layout = ({ children }: LayoutProps) => {
                       return avatarMap[user.avatar] || '👤';
                     })()
                   ) : (
-                    <span className="font-bold text-xs sm:text-sm" style={{ color: '#0A0A0F' }}>
+                    <span className="font-bold text-xs sm:text-sm" style={{ color: 'var(--casino-primary-dark)' }}>
                       {user?.email?.charAt(0).toUpperCase()}
                     </span>
                   )}
@@ -497,8 +502,8 @@ const Layout = ({ children }: LayoutProps) => {
                 {isUserMenuOpen && (
                   <div className="absolute right-0 top-8 sm:top-10 w-40 sm:w-48 rounded-md shadow-lg border z-[100]" 
                        style={{ 
-                         backgroundColor: '#1B1B2F', 
-                         borderColor: '#2C2C3A',
+                         backgroundColor: 'var(--casino-secondary-dark)', 
+                         borderColor: 'var(--casino-card-border)',
                          boxShadow: '0 0 20px rgba(0, 0, 0, 0.5)'
                        }}>
                     <div className="py-1">
@@ -506,7 +511,7 @@ const Layout = ({ children }: LayoutProps) => {
                         to="/profile"
                         onClick={() => setIsUserMenuOpen(false)}
                         className="flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors duration-200 hover:bg-opacity-20"
-                        style={{ color: '#F5F5F5', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                        style={{ color: 'var(--casino-text-primary)', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
                       >
                         <User className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3" />
                         My Account
@@ -515,16 +520,16 @@ const Layout = ({ children }: LayoutProps) => {
                         to="/settings"
                         onClick={() => setIsUserMenuOpen(false)}
                         className="flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors duration-200 hover:bg-opacity-20"
-                        style={{ color: '#F5F5F5', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                        style={{ color: 'var(--casino-text-primary)', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
                       >
                         <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3" />
                         Settings
                       </Link>
-                      <div className="my-1" style={{ borderTop: '1px solid #2C2C3A' }}></div>
+                      <div className="my-1" style={{ borderTop: '1px solid var(--casino-card-border)' }}></div>
                       <button
                         onClick={handleLogout}
                         className="flex items-center w-full px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors duration-200 hover:bg-opacity-20"
-                        style={{ color: '#E53935', backgroundColor: 'rgba(229, 57, 53, 0.1)' }}
+                        style={{ color: 'var(--casino-accent-red)', backgroundColor: 'rgba(229, 57, 53, 0.1)' }}
                       >
                         <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3" />
                         Logout
@@ -578,8 +583,8 @@ const Layout = ({ children }: LayoutProps) => {
             } overflow-hidden shadow-2xl border flex flex-col`}
             onClick={(e) => e.stopPropagation()}
             style={{ 
-              backgroundColor: '#1B1B2F', 
-              borderColor: '#2C2C3A',
+              backgroundColor: 'var(--casino-secondary-dark)', 
+              borderColor: 'var(--casino-card-border)',
               boxShadow: isMobile ? '0 -4px 20px rgba(0, 0, 0, 0.5)' : '0 10px 40px rgba(0, 0, 0, 0.5)',
               zIndex: 9999,
               top: isMobile ? 'calc(3.5rem + env(safe-area-inset-top, 0px))' : 'calc(4rem + env(safe-area-inset-top, 0px))',
@@ -594,14 +599,14 @@ const Layout = ({ children }: LayoutProps) => {
             <div className={`sticky top-0 px-3 sm:px-4 py-2.5 sm:py-3 border-b flex items-center justify-between flex-shrink-0 ${
               isMobile ? 'bg-opacity-95 backdrop-blur-sm' : ''
             }`}
-               style={{ borderColor: '#2C2C3A', backgroundColor: '#1B1B2F' }}>
+               style={{ borderColor: 'var(--casino-card-border)', backgroundColor: 'var(--casino-secondary-dark)' }}>
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                <h3 className="font-semibold text-sm sm:text-base truncate" style={{ color: '#F5F5F5' }}>
+                <h3 className="font-semibold text-sm sm:text-base truncate" style={{ color: 'var(--casino-text-primary)' }}>
                   {isMobile ? 'Notifications' : `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
                 </h3>
                 {isMobile && unreadCount > 0 && (
                   <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" 
-                        style={{ backgroundColor: '#E53935', color: '#FFFFFF' }}>
+                        style={{ backgroundColor: 'var(--casino-accent-red)', color: 'var(--casino-text-primary)' }}>
                     {unreadCount}
                   </span>
                 )}
@@ -627,7 +632,7 @@ const Layout = ({ children }: LayoutProps) => {
                     }}
                     className="p-1.5 rounded-lg hover:bg-opacity-20 active:scale-95 transition-all touch-manipulation"
                     style={{ 
-                      color: '#B0B0B0', 
+                      color: 'var(--casino-text-secondary)', 
                       backgroundColor: 'rgba(255, 255, 255, 0.1)',
                       WebkitTapHighlightColor: 'transparent',
                       touchAction: 'manipulation',
@@ -649,21 +654,21 @@ const Layout = ({ children }: LayoutProps) => {
             style={{
               WebkitOverflowScrolling: 'touch',
               scrollbarWidth: 'thin',
-              scrollbarColor: '#2C2C3A #1B1B2F'
+              scrollbarColor: 'var(--casino-card-border) var(--casino-secondary-dark)'
             }}>
               {loadingNotifications ? (
-                <div className="p-6 sm:p-8 text-center" style={{ color: '#B0B0B0' }}>
+                <div className="p-6 sm:p-8 text-center" style={{ color: 'var(--casino-text-secondary)' }}>
                   <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 animate-spin mx-auto mb-2 sm:mb-3" />
                   <p className="text-xs sm:text-sm">Loading notifications...</p>
                 </div>
               ) : notifications.length === 0 ? (
-                <div className="p-6 sm:p-8 text-center" style={{ color: '#B0B0B0' }}>
+                <div className="p-6 sm:p-8 text-center" style={{ color: 'var(--casino-text-secondary)' }}>
                   <Bell className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 opacity-50" />
                   <p className="text-xs sm:text-sm">No notifications</p>
                   <p className="text-[10px] sm:text-xs mt-1 opacity-70">You're all caught up!</p>
                 </div>
               ) : (
-                <div className="divide-y" style={{ borderColor: '#2C2C3A' }}>
+                <div className="divide-y" style={{ borderColor: 'var(--casino-card-border)' }}>
                   {notifications.map((notification) => {
                     const getIcon = () => {
                       switch (notification.type) {
@@ -692,6 +697,10 @@ const Layout = ({ children }: LayoutProps) => {
                           if (!notification.isRead) {
                             markAsRead(notification._id);
                           }
+                          if (notification.link) {
+                            setIsNotificationOpen(false);
+                            navigate(notification.link);
+                          }
                         }}
                         className={`p-3 sm:p-4 cursor-pointer transition-colors active:bg-opacity-20 touch-manipulation ${
                           !notification.isRead ? 'bg-opacity-10' : 'hover:bg-opacity-5'
@@ -708,25 +717,32 @@ const Layout = ({ children }: LayoutProps) => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
-                              <h4 className="font-semibold text-xs sm:text-sm md:text-base break-words" style={{ color: '#F5F5F5' }}>
+                              <h4 className="font-semibold text-xs sm:text-sm md:text-base break-words" style={{ color: 'var(--casino-text-primary)' }}>
                                 {notification.title}
                               </h4>
                               {!notification.isRead && (
                                 <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0 mt-1 sm:mt-1.5" style={{ backgroundColor: getColor() }} />
                               )}
                             </div>
-                            <p className="text-[11px] sm:text-xs md:text-sm mt-1 sm:mt-1.5 break-words leading-relaxed" style={{ color: '#B0B0B0' }}>
+                            <p className="text-[11px] sm:text-xs md:text-sm mt-1 sm:mt-1.5 break-words leading-relaxed" style={{ color: 'var(--casino-text-secondary)' }}>
                               {notification.message}
                             </p>
-                            <p className="text-[10px] sm:text-xs mt-1.5 sm:mt-2 opacity-70" style={{ color: '#B0B0B0' }}>
-                              {new Date(notification.createdAt).toLocaleString(undefined, {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                ...(isMobile ? {} : { year: 'numeric' })
-                              })}
-                            </p>
+                            <div className="flex items-center justify-between mt-1.5 sm:mt-2">
+                              <p className="text-[10px] sm:text-xs opacity-70" style={{ color: 'var(--casino-text-secondary)' }}>
+                                {new Date(notification.createdAt).toLocaleString(undefined, {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  ...(isMobile ? {} : { year: 'numeric' })
+                                })}
+                              </p>
+                              {notification.link && (
+                                <span className="text-[10px] sm:text-xs font-medium" style={{ color: 'var(--casino-highlight-gold)' }}>
+                                  View &rarr;
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -747,8 +763,8 @@ const Layout = ({ children }: LayoutProps) => {
               sidebarCollapsed ? 'w-16' : 'w-64'
             }`}
             style={{ 
-              backgroundColor: '#1B1B2F', 
-              borderRightColor: '#2C2C3A',
+              backgroundColor: 'var(--casino-secondary-dark)', 
+              borderRightColor: 'var(--casino-card-border)',
               top: 'calc(4rem + env(safe-area-inset-top, 0px))'
             }}
             onMouseEnter={() => setSidebarCollapsed(false)}
@@ -801,8 +817,8 @@ const Layout = ({ children }: LayoutProps) => {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
           style={{ 
-            backgroundColor: '#1B1B2F', 
-            borderRightColor: '#2C2C3A',
+            backgroundColor: 'var(--casino-secondary-dark)', 
+            borderRightColor: 'var(--casino-card-border)',
             top: 'calc(3rem + env(safe-area-inset-top, 0px))'
           }}>
             {/* Navigation Menu */}
@@ -853,7 +869,7 @@ const Layout = ({ children }: LayoutProps) => {
             backgroundColor: 'rgba(10, 10, 15, 0.97)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
-            borderTopColor: '#2C2C3A',
+            borderTopColor: 'var(--casino-card-border)',
             paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           }}
         >

@@ -19,6 +19,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
   const { login, setLastRechargeStatus } = useAuthStore();
   const { stopMusic, startMusic } = useMusic();
@@ -78,6 +79,7 @@ const Login = () => {
         body: JSON.stringify({
           email: data.email,
           password: data.password,
+          rememberMe,
         }),
       });
 
@@ -242,9 +244,14 @@ const Login = () => {
             </div>
 
                 <div className="flex justify-between items-center pt-1">
-                  <label className="flex items-center">
-                    <input type="checkbox" className="w-4 h-4 sm:w-4 sm:h-4 text-yellow-400 bg-casino-bg-secondary border-casino-border rounded focus:ring-yellow-400 focus:ring-2" />
-                    <span className="ml-2 text-sm sm:text-sm casino-text-secondary">Remember me</span>
+                  <label className="flex items-center cursor-pointer touch-manipulation">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 text-yellow-400 bg-casino-bg-secondary border-casino-border rounded focus:ring-yellow-400 focus:ring-2"
+                    />
+                    <span className="ml-2 text-sm casino-text-secondary">Remember me</span>
                   </label>
                 </div>
 

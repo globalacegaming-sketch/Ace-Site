@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import User, { IUser } from '../models/User';
+import Referral from '../models/Referral';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
 import { authenticate } from '../middleware/auth';
 import fortunePandaService from '../services/fortunePandaService';
@@ -68,10 +69,12 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
 
     // Handle referral code if provided
     let referredBy = null;
+    let referrerUserId: string | null = null;
     if (referralCode) {
       const referrer = await User.findOne({ referralCode: referralCode.toUpperCase() });
       if (referrer) {
         referredBy = (referrer._id as any).toString();
+        referrerUserId = referredBy;
       } else {
         return sendError(res, 'Invalid referral code', 400);
       }
@@ -170,6 +173,17 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
       return sendError(res, 'Failed to create user account. Please try again.', 500);
     }
 
+    // Create a Referral record if the user signed up with a referral code
+    if (referrerUserId && referralCode) {
+      Referral.create({
+        referredUser: user._id,
+        referredBy: referrerUserId,
+        referralCode: referralCode.toUpperCase(),
+        status: 'pending',
+        bonusGranted: false,
+      }).catch(err => logger.error('Failed to create referral record:', err));
+    }
+
     // Generate tokens immediately (don't wait for async operations)
     const tokens = generateTokens(user);
 
@@ -182,6 +196,8 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
       lastName: user.lastName,
       role: user.role,
     };
+    req.session.userAgent = req.headers['user-agent'] || 'Unknown';
+    req.session.ip = req.ip || req.socket.remoteAddress || '—';
     await new Promise<void>((resolve, reject) => {
       req.session.save((err) => (err ? reject(err) : resolve()));
     });
@@ -285,12 +301,74 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       return sendError(res, 'Invalid email or password', 401);
     }
 
-    // Update last login and IP — fire-and-forget so we don't block the response.
-    // Using updateOne avoids Mongoose middleware overhead and is ~3× faster than user.save().
-    User.updateOne(
-      { _id: user._id },
-      { $set: { lastLogin: new Date(), lastLoginIP: clientIP } }
-    ).catch(err => logger.error('Failed to update lastLogin:', err));
+    // ── Update login streak ──
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+
+    const lastLoginDate = user.lastLoginDate ? new Date(user.lastLoginDate) : null;
+    const lastLoginDay = lastLoginDate ? new Date(lastLoginDate) : null;
+    if (lastLoginDay) lastLoginDay.setHours(0, 0, 0, 0);
+
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+    let newStreak = user.loginStreak || 0;
+    let streakUpdated = false;
+
+    if (!lastLoginDay) {
+      // First login ever
+      newStreak = 1;
+      streakUpdated = true;
+    } else if (lastLoginDay.getTime() === todayStart.getTime()) {
+      // Already logged in today — no change
+      streakUpdated = false;
+    } else if (lastLoginDay.getTime() === yesterdayStart.getTime()) {
+      // Consecutive day login — increment streak
+      newStreak = (user.loginStreak || 0) + 1;
+      streakUpdated = true;
+    } else {
+      // Streak broken — reset to 1
+      newStreak = 1;
+      streakUpdated = true;
+    }
+
+    // Cap streak display at 7, then cycle
+    const streakDay = newStreak > 7 ? ((newStreak - 1) % 7) + 1 : newStreak;
+
+    // Check if a new achievement badge should be awarded
+    const newAchievements: Array<{ id: string; name: string; description: string; icon: string; earnedAt: Date }> = [];
+    if (streakUpdated && newStreak === 7) {
+      const has7DayBadge = (user.achievements || []).some((a: any) => a.id === '7_day_streak');
+      if (!has7DayBadge) {
+        newAchievements.push({
+          id: '7_day_streak',
+          name: '7-Day Streak',
+          description: 'Logged in 7 consecutive days!',
+          icon: 'flame',
+          earnedAt: now,
+        });
+      }
+    }
+
+    const updateFields: Record<string, any> = {
+      lastLogin: now,
+      lastLoginIP: clientIP,
+    };
+    if (streakUpdated) {
+      updateFields.loginStreak = newStreak;
+      updateFields.lastLoginDate = now;
+    }
+    const pushFields: Record<string, any> = {};
+    if (newAchievements.length > 0) {
+      pushFields.achievements = { $each: newAchievements };
+    }
+
+    const updateQuery: Record<string, any> = { $set: updateFields };
+    if (Object.keys(pushFields).length > 0) updateQuery.$push = pushFields;
+
+    User.updateOne({ _id: user._id }, updateQuery)
+      .catch(err => logger.error('Failed to update lastLogin/streak:', err));
 
     // Generate tokens (kept for backward compatibility with existing clients)
     const tokens = generateTokens(user);
@@ -308,6 +386,9 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       lastName: user.lastName,
       role: user.role,
     };
+    // Store device info for the Active Sessions UI
+    req.session.userAgent = req.headers['user-agent'] || 'Unknown';
+    req.session.ip = req.ip || req.socket.remoteAddress || '—';
 
     // Force the session to save before responding, so the cookie is set
     // and the session document exists in MongoDB immediately.
@@ -324,8 +405,14 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
         lastName: user.lastName,
         role: user.role,
         isEmailVerified: user.isEmailVerified,
-        lastLogin: user.lastLogin
+        lastLogin: user.lastLogin,
+        loginStreak: streakUpdated ? newStreak : (user.loginStreak || 0),
+        streakDay,
+        achievements: user.achievements || [],
+        referralCode: user.referralCode,
+        createdAt: user.createdAt,
       },
+      newAchievements,
       ...tokens
     });
   } catch (error) {
@@ -386,6 +473,11 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
         isEmailVerified: user.isEmailVerified,
         isPhoneVerified: user.isPhoneVerified,
         lastLogin: user.lastLogin,
+        loginStreak: (user as any).loginStreak || 0,
+        lastLoginDate: (user as any).lastLoginDate,
+        loginStreakRewardsClaimed: (user as any).loginStreakRewardsClaimed || [],
+        achievements: (user as any).achievements || [],
+        referralCode: (user as any).referralCode,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       }

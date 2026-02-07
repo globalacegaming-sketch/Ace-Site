@@ -35,6 +35,15 @@ interface SpinResult {
   bonusSent: boolean;
   messageId?: string;
   sliceOrder?: number;
+  bonusSpins?: number;
+}
+
+interface SpinStatus {
+  spinsRemaining: number;  // normal spins left (-1 = unlimited)
+  bonusSpins: number;
+  totalAvailable: number;  // normal + bonus (-1 = unlimited)
+  spinsPerDay: number;
+  nextResetTime: string;   // ISO timestamp of next midnight reset
 }
 
 // ── Segments (must match backend/src/config/wheelSegments.ts) ────────────────
@@ -149,6 +158,8 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [lastResult, setLastResult] = useState<SpinResult | null>(null);
+  const [spinStatus, setSpinStatus] = useState<SpinStatus | null>(null);
+  const [countdown, setCountdown] = useState('');
 
   const API_BASE_URL = getApiBaseUrl();
 
@@ -178,6 +189,42 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       .then(r => { if (r.data.success) setConfig(r.data.data); })
       .catch(e => console.error('Failed to load wheel config:', e));
   }, [API_BASE_URL, isAdminOrAgentPage, isAuthPage]);
+
+  // ── Fetch spin status when modal opens (authenticated users only) ──
+  const fetchSpinStatus = useCallback(() => {
+    if (!isAuthenticated) return;
+    const authToken = useAuthStore.getState().token;
+    axios.get(`${API_BASE_URL}/wheel/spin-status`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then(r => { if (r.data.success) setSpinStatus(r.data.data); })
+      .catch(() => { /* silent — status badge just won't show */ });
+  }, [API_BASE_URL, isAuthenticated]);
+
+  useEffect(() => {
+    if (isOpen && isAuthenticated) fetchSpinStatus();
+  }, [isOpen, isAuthenticated, fetchSpinStatus]);
+
+  // ── Countdown timer to next reset ──
+  useEffect(() => {
+    if (!spinStatus?.nextResetTime) { setCountdown(''); return; }
+    // Only show countdown when normal spins are exhausted but bonus spins remain,
+    // OR when no spins are left at all.
+    if (spinStatus.spinsRemaining === -1) { setCountdown(''); return; }
+    if (spinStatus.spinsRemaining > 0) { setCountdown(''); return; }
+
+    const tick = () => {
+      const diff = new Date(spinStatus.nextResetTime).getTime() - Date.now();
+      if (diff <= 0) { setCountdown('Refreshing...'); fetchSpinStatus(); return; }
+      const h = Math.floor(diff / 3_600_000);
+      const m = Math.floor((diff % 3_600_000) / 60_000);
+      const s = Math.floor((diff % 60_000) / 1_000);
+      setCountdown(`${h}h ${m}m ${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [spinStatus, fetchSpinStatus]);
 
   // ── Canvas geometry (casino frame layout) ──
   const centerX = size / 2;
@@ -597,7 +644,11 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         bonusSent: data.bonusSent,
         messageId: data.messageId,
         sliceOrder: data.sliceOrder,
+        bonusSpins: data.bonusSpins,
       };
+
+      // Refresh spin status (remaining spins / bonus count)
+      fetchSpinStatus();
 
       // Switch to deceleration phase
       anim.decelStartTime = Date.now();
@@ -628,7 +679,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         toast.error('Failed to spin the wheel. Please try again.');
       }
     }
-  }, [startAnimLoop, calculateTargetAngle]);
+  }, [startAnimLoop, calculateTargetAngle, fetchSpinStatus]);
 
   // ── Handle canvas click ──
   const handleSpinClick = useCallback(
@@ -904,6 +955,45 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                 </div>
               )}
             </div>
+
+            {/* ─── Spins remaining badge ─── */}
+            {isAuthenticated && spinStatus && spinStatus.totalAvailable !== -1 && !showLoginModal && (
+              <div
+                className="mt-3 sm:mt-4 flex flex-col items-center gap-1"
+                style={{ animation: 'resultAppear 0.3s ease-out' }}
+              >
+                <div
+                  className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(74,0,0,0.85), rgba(139,0,0,0.85))',
+                    border: '1px solid rgba(255,215,0,0.3)',
+                    color: spinStatus.totalAvailable > 0 ? '#FFD700' : '#FF6B6B',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  {spinStatus.totalAvailable > 0 ? (
+                    <>
+                      <span>{spinStatus.totalAvailable} spin{spinStatus.totalAvailable !== 1 ? 's' : ''} remaining</span>
+                      {spinStatus.bonusSpins > 0 && (
+                        <span className="text-xs opacity-75">(+{spinStatus.bonusSpins} bonus)</span>
+                      )}
+                    </>
+                  ) : (
+                    <span>No spins remaining</span>
+                  )}
+                </div>
+                {countdown && spinStatus.totalAvailable === 0 && (
+                  <span className="text-xs text-white/60">
+                    Next spin in {countdown}
+                  </span>
+                )}
+                {countdown && spinStatus.spinsRemaining === 0 && spinStatus.bonusSpins > 0 && (
+                  <span className="text-xs text-yellow-400/70">
+                    Daily reset in {countdown} &middot; Bonus spins available!
+                  </span>
+                )}
+              </div>
+            )}
 
           </div>
 

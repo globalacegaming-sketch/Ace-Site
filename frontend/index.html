@@ -19,12 +19,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
     <title>Online Slots, Fish & Table Games | Global Ace Gaming</title>
-    <!-- OneSignal: deferred queue and init run before SDK loads -->
+    <!-- OneSignal: deferred queue and init run before SDK loads.
+         App ID comes from VITE_ONESIGNAL_APP_ID env var (injected at build time). -->
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
       OneSignalDeferred.push(async function(OneSignal) {
+        var appId = "%VITE_ONESIGNAL_APP_ID%";
+        // Vite replaces %VITE_*% at build time; fall back to the known production ID
+        if (!appId || appId.indexOf("VITE_") !== -1) {
+          appId = "85f288b7-130d-4334-9a01-304bd9070551";
+        }
         await OneSignal.init({
-          appId: "85f288b7-130d-4334-9a01-304bd9070551",
+          appId: appId,
           allowLocalhostAsSecureOrigin: true,
           promptOptions: {
             slidedown: {
