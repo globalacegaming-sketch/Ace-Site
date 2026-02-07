@@ -195,6 +195,8 @@ const WheelManagementPanel = () => {
       }
 
       // Save all sections (no slices - using hardcoded SEGMENTS)
+      // Also sync WheelConfig.isEnabled so the legacy spin fallback stays consistent
+      const isEnabled = campaign.status === 'live';
       await Promise.all([
         axios.put(`${API_BASE_URL}/agent/wheel/campaign`, {
           campaignName: campaign.campaignName,
@@ -202,6 +204,7 @@ const WheelManagementPanel = () => {
           startDate: campaign.startDate || undefined,
           endDate: campaign.endDate || undefined
         }, { headers }),
+        axios.put(`${API_BASE_URL}/admin/wheel/config`, { isEnabled }, { headers }),
         axios.put(`${API_BASE_URL}/agent/wheel/budget`, budget, { headers }),
         axios.put(`${API_BASE_URL}/agent/wheel/fairness-rules`, fairnessRules, { headers })
       ]);

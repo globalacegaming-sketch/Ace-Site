@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useWalletBalance } from '../../hooks/useWalletBalance';
+import { triggerHaptic } from '../../utils/haptic';
 import axios from 'axios';
 import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 import { io, Socket } from 'socket.io-client';
@@ -844,28 +845,45 @@ const Layout = ({ children }: LayoutProps) => {
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation — haptic, 48px+ touch targets, safe-area aware */}
       {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 z-[90] bg-gray-900 bg-opacity-95 backdrop-blur-sm border-t border-gray-700 shadow-2xl"
-             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="flex items-center justify-around py-1.5 sm:py-2">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[90] border-t shadow-2xl"
+          style={{
+            backgroundColor: 'rgba(10, 10, 15, 0.97)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderTopColor: '#2C2C3A',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
+        >
+          <div className="flex items-center justify-around py-1">
             {mobileNavItems.map((item) => {
-              const isActive = location.pathname === item.href;
+              const isActive = item.name === 'Home'
+                ? (isAuthenticated ? location.pathname === '/dashboard' : location.pathname === '/')
+                : location.pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`flex flex-col items-center py-1.5 sm:py-2 px-2 sm:px-3 rounded-xl transition-all duration-300 group ${
+                  onClick={() => triggerHaptic('light')}
+                  className={`flex flex-col items-center justify-center min-w-[48px] min-h-[48px] px-3 rounded-xl transition-all duration-200 group active:scale-90 ${
                     isActive
-                      ? 'text-yellow-400 bg-yellow-400 bg-opacity-10'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      ? 'text-yellow-400'
+                      : 'text-gray-400'
                   }`}
+                  style={{
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
+                    background: isActive ? 'rgba(255, 215, 0, 0.08)' : 'transparent',
+                  }}
+                  aria-current={isActive ? 'page' : undefined}
                 >
-                  <item.icon className={`w-5 h-5 sm:w-6 sm:h-6 mb-0.5 sm:mb-1 transition-transform duration-300 ${
-                    isActive ? 'scale-110' : 'group-hover:scale-110'
+                  <item.icon className={`w-5 h-5 mb-0.5 transition-transform duration-200 ${
+                    isActive ? 'scale-110' : ''
                   }`} />
-                  <span className={`text-xs font-medium transition-all duration-300 ${
-                    isActive ? 'font-semibold' : 'group-hover:font-medium'
+                  <span className={`text-[10px] leading-tight font-medium ${
+                    isActive ? 'font-semibold' : ''
                   }`}>{item.name}</span>
                 </Link>
               );

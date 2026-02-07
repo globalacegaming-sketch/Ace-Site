@@ -113,14 +113,13 @@ router.get('/config', async (req: Request, res: Response) => {
       });
     }
 
-    // Fallback to old config system
-    let config = await WheelConfig.findOne();
-    if (!config) config = await WheelConfig.create({});
-
+    // No live campaign → wheel is disabled
+    // (Previously fell back to WheelConfig.isEnabled which defaults to true,
+    //  causing the wheel to show even when no campaign is live.)
     return res.json({
       success: true,
       data: {
-        isEnabled: config.isEnabled,
+        isEnabled: false,
         segments: WHEEL_SEGMENTS.map(s => ({
           type: s.type,
           label: s.label,

@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Star, Shield, Zap, Users, Crown, Play, Loader2 } from 'lucide-react';
+import { Star, Shield, Zap, Users, Crown, Play } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { getGamesApiUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 import { useMusic } from '../contexts/MusicContext';
 import { PageMeta } from '../components/PageMeta';
+import { LazyImage } from '../components/LazyImage';
+import { GameCardSkeleton } from '../components/skeletons/GameCardSkeleton';
 
 interface Game {
   kindId: number;
@@ -307,8 +309,10 @@ const Home = () => {
           </div>
 
           {loading ? (
-            <div className="flex justify-center items-center py-12 sm:py-16">
-              <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin" style={{ color: '#FFD700' }} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+              {Array.from({ length: 3 }, (_, i) => (
+                <GameCardSkeleton key={i} />
+              ))}
             </div>
           ) : error ? (
             <div className="text-center py-12 sm:py-16">
@@ -330,14 +334,10 @@ const Home = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
             {popularGames.map((game) => (
                 <div key={game.kindId} className="casino-game-card rounded-xl overflow-hidden group hover:transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <div className="relative">
-                  <img 
-                      src={game.gameLogo}
-                      alt={game.gameName}
-                      className="w-full h-36 sm:h-44 lg:h-48 object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/300x300/1B1B2F/FFD700?text=Game';
-                      }}
+                <div className="relative h-36 sm:h-44 lg:h-48">
+                  <LazyImage
+                    src={game.gameLogo}
+                    alt={game.gameName}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                       <button 
