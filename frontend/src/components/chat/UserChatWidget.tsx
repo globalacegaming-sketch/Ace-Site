@@ -72,7 +72,6 @@ const UserChatWidget = () => {
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [emojiExpanded, setEmojiExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false); // true while widget is visible (for animation)
   const [isClosing, setIsClosing] = useState(false);     // true during close animation
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -438,12 +437,10 @@ const UserChatWidget = () => {
       setIsClosing(true);
       setTimeout(() => {
         setIsOpen(false);
-        setIsAnimating(false);
         setIsClosing(false);
       }, 250); // match CSS transition duration
     } else {
       setIsOpen(true);
-      setIsAnimating(true);
       setUnreadCount(0);
       oneSignalRequestPermission().catch(() => {});
     }
