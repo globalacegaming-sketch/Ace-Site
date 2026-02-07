@@ -567,7 +567,7 @@ const Chat = () => {
                               if (!acc[r.emoji]) acc[r.emoji] = { count: 0, reactors: [], mine: false };
                               acc[r.emoji].count++;
                               acc[r.emoji].reactors.push(r.reactorName || r.reactorType);
-                              if (r.reactorId === user?._id && r.reactorType === 'user') acc[r.emoji].mine = true;
+                              if (r.reactorId === user?.id && r.reactorType === 'user') acc[r.emoji].mine = true;
                               return acc;
                             }, {})
                           ).map(([emoji, info]) => (
