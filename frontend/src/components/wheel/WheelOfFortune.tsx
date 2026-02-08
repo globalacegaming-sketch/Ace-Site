@@ -158,7 +158,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [lastResult, setLastResult] = useState<SpinResult | null>(null);
-  const [spinStatus, setSpinStatus] = useState<SpinStatus | null>(null);
+  const [, setSpinStatus] = useState<SpinStatus | null>(null);
   // countdown state removed — badge was removed in earlier cleanup
 
   const API_BASE_URL = getApiBaseUrl();
