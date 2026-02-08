@@ -159,7 +159,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const [showResult, setShowResult] = useState(false);
   const [lastResult, setLastResult] = useState<SpinResult | null>(null);
   const [spinStatus, setSpinStatus] = useState<SpinStatus | null>(null);
-  const [countdown, setCountdown] = useState('');
+  // countdown state removed — badge was removed in earlier cleanup
 
   const API_BASE_URL = getApiBaseUrl();
 
@@ -205,26 +205,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
     if (isOpen && isAuthenticated) fetchSpinStatus();
   }, [isOpen, isAuthenticated, fetchSpinStatus]);
 
-  // ── Countdown timer to next reset ──
-  useEffect(() => {
-    if (!spinStatus?.nextResetTime) { setCountdown(''); return; }
-    // Only show countdown when normal spins are exhausted but bonus spins remain,
-    // OR when no spins are left at all.
-    if (spinStatus.spinsRemaining === -1) { setCountdown(''); return; }
-    if (spinStatus.spinsRemaining > 0) { setCountdown(''); return; }
-
-    const tick = () => {
-      const diff = new Date(spinStatus.nextResetTime).getTime() - Date.now();
-      if (diff <= 0) { setCountdown('Refreshing...'); fetchSpinStatus(); return; }
-      const h = Math.floor(diff / 3_600_000);
-      const m = Math.floor((diff % 3_600_000) / 60_000);
-      const s = Math.floor((diff % 60_000) / 1_000);
-      setCountdown(`${h}h ${m}m ${s}s`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [spinStatus, fetchSpinStatus]);
+  // Countdown timer removed — spin-count badge was removed in earlier cleanup
 
   // ── Canvas geometry (casino frame layout) ──
   const centerX = size / 2;
