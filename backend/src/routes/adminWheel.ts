@@ -268,4 +268,53 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
+// ── PUT /user/:userId/bonus-spins — set a user's bonus spin count ────────────
+router.put('/user/:userId/bonus-spins', requireAdminOrAgentAuth, async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { bonusSpins } = req.body;
+
+    if (bonusSpins === undefined || typeof bonusSpins !== 'number' || bonusSpins < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'bonusSpins must be a non-negative number'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: { bonusSpins } },
+      { new: true }
+    ).select('firstName lastName email bonusSpins');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    logger.info('Admin reset bonus spins', {
+      userId,
+      newBonusSpins: bonusSpins,
+      userName: `${user.firstName} ${user.lastName}`
+    });
+
+    return res.json({
+      success: true,
+      message: `Bonus spins set to ${bonusSpins}`,
+      data: {
+        userId: user._id,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        bonusSpins: (user as any).bonusSpins
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error setting user bonus spins:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to set bonus spins',
+      error: error.message
+    });
+  }
+});
+
 export default router;

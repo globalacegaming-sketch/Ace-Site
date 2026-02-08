@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth';
 import WheelSpin from '../models/WheelSpin';
 import WheelConfig from '../models/WheelConfig';
 import WheelCampaign from '../models/WheelCampaign';
+import WheelFairnessRules from '../models/WheelFairnessRules';
 import WheelSlice from '../models/WheelSlice';
 import ChatMessage from '../models/ChatMessage';
 import User from '../models/User';
@@ -371,24 +372,33 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Try new campaign system first
+    // Determine limits & spin counts based on active system
     let spinsPerDay = -1;
     let spinsPerUser = -1;
+    let campaignId: Types.ObjectId | null = null;
+
+    // Try campaign system first — read limits from WheelFairnessRules
+    // (this is where the management panel saves spinsPerUser)
     try {
       const campaign = await WheelCampaign.findOne({ status: 'live' });
       if (campaign) {
-        // Campaign system — use WheelConfig for per-day limits or campaign rules
+        campaignId = campaign._id as Types.ObjectId;
+        const fairnessRules = await WheelFairnessRules.findOne({ campaignId: campaign._id });
+        if (fairnessRules) {
+          spinsPerUser = fairnessRules.spinsPerUser;
+        }
+        // Per-day limits still come from WheelConfig (not in fairness rules)
         const config = await WheelConfig.findOne();
         if (config) {
           spinsPerDay = config.spinsPerDay;
-          spinsPerUser = config.spinsPerUser;
         }
       }
     } catch {
       // Fall back to old config system
     }
 
-    if (spinsPerDay === -1 && spinsPerUser === -1) {
+    // No live campaign — use WheelConfig directly
+    if (!campaignId) {
       const config = await WheelConfig.findOne();
       if (config) {
         spinsPerDay = config.spinsPerDay;
@@ -396,9 +406,15 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
       }
     }
 
-    const [todaySpinCount, totalSpinCount, userDoc] = await Promise.all([
-      WheelSpin.countDocuments({ userId, createdAt: { $gte: today } }),
-      WheelSpin.countDocuments({ userId }),
+    // Count spins scoped to the active campaign (matches wheelSpinService logic)
+    const spinCountQuery: Record<string, any> = { userId };
+    if (campaignId) {
+      spinCountQuery.campaignId = campaignId;
+    }
+
+    const [todaySpinCount, campaignSpinCount, userDoc] = await Promise.all([
+      WheelSpin.countDocuments({ ...spinCountQuery, createdAt: { $gte: today } }),
+      WheelSpin.countDocuments(spinCountQuery),
       User.findById(userId).select('bonusSpins'),
     ]);
     const bonusSpins = (userDoc as any)?.bonusSpins || 0;
@@ -407,7 +423,7 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
     if (spinsPerDay !== -1) {
       spinsRemaining = Math.max(0, spinsPerDay - todaySpinCount);
     } else if (spinsPerUser !== -1) {
-      spinsRemaining = Math.max(0, spinsPerUser - totalSpinCount);
+      spinsRemaining = Math.max(0, spinsPerUser - campaignSpinCount);
     } else {
       spinsRemaining = -1; // unlimited
     }
@@ -426,7 +442,7 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
         spinsPerDay,
         spinsPerUser,
         todaySpins: todaySpinCount,
-        totalSpins: totalSpinCount,
+        totalSpins: campaignSpinCount,
         nextResetTime: tomorrow.toISOString(),
       }
     });
