@@ -1,20 +1,25 @@
 import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Gamepad2, Wallet, User, Trophy, ArrowRight } from 'lucide-react';
+import { Gamepad2, Wallet, User, MessageCircle, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useBalancePolling } from '../hooks/useBalancePolling';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import WelcomeBonusBanner from '../components/WelcomeBonusBanner';
 import PromoCarousel from '../components/PromoCarousel';
-import DailySpinCTA from '../components/DailySpinCTA';
 import LoginStreakCalendar from '../components/LoginStreakCalendar';
+
+const QUICK_ACTIONS = [
+  { to: '/games', icon: Gamepad2, label: 'Games', desc: 'Browse & play your favourite games', grad: 'linear-gradient(135deg, #FFD700, #FFA000)', shadow: 'rgba(255,215,0,0.25)', dark: true },
+  { to: '/wallet', icon: Wallet, label: 'Wallet', desc: 'Deposit, withdraw & transactions', grad: 'linear-gradient(135deg, #00C853, #00A844)', shadow: 'rgba(0,200,83,0.25)', dark: false },
+  { to: '/profile', icon: User, label: 'Profile', desc: 'Update your account info', grad: 'linear-gradient(135deg, #6A1B9A, #00B0FF)', shadow: 'rgba(106,27,154,0.25)', dark: false },
+  { to: '/support', icon: MessageCircle, label: 'Support', desc: 'Get help & contact us', grad: 'linear-gradient(135deg, #00B0FF, #0091EA)', shadow: 'rgba(0,176,255,0.25)', dark: false },
+] as const;
 
 const Dashboard = () => {
   const { user, lastRechargeStatus } = useAuthStore();
   const { balance, fetchBalance } = useBalancePolling(30000);
 
-  // Pull-to-refresh — re-fetches balance
   const handleRefresh = useCallback(async () => {
     await fetchBalance(true);
   }, [fetchBalance]);
@@ -23,199 +28,121 @@ const Dashboard = () => {
     onRefresh: handleRefresh,
   });
 
-  const getStatusText = (status: string | null) => {
-    switch (status) {
-      case 'success':
-        return 'Last Recharge: Success';
-      case 'failed':
-        return 'Last Recharge: Failed';
-      case 'processing':
-        return 'Last Recharge: Processing';
-      default:
-        return 'No Recharge History';
-    }
-  };
+  const rechargeColor =
+    lastRechargeStatus === 'success' ? '#00C853' :
+    lastRechargeStatus === 'failed' ? '#FF5252' :
+    lastRechargeStatus === 'processing' ? '#FFB300' : '#888';
+
+  const rechargeLabel =
+    lastRechargeStatus === 'success' ? 'Success' :
+    lastRechargeStatus === 'failed' ? 'Failed' :
+    lastRechargeStatus === 'processing' ? 'Processing' : 'None';
 
   return (
-    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{ 
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-    }}>
-      {/* Pull-to-refresh */}
+    <div
+      className="min-h-screen pt-16 sm:pt-18 md:pt-20 pb-4 sm:pb-6 md:pb-8 lg:pb-10 overflow-x-hidden"
+      style={{ background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)' }}
+    >
       <PullToRefreshIndicator isRefreshing={isRefreshing} pullDistance={pullDistance} />
 
-      {/* Decorative glowing orbs */}
-      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-30 animate-pulse" style={{ backgroundColor: '#6A1B9A' }} />
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-25" style={{ backgroundColor: '#00B0FF' }} />
-        <div className="absolute top-1/2 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: '#FFD700' }} />
+      {/* Decorative orbs */}
+      <div className="absolute inset-0 overflow-hidden -z-10 pointer-events-none" aria-hidden>
+        <div className="absolute top-20 left-10 w-40 sm:w-56 md:w-64 lg:w-80 h-40 sm:h-56 md:h-64 lg:h-80 rounded-full blur-3xl opacity-20 sm:opacity-25 lg:opacity-30 animate-pulse" style={{ backgroundColor: '#6A1B9A' }} />
+        <div className="absolute bottom-20 right-10 w-44 sm:w-60 md:w-72 lg:w-96 h-44 sm:h-60 md:h-72 lg:h-96 rounded-full blur-3xl opacity-15 sm:opacity-20 lg:opacity-25" style={{ backgroundColor: '#00B0FF' }} />
       </div>
-      
-      <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
-        {/* Welcome Section */}
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold casino-text-primary mb-2">
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-5 md:px-6 lg:px-8 w-full box-border">
+
+        {/* ── Welcome ── */}
+        <div className="mb-4 sm:mb-5 md:mb-6 lg:mb-8">
+          <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold casino-text-primary">
             Welcome back, {user?.firstName || 'Player'}!
           </h1>
-          <p className="text-sm sm:text-base casino-text-secondary">
-            Ready to play? Choose your next adventure from our extensive game library.
+          <p className="text-xs sm:text-sm md:text-base casino-text-secondary mt-0.5 sm:mt-1">
+            Ready to play? Pick your next game below.
           </p>
         </div>
 
-        {/* Promotional Carousel — top of dashboard */}
-        <PromoCarousel />
+        {/* ── Balance + Status ── */}
+        <div
+          className="rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 lg:p-8 mb-4 sm:mb-5 md:mb-6 lg:mb-8 flex items-center justify-between overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(139,92,246,0.08) 100%)',
+            border: '1px solid rgba(255,215,0,0.15)',
+          }}
+        >
+          <div className="min-w-0">
+            <p className="text-[11px] sm:text-xs md:text-sm uppercase tracking-wider casino-text-secondary mb-0.5 sm:mb-1">Balance</p>
+            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold casino-text-primary leading-none truncate">
+              ${balance || '0.00'}
+            </h2>
+          </div>
+          <div className="text-right shrink-0 ml-3 sm:ml-4">
+            <p className="text-[11px] sm:text-xs md:text-sm uppercase tracking-wider casino-text-secondary mb-0.5 sm:mb-1">Last Recharge</p>
+            <span
+              className="inline-block px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs md:text-sm font-semibold whitespace-nowrap"
+              style={{ backgroundColor: `${rechargeColor}22`, color: rechargeColor }}
+            >
+              {rechargeLabel}
+            </span>
+          </div>
+        </div>
 
-        {/* Daily Spin CTA — visible only when wheel is enabled */}
-        <DailySpinCTA />
+        {/* ── Desktop two-column layout: Carousel + Streak side-by-side ── */}
+        <div className="lg:grid lg:grid-cols-5 lg:gap-6 xl:gap-8">
+          {/* Left: Carousel (wider) */}
+          <div className="lg:col-span-3">
+            <PromoCarousel />
+          </div>
+          {/* Right: Streak Calendar */}
+          <div className="lg:col-span-2">
+            <LoginStreakCalendar />
+          </div>
+        </div>
 
-        {/* Daily Login Streak Calendar */}
-        <LoginStreakCalendar />
-
-        {/* Welcome Bonus — visible for new users (< 7 days) */}
+        {/* ── Welcome Bonus (new users only) ── */}
         <WelcomeBonusBanner />
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-6 mb-6 sm:mb-8">
-          <div className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border text-center">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4" style={{ 
-              background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-              boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)'
-            }}>
-              <Gamepad2 className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#0A0A0F' }} />
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold casino-text-primary mb-1">
-              ${balance || '0.00'}
-            </h3>
-            <p className="text-xs sm:text-base casino-text-secondary">Fortune Panda Balance</p>
-          </div>
-
-          <div className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border text-center">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4" style={{ 
-              background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
-              boxShadow: '0 0 20px rgba(106, 27, 154, 0.3)'
-            }}>
-              <Trophy className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#F5F5F5' }} />
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold casino-text-primary mb-1">Active</h3>
-            <p className="text-xs sm:text-base casino-text-secondary">Account Status</p>
-          </div>
-        </div>
-
-        {/* Last Recharge Status */}
-        <div className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border mb-6 sm:mb-8">
-          <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-3 sm:mb-4">Account Status</h3>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
-            <div className="flex items-center space-x-3">
-              <div className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
-                lastRechargeStatus === 'success' ? 'status-success-casino' :
-                lastRechargeStatus === 'failed' ? 'status-error-casino' :
-                lastRechargeStatus === 'processing' ? 'status-warning-casino' :
-                'status-badge-casino'
-              }`}>
-                {getStatusText(lastRechargeStatus)}
-              </div>
-            </div>
+        {/* ── Quick Actions ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4 lg:gap-5 mb-4 sm:mb-5 md:mb-6 lg:mb-8">
+          {QUICK_ACTIONS.map(({ to, icon: Icon, label, desc, grad, shadow, dark }) => (
             <Link
-              to="/wallet"
-              className="casino-text-primary hover:text-yellow-400 font-medium text-xs sm:text-sm flex items-center transition-colors duration-300"
-              style={{ color: '#FFD700' }}
+              key={to}
+              to={to}
+              className="flex flex-col items-center py-3 sm:py-4 md:py-5 lg:py-6 px-2 rounded-xl sm:rounded-2xl casino-bg-secondary casino-border active:scale-95 hover:scale-[1.02] transition-all touch-manipulation group"
             >
-              View Details
-              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Quick Actions — 2-col on mobile for better thumb reach */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
-          <Link
-            to="/games"
-            className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border text-center group hover:border-yellow-400 transition-all duration-300 active:scale-95 touch-manipulation"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-200" style={{ 
-              background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-              boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)'
-            }}>
-              <Gamepad2 className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8" style={{ color: '#0A0A0F' }} />
-            </div>
-            <h3 className="text-sm sm:text-lg font-semibold casino-text-primary mb-1 sm:mb-2">Play Games</h3>
-            <p className="casino-text-secondary text-xs sm:text-sm hidden sm:block">
-              Browse and launch your favorite games
-            </p>
-          </Link>
-
-          <Link
-            to="/wallet"
-            className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border text-center group hover:border-green-400 transition-all duration-300 active:scale-95 touch-manipulation"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-200" style={{ 
-              background: 'linear-gradient(135deg, #00C853 0%, #00A844 100%)',
-              boxShadow: '0 0 20px rgba(0, 200, 83, 0.3)'
-            }}>
-              <Wallet className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8" style={{ color: '#F5F5F5' }} />
-            </div>
-            <h3 className="text-sm sm:text-lg font-semibold casino-text-primary mb-1 sm:mb-2">Wallet</h3>
-            <p className="casino-text-secondary text-xs sm:text-sm hidden sm:block">
-              Deposit, withdraw, and view transactions
-            </p>
-          </Link>
-
-          <Link
-            to="/profile"
-            className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border text-center group hover:border-purple-400 transition-all duration-300 active:scale-95 touch-manipulation"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-200" style={{ 
-              background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
-              boxShadow: '0 0 20px rgba(106, 27, 154, 0.3)'
-            }}>
-              <User className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8" style={{ color: '#F5F5F5' }} />
-            </div>
-            <h3 className="text-sm sm:text-lg font-semibold casino-text-primary mb-1 sm:mb-2">Profile</h3>
-            <p className="casino-text-secondary text-xs sm:text-sm hidden sm:block">
-              Update your account information
-            </p>
-          </Link>
-
-          <Link
-            to="/support"
-            className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border text-center group hover:border-blue-400 transition-all duration-300 active:scale-95 touch-manipulation"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-200" style={{ 
-              background: 'linear-gradient(135deg, #00B0FF 0%, #0091EA 100%)',
-              boxShadow: '0 0 20px rgba(0, 176, 255, 0.3)'
-            }}>
-              <Trophy className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8" style={{ color: '#F5F5F5' }} />
-            </div>
-            <h3 className="text-sm sm:text-lg font-semibold casino-text-primary mb-1 sm:mb-2">Support</h3>
-            <p className="casino-text-secondary text-xs sm:text-sm hidden sm:block">
-              Get help and contact support
-            </p>
-          </Link>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="casino-bg-secondary backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border">
-          <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-3 sm:mb-4">Recent Activity</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2 border-b casino-border">
-              <div className="flex items-center space-x-3">
-                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: '#00C853' }}>
-                  <span className="text-white text-xs">✓</span>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm font-medium casino-text-primary">Account Created</p>
-                  <p className="text-xs casino-text-secondary">Welcome to Global Ace Gaming!</p>
-                </div>
+              <div
+                className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-full flex items-center justify-center mb-1.5 sm:mb-2 md:mb-2.5 group-hover:scale-110 transition-transform"
+                style={{ background: grad, boxShadow: `0 0 16px ${shadow}` }}
+              >
+                <Icon className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 lg:w-7 lg:h-7" style={{ color: dark ? '#0A0A0F' : '#F5F5F5' }} />
               </div>
-              <span className="text-xs casino-text-secondary">Just now</span>
+              <span className="text-[11px] sm:text-xs md:text-sm lg:text-base font-semibold casino-text-primary">{label}</span>
+              <span className="text-[9px] sm:text-[10px] md:text-xs casino-text-secondary mt-0.5 text-center leading-tight hidden sm:block">{desc}</span>
+            </Link>
+          ))}
+        </div>
+
+        {/* ── Wallet shortcut bar ── */}
+        <Link
+          to="/wallet"
+          className="flex items-center justify-between rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5 casino-bg-secondary casino-border mb-4 sm:mb-5 md:mb-6 active:scale-[0.98] hover:border-green-500/30 transition-all touch-manipulation"
+        >
+          <div className="flex items-center gap-2.5 sm:gap-3 md:gap-4">
+            <div
+              className="w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: 'linear-gradient(135deg, #00C853, #00A844)' }}
+            >
+              <Wallet className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
-            
-            <div className="text-center py-3 sm:py-4">
-              <p className="text-xs sm:text-sm casino-text-secondary">
-                Start playing games to see your activity here!
-              </p>
+            <div className="min-w-0">
+              <p className="text-sm sm:text-base md:text-lg font-semibold casino-text-primary leading-tight">Deposit &amp; Withdraw</p>
+              <p className="text-[11px] sm:text-xs md:text-sm casino-text-secondary">Manage your funds</p>
             </div>
           </div>
-        </div>
+          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 casino-text-secondary shrink-0" />
+        </Link>
+
       </div>
     </div>
   );

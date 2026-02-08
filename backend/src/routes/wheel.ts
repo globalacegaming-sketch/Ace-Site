@@ -189,26 +189,14 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
 
     const userId = new Types.ObjectId(req.user._id);
 
-    // ── Helper: award / consume bonus spins after a successful spin ──
-    const postSpinBookkeeping = async (rewardType: string, consumedBonusSpin: boolean) => {
-      let delta = 0;
-      if (rewardType === 'try_again') {
-        delta += 1; // Award +1 bonus spin for "Free Spin +1"
-        logger.info('🎰 Awarding +1 bonus spin (Free Spin win)', { userId: userId.toString() });
-      }
-      if (consumedBonusSpin) {
-        delta -= 1; // Deduct the bonus spin that was used
-        logger.info('🎰 Consuming 1 bonus spin', { userId: userId.toString() });
-      }
-      if (delta !== 0) {
-        await User.updateOne({ _id: userId }, { $inc: { bonusSpins: delta } });
-      }
+    // ── Helper: post-spin logging (bonus-spin tracking removed — admin cap is the hard limit) ──
+    const postSpinBookkeeping = async (_rewardType: string, _consumedBonusSpin: boolean) => {
+      // No-op. Bonus spin accumulation has been removed.
+      // The admin-set spinsPerUser is the only limit that matters.
     };
 
-    // ── Helper: build success response with current bonus spin count ──
+    // ── Helper: build success response ──
     const buildResponse = async (spinDoc: any, sliceOrder: number, rewardType: string, rewardLabel: string, rewardValue: string | null, rewardColor: string, messageId?: string) => {
-      const updatedUser = await User.findById(userId).select('bonusSpins');
-      const bonusSpins = (updatedUser as any)?.bonusSpins || 0;
       return res.json({
         success: true,
         message: 'Spin completed successfully',
@@ -221,7 +209,7 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
           rewardColor,
           bonusSent: spinDoc.bonusSent,
           messageId,
-          bonusSpins
+          bonusSpins: 0
         }
       });
     };
@@ -271,8 +259,27 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
         ? matchingIndices[Math.floor(Math.random() * matchingIndices.length)]
         : 0;
 
+      // Resolve required fields: campaignId, sliceId, cost
+      const selectedSegment = WHEEL_SEGMENTS[sliceOrder];
+      const cost = selectedSegment?.cost ?? 0;
+
+      // Get campaign + matching slice for the spin record
+      const campaign = await WheelCampaign.findOne({ status: 'live' });
+      const campaignId = campaign?._id;
+
+      let sliceId: Types.ObjectId | undefined;
+      if (campaignId) {
+        const slice = await WheelSlice.findOne({ campaignId, enabled: true }).select('_id');
+        sliceId = slice?._id as Types.ObjectId | undefined;
+      }
+
+      // If we can't resolve a campaign or slice, fall back to a dummy ObjectId
+      // so the required-field validation passes. This only applies to the legacy path.
       const spin = await WheelSpin.create({
         userId,
+        campaignId: campaignId || new Types.ObjectId(),
+        sliceId: sliceId || new Types.ObjectId(),
+        cost,
         rewardType: selectedReward,
         rewardValue: rewardInfo.value || undefined,
         bonusSent: false
@@ -307,7 +314,8 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
     }
 
     // ───────────────────────────────────────────────────────────────────────
-    // ATTEMPT 2: Old config system (normal limits)
+    // ATTEMPT 2: Old config system (normal limits) — only when campaign
+    //            system was not available (NOT when the limit was hit)
     // ───────────────────────────────────────────────────────────────────────
     if (!campaignLimitHit) {
       const result = await doOldConfigSpin(false);
@@ -321,36 +329,15 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
 
         return await buildResponse(result.spin, result.sliceOrder, result.selectedReward, result.rewardInfo.label, result.rewardInfo.value, result.rewardInfo.color, messageId);
       }
-      // result === null means limit hit; fall through to bonus spin check
     }
 
     // ───────────────────────────────────────────────────────────────────────
-    // ATTEMPT 3: Use a bonus spin (user hit normal limits)
+    // Limit reached — no bonus-spin bypass. The admin cap is final.
     // ───────────────────────────────────────────────────────────────────────
-    const userDoc = await User.findById(userId).select('bonusSpins');
-    const bonusSpinsAvailable = (userDoc as any)?.bonusSpins || 0;
-
-    if (bonusSpinsAvailable <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'You have reached your daily spin limit'
-      });
-    }
-
-    // Force the spin through, bypassing limits (bonus spin pays for it)
-    const result = await doOldConfigSpin(true);
-    if (!result || !('spin' in result)) {
-      return res.status(400).json({ success: false, message: 'Wheel of Fortune is currently disabled' });
-    }
-
-    await postSpinBookkeeping(result.selectedReward, true);
-
-    let messageId: string | undefined;
-    if (result.selectedReward.startsWith('bonus_')) {
-      messageId = await sendRewardToChat(userId, result.spin, result.rewardInfo.label, result.selectedReward, result.rewardInfo.value);
-    }
-
-    return await buildResponse(result.spin, result.sliceOrder, result.selectedReward, result.rewardInfo.label, result.rewardInfo.value, result.rewardInfo.color, messageId);
+    return res.status(400).json({
+      success: false,
+      message: 'You have used all your spins'
+    });
 
   } catch (error: any) {
     logger.error('Error spinning wheel:', error);
@@ -412,13 +399,13 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
       spinCountQuery.campaignId = campaignId;
     }
 
-    const [todaySpinCount, campaignSpinCount, userDoc] = await Promise.all([
+    const [todaySpinCount, campaignSpinCount] = await Promise.all([
       WheelSpin.countDocuments({ ...spinCountQuery, createdAt: { $gte: today } }),
       WheelSpin.countDocuments(spinCountQuery),
-      User.findById(userId).select('bonusSpins'),
     ]);
-    const bonusSpins = (userDoc as any)?.bonusSpins || 0;
 
+    // The admin-set limit is the hard cap. No accumulation on top.
+    // totalAvailable = max(0, cap - spins_used). That's it.
     let spinsRemaining: number;
     if (spinsPerDay !== -1) {
       spinsRemaining = Math.max(0, spinsPerDay - todaySpinCount);
@@ -428,17 +415,22 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
       spinsRemaining = -1; // unlimited
     }
 
-    // Total available = normal remaining + bonus spins
-    const totalAvailable = spinsRemaining === -1
-      ? -1
-      : spinsRemaining + bonusSpins;
+    logger.info('📊 spin-status debug:', {
+      userId: userId.toString(),
+      campaignId: campaignId?.toString() || 'none',
+      spinsPerDay,
+      spinsPerUser,
+      todaySpinCount,
+      campaignSpinCount,
+      spinsRemaining,
+    });
 
     return res.json({
       success: true,
       data: {
         spinsRemaining,
-        bonusSpins,
-        totalAvailable,
+        bonusSpins: 0,
+        totalAvailable: spinsRemaining,
         spinsPerDay,
         spinsPerUser,
         todaySpins: todaySpinCount,

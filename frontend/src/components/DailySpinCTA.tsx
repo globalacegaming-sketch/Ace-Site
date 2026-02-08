@@ -6,8 +6,12 @@ import { useAuthStore } from '../stores/authStore';
 
 interface SpinStatus {
   spinsRemaining: number;
+  bonusSpins: number;
+  totalAvailable: number; // base remaining + bonus (-1 = unlimited)
   spinsPerDay: number;
+  spinsPerUser: number;
   todaySpins: number;
+  totalSpins: number;
   nextResetTime: string;
 }
 
@@ -87,13 +91,14 @@ export default function DailySpinCTA() {
   // Hide entirely when wheel is disabled or config not loaded
   if (wheelEnabled === false || !status) return null;
 
-  const hasSpins = status.spinsRemaining === -1 || status.spinsRemaining > 0;
+  const available = status.totalAvailable;
+  const hasSpins = available === -1 || available > 0;
   const spinsText =
-    status.spinsRemaining === -1
+    available === -1
       ? 'Unlimited spins available!'
-      : status.spinsRemaining === 0
-        ? 'No spins remaining today'
-        : `You have ${status.spinsRemaining} free spin${status.spinsRemaining > 1 ? 's' : ''} today!`;
+      : available === 0
+        ? 'No spins remaining'
+        : `You have ${available} spin${available !== 1 ? 's' : ''} available!`;
 
   return (
     <div

@@ -67,7 +67,7 @@ export default function LoginStreakCalendar() {
       );
       if (res.data.success) {
         toast.success(res.data.data.reward.label, { icon: '🎁', duration: 3000 });
-        fetchStreak(); // refresh
+        fetchStreak();
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to claim reward');
@@ -78,8 +78,8 @@ export default function LoginStreakCalendar() {
 
   if (loading) {
     return (
-      <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border mb-4 sm:mb-6 animate-pulse">
-        <div className="h-32 rounded-lg" style={{ backgroundColor: 'rgba(255,215,0,0.05)' }} />
+      <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-3.5 sm:p-5 md:p-6 casino-border mb-4 sm:mb-5 md:mb-6 lg:mb-0 animate-pulse">
+        <div className="h-20 sm:h-24 md:h-28 lg:h-32 rounded-lg" style={{ backgroundColor: 'rgba(255,215,0,0.05)' }} />
       </div>
     );
   }
@@ -87,30 +87,30 @@ export default function LoginStreakCalendar() {
   if (!data) return null;
 
   return (
-    <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border mb-4 sm:mb-6">
+    <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-3.5 sm:p-5 md:p-6 casino-border mb-4 sm:mb-5 md:mb-6 lg:mb-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Flame className="w-5 h-5" style={{ color: '#FF6B00' }} />
-          <h3 className="text-base sm:text-lg font-bold casino-text-primary">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <Flame className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" style={{ color: '#FF6B00' }} />
+          <h3 className="text-sm sm:text-base md:text-lg font-bold casino-text-primary truncate">
             Daily Login Streak
           </h3>
         </div>
         <div
-          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs sm:text-sm font-bold"
+          className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] md:text-sm font-bold shrink-0"
           style={{
             background: 'linear-gradient(135deg, rgba(255,107,0,0.2), rgba(255,165,0,0.1))',
             color: '#FF6B00',
             border: '1px solid rgba(255,107,0,0.3)',
           }}
         >
-          <Flame className="w-3.5 h-3.5" />
+          <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           {data.loginStreak} day{data.loginStreak !== 1 ? 's' : ''}
         </div>
       </div>
 
       {/* Streak calendar grid */}
-      <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2">
         {data.rewards.map((reward) => {
           const isCurrent = reward.current;
           const isUnlocked = reward.unlocked;
@@ -122,7 +122,7 @@ export default function LoginStreakCalendar() {
               key={reward.day}
               onClick={() => canClaim && handleClaim(reward.day)}
               disabled={!canClaim || claiming !== null}
-              className={`relative flex flex-col items-center justify-center rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 transition-all touch-manipulation min-h-[72px] sm:min-h-[90px] ${
+              className={`relative flex flex-col items-center justify-center rounded-lg sm:rounded-xl p-0.5 sm:p-1.5 md:p-2 lg:p-2.5 transition-all touch-manipulation min-h-[56px] sm:min-h-[68px] md:min-h-[80px] lg:min-h-[90px] ${
                 canClaim
                   ? 'hover:scale-105 active:scale-95 cursor-pointer'
                   : isClaimed
@@ -146,26 +146,26 @@ export default function LoginStreakCalendar() {
             >
               {/* Day label */}
               <span
-                className="text-[10px] sm:text-xs font-semibold mb-0.5"
+                className="text-[9px] sm:text-[10px] md:text-xs font-semibold mb-0.5"
                 style={{ color: isCurrent ? '#FFD700' : '#888' }}
               >
                 Day {reward.day}
               </span>
 
               {/* Icon */}
-              <span className="text-base sm:text-xl mb-0.5">
+              <span className="text-sm sm:text-base md:text-lg lg:text-xl mb-0.5">
                 {isClaimed ? (
-                  <Check className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: 'var(--casino-accent-green)' }} />
+                  <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" style={{ color: 'var(--casino-accent-green)' }} />
                 ) : isUnlocked ? (
                   DAY_ICONS[reward.day] || '🎁'
                 ) : (
-                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: '#555' }} />
+                  <Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" style={{ color: '#555' }} />
                 )}
               </span>
 
               {/* Reward label */}
               <span
-                className="text-[9px] sm:text-[10px] font-medium text-center leading-tight"
+                className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs font-medium text-center leading-tight"
                 style={{ color: isUnlocked ? '#ccc' : '#555' }}
               >
                 {reward.label.replace('Deposit ', '').replace('Bonus', '')}
@@ -174,13 +174,13 @@ export default function LoginStreakCalendar() {
               {/* Claim indicator */}
               {canClaim && claiming !== reward.day && (
                 <Gift
-                  className="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 animate-bounce"
+                  className="absolute -top-1 -right-1 w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 animate-bounce"
                   style={{ color: 'var(--casino-highlight-gold)' }}
                 />
               )}
               {claiming === reward.day && (
                 <Loader2
-                  className="absolute -top-1 -right-1 w-3.5 h-3.5 animate-spin"
+                  className="absolute -top-1 -right-1 w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin"
                   style={{ color: 'var(--casino-highlight-gold)' }}
                 />
               )}
@@ -191,7 +191,7 @@ export default function LoginStreakCalendar() {
 
       {/* Next reward hint */}
       {data.streakDay < 7 && (
-        <p className="text-xs casino-text-secondary mt-3 text-center">
+        <p className="text-[10px] sm:text-xs md:text-sm casino-text-secondary mt-2.5 sm:mt-3 text-center">
           Come back tomorrow for{' '}
           <span style={{ color: 'var(--casino-highlight-gold)' }}>
             {data.rewards.find((r) => r.day === data.streakDay + 1)?.label || 'a reward'}

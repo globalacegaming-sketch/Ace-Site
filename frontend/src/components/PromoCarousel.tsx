@@ -93,8 +93,12 @@ export default function PromoCarousel() {
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
+  /* Shared slide classes */
+  const slideClasses =
+    'snap-start shrink-0 rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 flex flex-col justify-end min-h-[120px] sm:min-h-[150px] md:min-h-[180px] lg:min-h-[220px] touch-manipulation';
+
   return (
-    <div className="mb-6 sm:mb-8">
+    <div className="mb-4 sm:mb-5 md:mb-6 lg:mb-0 overflow-hidden">
       {/* Scrollable track */}
       <div className="relative group">
         <div
@@ -109,12 +113,12 @@ export default function PromoCarousel() {
                 href={s.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="snap-start flex-shrink-0 w-full rounded-xl sm:rounded-2xl p-5 sm:p-8 flex flex-col justify-end min-h-[140px] sm:min-h-[180px] touch-manipulation"
-                style={{ background: s.gradient }}
+                className={slideClasses}
+                style={{ background: s.gradient, width: '100%', minWidth: '100%' }}
               >
-                <h3 className="text-lg sm:text-xl font-bold text-white mb-1">{s.title}</h3>
-                <p className="text-xs sm:text-sm text-white/80 mb-3 max-w-md">{s.subtitle}</p>
-                <span className="inline-block bg-white/20 hover:bg-white/30 backdrop-blur text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-lg transition-colors self-start">
+                <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-white mb-0.5 sm:mb-1">{s.title}</h3>
+                <p className="text-[11px] sm:text-xs md:text-sm lg:text-base text-white/80 mb-2 sm:mb-3 max-w-lg leading-snug">{s.subtitle}</p>
+                <span className="inline-block bg-white/20 hover:bg-white/30 backdrop-blur text-white text-[11px] sm:text-xs md:text-sm font-semibold px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 rounded-lg transition-colors self-start">
                   {s.cta}
                 </span>
               </a>
@@ -122,12 +126,12 @@ export default function PromoCarousel() {
               <Link
                 key={s.id}
                 to={s.href}
-                className="snap-start flex-shrink-0 w-full rounded-xl sm:rounded-2xl p-5 sm:p-8 flex flex-col justify-end min-h-[140px] sm:min-h-[180px] touch-manipulation"
-                style={{ background: s.gradient }}
+                className={slideClasses}
+                style={{ background: s.gradient, width: '100%', minWidth: '100%' }}
               >
-                <h3 className="text-lg sm:text-xl font-bold text-white mb-1">{s.title}</h3>
-                <p className="text-xs sm:text-sm text-white/80 mb-3 max-w-md">{s.subtitle}</p>
-                <span className="inline-block bg-white/20 hover:bg-white/30 backdrop-blur text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-lg transition-colors self-start">
+                <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-white mb-0.5 sm:mb-1">{s.title}</h3>
+                <p className="text-[11px] sm:text-xs md:text-sm lg:text-base text-white/80 mb-2 sm:mb-3 max-w-lg leading-snug">{s.subtitle}</p>
+                <span className="inline-block bg-white/20 hover:bg-white/30 backdrop-blur text-white text-[11px] sm:text-xs md:text-sm font-semibold px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 rounded-lg transition-colors self-start">
                   {s.cta}
                 </span>
               </Link>
@@ -135,25 +139,25 @@ export default function PromoCarousel() {
           )}
         </div>
 
-        {/* Desktop arrows */}
+        {/* Nav arrows — visible on md+ */}
         <button
           onClick={() => goTo(current - 1)}
-          className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+          className="hidden md:flex absolute left-2 lg:left-3 top-1/2 -translate-y-1/2 w-8 h-8 lg:w-10 lg:h-10 items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
           aria-label="Previous slide"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-4 h-4 lg:w-5 lg:h-5" />
         </button>
         <button
           onClick={() => goTo(current + 1)}
-          className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+          className="hidden md:flex absolute right-2 lg:right-3 top-1/2 -translate-y-1/2 w-8 h-8 lg:w-10 lg:h-10 items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
           aria-label="Next slide"
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-4 h-4 lg:w-5 lg:h-5" />
         </button>
       </div>
 
       {/* Dots */}
-      <div className="flex justify-center gap-1.5 mt-3" role="tablist">
+      <div className="flex justify-center gap-1.5 mt-2.5 sm:mt-3" role="tablist">
         {SLIDES.map((s, i) => (
           <button
             key={s.id}
@@ -161,8 +165,8 @@ export default function PromoCarousel() {
             aria-selected={i === current}
             aria-label={`Slide ${i + 1}`}
             onClick={() => goTo(i)}
-            className={`h-1.5 rounded-full transition-all duration-300 touch-manipulation ${
-              i === current ? 'w-6' : 'w-1.5 opacity-40'
+            className={`h-1.5 sm:h-2 rounded-full transition-all duration-300 touch-manipulation ${
+              i === current ? 'w-5 sm:w-6' : 'w-1.5 sm:w-2 opacity-40'
             }`}
             style={{ backgroundColor: 'var(--casino-highlight-gold)' }}
           />

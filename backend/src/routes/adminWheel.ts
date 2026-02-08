@@ -268,6 +268,22 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
+// ── POST /reset-all-bonus-spins — reset every user's bonus spins to 0 ────────
+router.post('/reset-all-bonus-spins', requireAdminOrAgentAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await User.updateMany({}, { $set: { bonusSpins: 0 } });
+    logger.info('Admin reset ALL users bonus spins to 0', { modifiedCount: result.modifiedCount });
+    return res.json({
+      success: true,
+      message: `Reset bonus spins to 0 for ${result.modifiedCount} users`,
+      data: { modifiedCount: result.modifiedCount }
+    });
+  } catch (error: any) {
+    logger.error('Error resetting all bonus spins:', error);
+    return res.status(500).json({ success: false, message: 'Failed to reset bonus spins', error: error.message });
+  }
+});
+
 // ── PUT /user/:userId/bonus-spins — set a user's bonus spin count ────────────
 router.put('/user/:userId/bonus-spins', requireAdminOrAgentAuth, async (req: Request, res: Response) => {
   try {

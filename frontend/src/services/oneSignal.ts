@@ -19,22 +19,14 @@ declare global {
   }
 }
 
-/** Wait for OneSignal to be available (SDK loads with defer). */
-function getOneSignal(): Promise<NonNullable<typeof window.OneSignal>> {
-  return new Promise((resolve) => {
-    if (window.OneSignal) {
-      resolve(window.OneSignal);
-      return;
-    }
-    const check = () => {
-      if (window.OneSignal) {
-        resolve(window.OneSignal);
-        return;
-      }
-      setTimeout(check, 50);
-    };
-    setTimeout(check, 100);
-  });
+/**
+ * Run a callback only after OneSignal SDK is fully initialized.
+ * Uses the official OneSignalDeferred queue — this guarantees the SDK's
+ * internal state is ready, unlike polling for window.OneSignal.
+ */
+function whenReady(fn: (sdk: OneSignalSDK) => void | Promise<void>): void {
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(fn);
 }
 
 /**
@@ -43,10 +35,15 @@ function getOneSignal(): Promise<NonNullable<typeof window.OneSignal>> {
  */
 export async function oneSignalLogin(userId: string): Promise<void> {
   try {
-    const OneSignal = await getOneSignal();
-    await OneSignal.login(userId);
+    whenReady(async (OneSignal) => {
+      try {
+        await OneSignal.login(userId);
+      } catch (e) {
+        console.warn('OneSignal login failed:', e);
+      }
+    });
   } catch (e) {
-    console.warn('OneSignal login failed:', e);
+    console.warn('OneSignal login setup failed:', e);
   }
 }
 
@@ -55,38 +52,55 @@ export async function oneSignalLogin(userId: string): Promise<void> {
  */
 export async function oneSignalLogout(): Promise<void> {
   try {
-    const OneSignal = await getOneSignal();
-    await OneSignal.logout();
+    whenReady(async (OneSignal) => {
+      try {
+        await OneSignal.logout();
+      } catch (e) {
+        console.warn('OneSignal logout failed:', e);
+      }
+    });
   } catch (e) {
-    console.warn('OneSignal logout failed:', e);
+    console.warn('OneSignal logout setup failed:', e);
   }
 }
 
 /**
  * Request notification permission. Call when the user opens the chat widget
- * (contextual) so we only prompt if they’re likely to want support alerts.
+ * (contextual) so we only prompt if they're likely to want support alerts.
  */
 export async function oneSignalRequestPermission(): Promise<boolean> {
   try {
-    const OneSignal = await getOneSignal();
-    if (OneSignal.Notifications?.isPushSupported && !OneSignal.Notifications.isPushSupported()) {
-      return false;
-    }
-    if (OneSignal.Slidedown?.promptPush) {
-      OneSignal.Slidedown.promptPush();
-      return true;
-    }
-    if (OneSignal.User?.PushSubscription?.optIn) {
-      await OneSignal.User.PushSubscription.optIn();
-      return true;
-    }
-    if (OneSignal.Notifications?.requestPermission) {
-      await OneSignal.Notifications.requestPermission();
-      return true;
-    }
-    return false;
+    return new Promise<boolean>((resolve) => {
+      whenReady(async (OneSignal) => {
+        try {
+          if (OneSignal.Notifications?.isPushSupported && !OneSignal.Notifications.isPushSupported()) {
+            resolve(false);
+            return;
+          }
+          if (OneSignal.Slidedown?.promptPush) {
+            OneSignal.Slidedown.promptPush();
+            resolve(true);
+            return;
+          }
+          if (OneSignal.User?.PushSubscription?.optIn) {
+            await OneSignal.User.PushSubscription.optIn();
+            resolve(true);
+            return;
+          }
+          if (OneSignal.Notifications?.requestPermission) {
+            await OneSignal.Notifications.requestPermission();
+            resolve(true);
+            return;
+          }
+          resolve(false);
+        } catch (e) {
+          console.warn('OneSignal requestPermission failed:', e);
+          resolve(false);
+        }
+      });
+    });
   } catch (e) {
-    console.warn('OneSignal requestPermission failed:', e);
+    console.warn('OneSignal requestPermission setup failed:', e);
     return false;
   }
 }

@@ -956,44 +956,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
               )}
             </div>
 
-            {/* ─── Spins remaining badge ─── */}
-            {isAuthenticated && spinStatus && spinStatus.totalAvailable !== -1 && !showLoginModal && (
-              <div
-                className="mt-3 sm:mt-4 flex flex-col items-center gap-1"
-                style={{ animation: 'resultAppear 0.3s ease-out' }}
-              >
-                <div
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(74,0,0,0.85), rgba(139,0,0,0.85))',
-                    border: '1px solid rgba(255,215,0,0.3)',
-                    color: spinStatus.totalAvailable > 0 ? '#FFD700' : '#FF6B6B',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
-                  }}
-                >
-                  {spinStatus.totalAvailable > 0 ? (
-                    <>
-                      <span>{spinStatus.totalAvailable} spin{spinStatus.totalAvailable !== 1 ? 's' : ''} remaining</span>
-                      {spinStatus.bonusSpins > 0 && (
-                        <span className="text-xs opacity-75">(+{spinStatus.bonusSpins} bonus)</span>
-                      )}
-                    </>
-                  ) : (
-                    <span>No spins remaining</span>
-                  )}
-                </div>
-                {countdown && spinStatus.totalAvailable === 0 && (
-                  <span className="text-xs text-white/60">
-                    Next spin in {countdown}
-                  </span>
-                )}
-                {countdown && spinStatus.spinsRemaining === 0 && spinStatus.bonusSpins > 0 && (
-                  <span className="text-xs text-yellow-400/70">
-                    Daily reset in {countdown} &middot; Bonus spins available!
-                  </span>
-                )}
-              </div>
-            )}
+            {/* Spin count badge removed — the wheel itself communicates availability */}
 
           </div>
 

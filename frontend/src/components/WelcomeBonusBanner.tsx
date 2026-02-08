@@ -38,7 +38,7 @@ export default function WelcomeBonusBanner() {
 
   return (
     <div
-      className="relative rounded-xl sm:rounded-2xl p-4 sm:p-5 mb-6 sm:mb-8 overflow-hidden"
+      className="relative rounded-xl sm:rounded-2xl p-3.5 sm:p-5 md:p-6 mb-4 sm:mb-5 md:mb-6 lg:mb-8 overflow-hidden"
       style={{
         background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 50%, #FF6F00 100%)',
         boxShadow: '0 0 30px rgba(255, 215, 0, 0.25)',
@@ -47,24 +47,24 @@ export default function WelcomeBonusBanner() {
       {/* Dismiss */}
       <button
         onClick={handleDismiss}
-        className="absolute top-3 right-3 p-1 rounded-full bg-black/20 hover:bg-black/40 transition-colors touch-manipulation"
+        className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 p-1 sm:p-1.5 rounded-full bg-black/20 hover:bg-black/40 transition-colors touch-manipulation"
         aria-label="Dismiss welcome bonus"
       >
-        <X className="w-4 h-4 text-white" />
+        <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
       </button>
 
       <div className="flex items-center gap-3 sm:gap-4">
         <div
-          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center flex-shrink-0"
+          className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center shrink-0"
           style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}
         >
-          <Gift className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+          <Gift className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm sm:text-base font-bold text-gray-900 mb-0.5">
+          <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-900 mb-0.5">
             Claim your Welcome Bonus!
           </h3>
-          <p className="text-xs sm:text-sm text-gray-800 leading-snug">
+          <p className="text-[11px] sm:text-xs md:text-sm text-gray-800 leading-snug">
             100% match on your first deposit — double your starting balance and get playing today.
           </p>
         </div>
@@ -72,9 +72,9 @@ export default function WelcomeBonusBanner() {
 
       <Link
         to="/bonuses"
-        className="mt-3 inline-flex items-center gap-1.5 bg-black/80 hover:bg-black text-yellow-400 font-semibold text-xs sm:text-sm px-4 py-2 rounded-lg transition-colors touch-manipulation active:scale-95"
+        className="mt-2.5 sm:mt-3 inline-flex items-center gap-1.5 bg-black/80 hover:bg-black text-yellow-400 font-semibold text-[11px] sm:text-xs md:text-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-colors touch-manipulation active:scale-95"
       >
-        <Gift className="w-3.5 h-3.5" />
+        <Gift className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
         Claim Now
       </Link>
     </div>
