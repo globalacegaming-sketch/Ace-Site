@@ -194,9 +194,7 @@ const WheelManagementPanel = () => {
         return;
       }
 
-      // Save all sections (no slices - using hardcoded SEGMENTS)
-      // Also sync WheelConfig.isEnabled so the legacy spin fallback stays consistent
-      const isEnabled = campaign.status === 'live';
+      // Save all sections — campaign system is the single source of truth
       await Promise.all([
         axios.put(`${API_BASE_URL}/agent/wheel/campaign`, {
           campaignName: campaign.campaignName,
@@ -204,7 +202,6 @@ const WheelManagementPanel = () => {
           startDate: campaign.startDate || undefined,
           endDate: campaign.endDate || undefined
         }, { headers }),
-        axios.put(`${API_BASE_URL}/admin/wheel/config`, { isEnabled }, { headers }),
         axios.put(`${API_BASE_URL}/agent/wheel/budget`, budget, { headers }),
         axios.put(`${API_BASE_URL}/agent/wheel/fairness-rules`, fairnessRules, { headers })
       ]);
@@ -225,23 +222,16 @@ const WheelManagementPanel = () => {
       return;
     }
     const newStatus = campaign.status === 'live' ? 'paused' : 'live';
-    const isEnabled = newStatus === 'live';
     setTogglingWheel(true);
     try {
-      // Update campaign status (live = wheel on, paused = wheel off)
+      // Campaign status is the single source of truth (live = wheel on, paused = wheel off)
       await axios.put(
         `${API_BASE_URL}/agent/wheel/campaign`,
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // Also update WheelConfig.isEnabled (used when no live campaign; admin/agent auth accepted)
-      await axios.put(
-        `${API_BASE_URL}/admin/wheel/config`,
-        { isEnabled },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
       setCampaign((prev) => ({ ...prev, status: newStatus }));
-      toast.success(isEnabled ? 'Wheel is now visible to users' : 'Wheel is now hidden from users');
+      toast.success(newStatus === 'live' ? 'Wheel is now visible to users' : 'Wheel is now hidden from users');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to update wheel visibility');
     } finally {

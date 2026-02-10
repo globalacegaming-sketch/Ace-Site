@@ -8,7 +8,8 @@ const router = Router();
 router.get('/', async (req: Request, res: Response) => {
   try {
     const users = await User.find({})
-      .select('username fortunePandaUsername email phone referralCode referredBy firstName lastName createdAt')
+      .select('username fortunePandaUsername email phone referralCode referredBy firstName lastName labels createdAt')
+      .populate('labels')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -23,6 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
       referredBy: user.referredBy || null,
       firstName: user.firstName || '',
       lastName: user.lastName || '',
+      labels: (user as any).labels || [],
       createdAt: user.createdAt
     }));
 

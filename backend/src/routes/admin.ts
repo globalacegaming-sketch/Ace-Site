@@ -377,6 +377,7 @@ router.get('/users', async (req: Request, res: Response) => {
   try {
     const users = await User.find({})
       .select('-password -fortunePandaPassword')
+      .populate('labels')
       .sort({ createdAt: -1 })
       .lean();
 

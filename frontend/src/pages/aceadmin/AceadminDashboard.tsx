@@ -4,13 +4,14 @@ import {
   Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
   ChevronDown, CheckCircle, Ticket, FileText, Clock, CheckCircle2, XCircle,
   Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2,
-  ToggleLeft, ToggleRight} from 'lucide-react';
+  ToggleLeft, ToggleRight, Tag} from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { getApiBaseUrl } from '../../utils/api';
 import { useMusic } from '../../contexts/MusicContext';
 import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
+import type { LabelData } from '../../components/admin/LabelBadge';
 
 // Types
 interface Platform {
@@ -48,6 +49,7 @@ interface Contact {
   referredBy?: string;
   firstName?: string;
   lastName?: string;
+  labels?: LabelData[];
   createdAt: string;
 }
 
@@ -83,7 +85,7 @@ interface AgentItem {
 
 const ALL_PERMISSIONS = ['chat', 'users', 'verification', 'referrals'] as const;
 
-type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents';
+type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents' | 'labels';
 
 const AceadminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -122,14 +124,29 @@ const AceadminDashboard: React.FC = () => {
   const [savingAgent, setSavingAgent] = useState(false);
   const [showAgentPassword, setShowAgentPassword] = useState(false);
 
+  // Label management states
+  const [labels, setLabels] = useState<LabelData[]>([]);
+  const [labelsLoading, setLabelsLoading] = useState(false);
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<LabelData | null>(null);
+  const [labelForm, setLabelForm] = useState({ name: '', color: '#3B82F6', sortOrder: 0 });
+  const [savingLabel, setSavingLabel] = useState(false);
+
+  const LABEL_COLOR_PALETTE = [
+    '#EF4444', '#F97316', '#EAB308', '#22C55E', '#06B6D4',
+    '#3B82F6', '#8B5CF6', '#EC4899', '#6B7280', '#14B8A6',
+  ];
+
   // Email promotions states
   const [emailForm, setEmailForm] = useState({
     subject: '',
     headerTitle: '',
     headerSubtitle: '',
     emailBody: '',
-    recipientOption: 'all' as 'all' | 'selected',
-    selectedRecipients: [] as string[]
+    recipientOption: 'all' as 'all' | 'selected' | 'byLabel',
+    selectedRecipients: [] as string[],
+    selectedLabelIds: [] as string[],
+    labelMatch: 'any' as 'any' | 'all',
   });
   const [emailAttachment, setEmailAttachment] = useState<File | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -280,13 +297,85 @@ const AceadminDashboard: React.FC = () => {
     return null;
   };
 
+  // ── Label CRUD ──
+  const loadLabels = async () => {
+    setLabelsLoading(true);
+    try {
+      const token = getAgentToken();
+      const res = await axios.get(`${API_BASE_URL}/admin/labels`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.success) setLabels(res.data.data || []);
+    } catch { /* fail silently */ } finally { setLabelsLoading(false); }
+  };
+
+  const openLabelModal = (label?: LabelData) => {
+    if (label) {
+      setEditingLabel(label);
+      setLabelForm({ name: label.name, color: label.color, sortOrder: 0 });
+    } else {
+      setEditingLabel(null);
+      setLabelForm({ name: '', color: '#3B82F6', sortOrder: labels.length });
+    }
+    setShowLabelModal(true);
+  };
+
+  const handleSaveLabel = async () => {
+    if (!labelForm.name.trim()) { toast.error('Label name is required'); return; }
+    setSavingLabel(true);
+    try {
+      const token = getAgentToken();
+      if (editingLabel) {
+        const res = await axios.put(
+          `${API_BASE_URL}/admin/labels/${editingLabel._id}`,
+          labelForm,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.data.success) {
+          setLabels(prev => prev.map(l => l._id === editingLabel._id ? res.data.data : l));
+          toast.success('Label updated');
+        }
+      } else {
+        const res = await axios.post(
+          `${API_BASE_URL}/admin/labels`,
+          labelForm,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.data.success) {
+          setLabels(prev => [...prev, res.data.data]);
+          toast.success('Label created');
+        }
+      }
+      setShowLabelModal(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to save label');
+    } finally { setSavingLabel(false); }
+  };
+
+  const handleDeleteLabel = async (id: string) => {
+    if (!window.confirm('Delete this label? It will be removed from all users.')) return;
+    try {
+      const token = getAgentToken();
+      const res = await axios.delete(`${API_BASE_URL}/admin/labels/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.success) {
+        setLabels(prev => prev.filter(l => l._id !== id));
+        toast.success('Label deleted');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete label');
+    }
+  };
+
   const loadAllData = async () => {
     await Promise.all([
       loadPlatforms(),
       loadBonuses(),
       loadContacts(),
       loadFAQs(),
-      loadNotices()
+      loadNotices(),
+      loadLabels()
     ]);
   };
 
@@ -862,6 +951,11 @@ const AceadminDashboard: React.FC = () => {
           formData.append('recipientIds', JSON.stringify(emailForm.selectedRecipients));
         }
         
+        if (emailForm.recipientOption === 'byLabel' && emailForm.selectedLabelIds.length > 0) {
+          formData.append('labelIds', JSON.stringify(emailForm.selectedLabelIds));
+          formData.append('labelMatch', emailForm.labelMatch);
+        }
+        
         if (emailAttachment) {
           formData.append('attachment', emailAttachment);
         }
@@ -886,7 +980,9 @@ const AceadminDashboard: React.FC = () => {
             headerSubtitle: '',
             emailBody: '',
             recipientOption: 'all',
-            selectedRecipients: []
+            selectedRecipients: [],
+            selectedLabelIds: [],
+            labelMatch: 'any',
           });
           setEmailAttachment(null);
           // Reset file input
@@ -1085,6 +1181,82 @@ const AceadminDashboard: React.FC = () => {
                       ))}
                       {contacts.length === 0 && (
                         <p className="text-sm text-gray-500 text-center py-2">No contacts available</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* By Label option */}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={emailForm.recipientOption === 'byLabel'}
+                      onChange={() => setEmailForm({...emailForm, recipientOption: 'byLabel'})}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">By Label</span>
+                  </label>
+                  {emailForm.recipientOption === 'byLabel' && (
+                    <div className="ml-7 mt-2 border border-gray-200 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-medium text-gray-500">Match:</span>
+                        <button
+                          onClick={() => setEmailForm({...emailForm, labelMatch: 'any'})}
+                          className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                            emailForm.labelMatch === 'any'
+                              ? 'bg-blue-100 text-blue-700 font-medium'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          Any label
+                        </button>
+                        <button
+                          onClick={() => setEmailForm({...emailForm, labelMatch: 'all'})}
+                          className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                            emailForm.labelMatch === 'all'
+                              ? 'bg-blue-100 text-blue-700 font-medium'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          All labels
+                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {labels.length === 0 ? (
+                          <p className="text-sm text-gray-500 text-center py-2">No labels created. Go to Label Management to create labels.</p>
+                        ) : (
+                          labels.map(label => (
+                            <label key={label._id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
+                              <input
+                                type="checkbox"
+                                checked={emailForm.selectedLabelIds.includes(label._id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEmailForm({
+                                      ...emailForm,
+                                      selectedLabelIds: [...emailForm.selectedLabelIds, label._id]
+                                    });
+                                  } else {
+                                    setEmailForm({
+                                      ...emailForm,
+                                      selectedLabelIds: emailForm.selectedLabelIds.filter(id => id !== label._id)
+                                    });
+                                  }
+                                }}
+                                className="w-4 h-4 text-blue-600"
+                              />
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: label.color }}
+                              />
+                              <span className="text-sm text-gray-700">{label.name}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                      {emailForm.selectedLabelIds.length > 0 && (
+                        <p className="text-xs text-gray-400">
+                          Emails will be sent to users with {emailForm.labelMatch === 'all' ? 'ALL' : 'ANY'} of the selected labels
+                        </p>
                       )}
                     </div>
                   )}
@@ -1857,6 +2029,157 @@ const AceadminDashboard: React.FC = () => {
     </div>
   );
 
+  // ── Label Management UI ──
+  const renderLabels = () => (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Label Management</h2>
+            <p className="text-sm text-gray-500 mt-1">Create and manage CRM labels for user categorization</p>
+          </div>
+          <button
+            onClick={() => openLabelModal()}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Add Label
+          </button>
+        </div>
+      </div>
+
+      {/* Labels list */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {labelsLoading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          </div>
+        ) : labels.length === 0 ? (
+          <div className="text-center py-16">
+            <Tag className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-500 font-medium">No labels created</p>
+            <p className="text-sm text-gray-400 mt-1">Labels help you categorize and filter users</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {labels.map(label => (
+              <div key={label._id} className="flex items-center justify-between px-4 sm:px-6 py-3 hover:bg-gray-50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="w-4 h-4 rounded-full flex-shrink-0 border-2 border-white shadow-sm"
+                    style={{ backgroundColor: label.color }}
+                  />
+                  <span className="text-sm font-medium text-gray-900">{label.name}</span>
+                  <span className="text-xs text-gray-400 font-mono">{label.color}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openLabelModal(label)}
+                    className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"
+                    title="Edit"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteLabel(label._id)}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Label modal */}
+      {showLabelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingLabel ? 'Edit Label' : 'Create Label'}
+              </h3>
+              <button onClick={() => setShowLabelModal(false)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={labelForm.name}
+                  onChange={e => setLabelForm(prev => ({ ...prev, name: e.target.value }))}
+                  maxLength={30}
+                  placeholder="e.g. VIP, Lead, Follow-up"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+                <div className="flex flex-wrap gap-2">
+                  {LABEL_COLOR_PALETTE.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setLabelForm(prev => ({ ...prev, color: c }))}
+                      className={`w-8 h-8 rounded-full border-2 transition-transform ${
+                        labelForm.color === c ? 'border-gray-900 scale-110 shadow-md' : 'border-transparent hover:scale-105'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-gray-400">Custom:</span>
+                  <input
+                    type="color"
+                    value={labelForm.color}
+                    onChange={e => setLabelForm(prev => ({ ...prev, color: e.target.value }))}
+                    className="w-8 h-8 rounded cursor-pointer border border-gray-200"
+                  />
+                  <span className="text-xs text-gray-500 font-mono">{labelForm.color}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">Preview:</span>
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                  style={{
+                    backgroundColor: `${labelForm.color}20`,
+                    color: labelForm.color,
+                    border: `1px solid ${labelForm.color}40`,
+                  }}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: labelForm.color }} />
+                  {labelForm.name || 'Label'}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setShowLabelModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveLabel}
+                disabled={savingLabel || !labelForm.name.trim()}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                {savingLabel && <Loader2 className="w-4 h-4 animate-spin" />}
+                {editingLabel ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
@@ -1879,6 +2202,8 @@ const AceadminDashboard: React.FC = () => {
         return renderSupportTickets();
       case 'agents':
         return renderAgents();
+      case 'labels':
+        return renderLabels();
       default:
         return renderDashboard();
     }
@@ -2074,6 +2399,18 @@ const AceadminDashboard: React.FC = () => {
             >
               <Shield className="w-5 h-5 flex-shrink-0" />
               <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Agents</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveSection('labels');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'labels' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <Tag className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Labels</span>
             </button>
           </div>
         </nav>

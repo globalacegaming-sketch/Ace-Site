@@ -43,6 +43,8 @@ import agentWheelRoutes from './routes/agentWheel';
 import agentReferralRoutes from './routes/agentReferrals';
 import webhooksRoutes from './routes/webhooks';
 import walletRoutes from './routes/wallet';
+import labelRoutes from './routes/labels';
+import userNoteRoutes from './routes/userNotes';
 
 // Import Agent model for seeding
 import Agent from './models/Agent';
@@ -450,6 +452,8 @@ app.use('/api/content', contentRoutes);
 // /api/admin would otherwise catch /api/admin/wheel/* and run requireAdminAuth, which rejects agent JWTs.
 app.use('/api/admin/wheel', adminWheelRoutes);
 app.use('/api/admin/messages', adminChatRoutes);
+app.use('/api/admin/labels', labelRoutes);
+app.use('/api/admin/notes', userNoteRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/fortune-panda', fortunePandaRoutes);
 app.use('/api/fortune-panda-user', fortunePandaUserRoutes);

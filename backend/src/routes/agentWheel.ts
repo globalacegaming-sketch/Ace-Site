@@ -8,6 +8,15 @@ import WheelSpin from '../models/WheelSpin';
 import User from '../models/User';
 import logger from '../utils/logger';
 import jwt from 'jsonwebtoken';
+import { WHEEL_SEGMENTS } from '../config/wheelSegments';
+
+// Build a rewardType → display label lookup from the single source of truth
+const REWARD_TYPE_LABELS: Record<string, string> = {};
+for (const seg of WHEEL_SEGMENTS) {
+  if (!REWARD_TYPE_LABELS[seg.type]) {
+    REWARD_TYPE_LABELS[seg.type] = seg.label;
+  }
+}
 
 const router = Router();
 
@@ -32,21 +41,21 @@ const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction
     return next();
   }
   
-  // Try agent auth
+  // Try JWT auth (agent, admin, or super_admin)
   try {
     const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
     const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
     
-    if (decoded.role === 'agent' && decoded.type === 'agent') {
+    if (decoded.type === 'agent') {
       (req as any).agentSession = {
         username: decoded.username,
         role: decoded.role,
-        userId: decoded.userId
+        userId: decoded.userId || decoded.agentId
       };
       return next();
     }
   } catch (error: any) {
-    // Agent auth failed
+    // JWT auth failed
   }
   
   res.status(401).json({
@@ -389,7 +398,6 @@ router.get('/results', async (req: Request, res: Response) => {
     }
     const spins = await WheelSpin.find({ campaignId: campaign._id })
       .populate('userId', 'username email firstName lastName')
-      .populate('sliceId', 'label type prizeValue')
       .sort({ createdAt: -1 })
       .limit(1000);
 
@@ -398,7 +406,8 @@ router.get('/results', async (req: Request, res: Response) => {
       userId: spin.userId._id.toString(),
       username: spin.userId.username,
       email: spin.userId.email,
-      prize: spin.sliceId?.label || spin.rewardValue || 'Unknown',
+      // Use rewardType → label lookup (always correct), fall back to rewardValue
+      prize: REWARD_TYPE_LABELS[spin.rewardType] || spin.rewardValue || spin.rewardType || 'Unknown',
       cost: spin.cost,
       timestamp: spin.createdAt,
       redeemed: spin.redeemed,

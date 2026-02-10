@@ -49,6 +49,9 @@ export interface IUser extends Document {
     earnedAt: Date;
   }[];
 
+  // CRM Labels
+  labels: mongoose.Types.ObjectId[];
+
   referralCode?: string;
   referredBy?: string;
   isBanned?: boolean;
@@ -158,6 +161,11 @@ const UserSchema = new Schema<IUser>({
   },
   fortunePandaLastSync: {
     type: Date
+  },
+  // CRM Labels (references to Label model)
+  labels: {
+    type: [{ type: Schema.Types.ObjectId, ref: 'Label' }],
+    default: [],
   },
   referralCode: {
     type: String,
@@ -286,6 +294,9 @@ UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 
 // Index for banned users
 UserSchema.index({ isBanned: 1 });
+
+// Multikey index for label-based filtering
+UserSchema.index({ labels: 1 });
 
 // Hash password before saving
 UserSchema.pre('save', async function(next) {

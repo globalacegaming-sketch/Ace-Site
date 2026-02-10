@@ -457,7 +457,7 @@ router.post(
     }
 
     try {
-      const { subject, emailBody, headerTitle, headerSubtitle, recipientIds, recipientEmails } = req.body;
+      const { subject, emailBody, headerTitle, headerSubtitle, recipientIds, recipientEmails, labelIds, labelMatch } = req.body;
       const attachment = req.file;
 
       // Validate required fields
@@ -477,6 +477,22 @@ router.post(
 
       // Get recipients
       let recipients: string[] = [];
+
+      // Parse labelIds if provided (label-based recipient resolution)
+      if (labelIds) {
+        try {
+          const ids = typeof labelIds === 'string' ? JSON.parse(labelIds) : labelIds;
+          if (Array.isArray(ids) && ids.length > 0) {
+            const labelFilter = labelMatch === 'all'
+              ? { labels: { $all: ids } }
+              : { labels: { $in: ids } };
+            const labelUsers = await User.find(labelFilter).select('email');
+            recipients = labelUsers.map(u => u.email).filter(Boolean);
+          }
+        } catch (error) {
+          logger.error('Error parsing labelIds:', error);
+        }
+      }
 
       // Parse recipientIds if provided
       if (recipientIds) {

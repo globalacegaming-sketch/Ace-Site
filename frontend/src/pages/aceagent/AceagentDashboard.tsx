@@ -17,7 +17,9 @@ import {
   MessageCircle,
   Ban,
   UserCheck,
-  LogOut
+  LogOut,
+  StickyNote,
+  Tag
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -26,6 +28,8 @@ import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 import AdminChatPanel from '../../components/admin/chat/AdminChatPanel';
 import AdminSessionManager from '../../components/admin/AdminSessionManager';
 import { useMusic } from '../../contexts/MusicContext';
+import LabelBadge, { LabelSelector, LabelFilter, type LabelData } from '../../components/admin/LabelBadge';
+import UserNotesPanel from '../../components/admin/UserNotesPanel';
 
 type AgentPermission = 'chat' | 'users' | 'verification' | 'referrals';
 
@@ -45,6 +49,7 @@ interface User {
   bannedAt?: string;
   banReason?: string;
   lastLoginIP?: string;
+  labels?: LabelData[];
   createdAt: string;
   lastLogin?: string;
 }
@@ -79,6 +84,12 @@ const AceagentDashboard: React.FC = () => {
   const [depositAmount, setDepositAmount] = useState('');
   const [redeemAmount, setRedeemAmount] = useState('');
   const wsBaseUrl = useMemo(() => getWsBaseUrl(), []);
+
+  // Labels & Notes state
+  const [allLabels, setAllLabels] = useState<LabelData[]>([]);
+  const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
+  const [notesUserId, setNotesUserId] = useState<string | null>(null);
+  const [notesUserName, setNotesUserName] = useState('');
   const sessionCheckedRef = useRef(false);
 
   // ── Permissions ────────────────────────────────────────────────────────────
@@ -270,6 +281,7 @@ const AceagentDashboard: React.FC = () => {
       }
       loadUsers();
       loadAgentBalance();
+      fetchLabels();
       
       // Mark session as checked
       sessionCheckedRef.current = true;
@@ -385,6 +397,41 @@ const AceagentDashboard: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to load users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch all labels
+  const fetchLabels = async () => {
+    try {
+      const token = getAdminToken();
+      if (!token) return;
+      const res = await axios.get(`${API_BASE_URL}/admin/labels`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.success) setAllLabels(res.data.data || []);
+    } catch { /* Labels are optional */ }
+  };
+
+  // Assign labels to a user
+  const handleAssignLabels = async (userId: string, labelIds: string[]) => {
+    try {
+      const token = getAdminToken();
+      if (!token) return;
+      await axios.post(
+        `${API_BASE_URL}/admin/labels/assign`,
+        { userId, labelIds },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      // Update local state
+      setUsers(prev =>
+        prev.map(u => u._id === userId
+          ? { ...u, labels: allLabels.filter(l => labelIds.includes(l._id)) }
+          : u
+        )
+      );
+      toast.success('Labels updated');
+    } catch {
+      toast.error('Failed to update labels');
     }
   };
 
@@ -709,11 +756,20 @@ const AceagentDashboard: React.FC = () => {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.fortunePandaUsername?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchesSearch =
+      u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.fortunePandaUsername?.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    // Label filter
+    if (labelFilterIds.length > 0) {
+      const userLabelIds = (u.labels || []).map(l => l._id);
+      return labelFilterIds.some(id => userLabelIds.includes(id));
+    }
+    return true;
+  });
 
 
   const adminToken = getAdminToken();
@@ -898,6 +954,12 @@ const AceagentDashboard: React.FC = () => {
                     />
                   </div>
                 </div>
+                {/* Label filter */}
+                {allLabels.length > 0 && (
+                  <div className="w-full">
+                    <LabelFilter allLabels={allLabels} selectedIds={labelFilterIds} onChange={setLabelFilterIds} />
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={syncAllUsersFromFortunePanda}
@@ -948,6 +1010,7 @@ const AceagentDashboard: React.FC = () => {
                             <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Register Date</th>
                             <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Last Login</th>
                             <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Manager</th>
+                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Labels</th>
                             <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Status</th>
                             <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Action</th>
                           </tr>
@@ -992,6 +1055,21 @@ const AceagentDashboard: React.FC = () => {
                               </td>
                               <td className="p-4 text-sm font-medium text-gray-700">GAGame</td>
                               <td className="p-4">
+                                <div className="flex flex-wrap gap-0.5 items-center">
+                                  {(u.labels || []).slice(0, 2).map(label => (
+                                    <LabelBadge key={label._id} label={label} size="sm" />
+                                  ))}
+                                  {(u.labels || []).length > 2 && (
+                                    <span className="text-[9px] text-gray-400">+{(u.labels || []).length - 2}</span>
+                                  )}
+                                  <LabelSelector
+                                    allLabels={allLabels}
+                                    selectedIds={(u.labels || []).map(l => l._id)}
+                                    onChange={(ids) => handleAssignLabels(u._id, ids)}
+                                  />
+                                </div>
+                              </td>
+                              <td className="p-4">
                                 {u.isActive ? (
                                   <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
                                     Active
@@ -1003,15 +1081,24 @@ const AceagentDashboard: React.FC = () => {
                                 )}
                               </td>
                               <td className="p-4">
-                                <button
-                                  onClick={() => {
-                                    setSelectedUser(u);
-                                    setShowUserModal(true);
-                                  }}
-                                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
-                                >
-                                  Update
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => { setNotesUserId(u._id); setNotesUserName(u.username); }}
+                                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
+                                    title="View notes"
+                                  >
+                                    <StickyNote className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedUser(u);
+                                      setShowUserModal(true);
+                                    }}
+                                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
+                                  >
+                                    Update
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1043,6 +1130,19 @@ const AceagentDashboard: React.FC = () => {
                               )}
                             </div>
                           </div>
+                          {/* Labels */}
+                          {((u.labels || []).length > 0 || allLabels.length > 0) && (
+                            <div className="flex flex-wrap items-center gap-1 mb-3">
+                              {(u.labels || []).map(label => (
+                                <LabelBadge key={label._id} label={label} size="sm" />
+                              ))}
+                              <LabelSelector
+                                allLabels={allLabels}
+                                selectedIds={(u.labels || []).map(l => l._id)}
+                                onChange={(ids) => handleAssignLabels(u._id, ids)}
+                              />
+                            </div>
+                          )}
                           
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                             <div>
@@ -1088,15 +1188,24 @@ const AceagentDashboard: React.FC = () => {
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => {
-                              setSelectedUser(u);
-                              setShowUserModal(true);
-                            }}
-                            className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg"
-                          >
-                            Update User
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setNotesUserId(u._id); setNotesUserName(u.username); }}
+                              className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
+                            >
+                              <StickyNote className="w-4 h-4" />
+                              Notes
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedUser(u);
+                                setShowUserModal(true);
+                              }}
+                              className="flex-1 sm:flex-none px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg"
+                            >
+                              Update User
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1785,6 +1894,15 @@ const AceagentDashboard: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* User Notes Panel */}
+      <UserNotesPanel
+        userId={notesUserId || ''}
+        userName={notesUserName}
+        isOpen={!!notesUserId}
+        onClose={() => setNotesUserId(null)}
+        authType="session"
+      />
     </div>
   );
 };

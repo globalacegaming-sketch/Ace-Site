@@ -18,10 +18,14 @@ import {
   ChevronDown,
   Image as ImageIcon,
   Reply,
-  SmilePlus
+  SmilePlus,
+  StickyNote,
+  Tag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAttachmentUrl, isImageAttachment } from '../../../utils/api';
+import LabelBadge, { LabelSelector, LabelFilter, type LabelData } from '../LabelBadge';
+import UserNotesPanel from '../UserNotesPanel';
 
 interface ChatMessage {
   id: string;
@@ -80,6 +84,7 @@ interface ConversationSummary {
   email?: string;
   lastMessage?: ChatMessage;
   unreadCount: number;
+  labels?: LabelData[];
 }
 
 interface AdminChatPanelProps {
@@ -117,6 +122,11 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [newMsgCount, setNewMsgCount] = useState(0);
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); // userId -> name
+  // Labels & Notes state
+  const [allLabels, setAllLabels] = useState<LabelData[]>([]);
+  const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
+  const [notesUserId, setNotesUserId] = useState<string | null>(null);
+  const [notesUserName, setNotesUserName] = useState('');
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef(0);
   const initialConvoLoadRef = useRef<string | null>(null); // Track first load per conversation
@@ -508,6 +518,43 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       setLoading(false);
     }
   }, [adminToken, apiBaseUrl, statusFilter, searchQuery]);
+
+  // Fetch all labels for filtering/display
+  const fetchLabels = useCallback(async () => {
+    try {
+      const res = await axios.get(`${apiBaseUrl}/admin/labels`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (res.data.success) setAllLabels(res.data.data || []);
+    } catch {
+      // Labels are optional – fail silently
+    }
+  }, [adminToken, apiBaseUrl]);
+
+  useEffect(() => {
+    if (adminToken) fetchLabels();
+  }, [adminToken, fetchLabels]);
+
+  // Assign labels to a user and update local state
+  const handleAssignLabels = useCallback(async (userId: string, labelIds: string[]) => {
+    try {
+      await axios.post(
+        `${apiBaseUrl}/admin/labels/assign`,
+        { userId, labelIds },
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+      );
+      // Update local conversation summary instantly
+      setConversationSummaries(prev =>
+        prev.map(c => c.userId === userId
+          ? { ...c, labels: allLabels.filter(l => labelIds.includes(l._id)) }
+          : c
+        )
+      );
+    } catch (err) {
+      console.error('Failed to assign labels:', err);
+      toast.error('Failed to update labels');
+    }
+  }, [adminToken, apiBaseUrl, allLabels]);
 
   // Expose refresh function to parent component via window object
   useEffect(() => {
@@ -1221,6 +1268,13 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
     if (!matchesSearch) return false;
 
+    // Label filter
+    if (labelFilterIds.length > 0) {
+      const userLabelIds = (conversation.labels || []).map(l => l._id);
+      const matchesLabels = labelFilterIds.some(id => userLabelIds.includes(id));
+      if (!matchesLabels) return false;
+    }
+
     if (statusFilter === 'unread') {
       return conversation.unreadCount > 0;
     }
@@ -1368,6 +1422,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
               Resolved
             </button>
           </div>
+          {/* Label filter */}
+          {allLabels.length > 0 && (
+            <div className="mb-2 sm:mb-3">
+              <LabelFilter allLabels={allLabels} selectedIds={labelFilterIds} onChange={setLabelFilterIds} />
+            </div>
+          )}
         </div>
         <div
           ref={sidebarScrollRef}
@@ -1425,7 +1485,17 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] sm:text-xs text-gray-500 truncate mb-1 sm:mb-1.5">{conversation.email}</p>
+                          <p className="text-[10px] sm:text-xs text-gray-500 truncate mb-0.5">{conversation.email}</p>
+                          {conversation.labels && conversation.labels.length > 0 && (
+                            <div className="flex flex-wrap gap-0.5 mb-0.5">
+                              {conversation.labels.slice(0, 3).map(label => (
+                                <LabelBadge key={label._id} label={label} size="sm" />
+                              ))}
+                              {conversation.labels.length > 3 && (
+                                <span className="text-[9px] text-gray-400">+{conversation.labels.length - 3}</span>
+                              )}
+                            </div>
+                          )}
                           <p className="text-[11px] sm:text-xs text-gray-600 leading-relaxed line-clamp-2">
                             {conversation.lastMessage?.message 
                               ? decodeHtmlEntities(conversation.lastMessage.message)
@@ -1474,14 +1544,40 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleResolveMessages}
-                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 active:bg-green-200 border border-green-200 rounded-lg transition"
-              >
-                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">Mark Resolved</span>
-                <span className="sm:hidden">Resolve</span>
-              </button>
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                {/* Label selector */}
+                {(() => {
+                  const conv = conversationSummaries.find(c => c.userId === selectedUserId);
+                  return (
+                    <LabelSelector
+                      allLabels={allLabels}
+                      selectedIds={(conv?.labels || []).map(l => l._id)}
+                      onChange={(ids) => handleAssignLabels(selectedUserId!, ids)}
+                    />
+                  );
+                })()}
+                {/* Notes button */}
+                <button
+                  onClick={() => {
+                    const conv = conversationSummaries.find(c => c.userId === selectedUserId);
+                    setNotesUserId(selectedUserId);
+                    setNotesUserName(conv?.name || 'User');
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg border border-white/10 bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 transition-colors"
+                  title="View notes"
+                >
+                  <StickyNote className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Notes</span>
+                </button>
+                <button
+                  onClick={handleResolveMessages}
+                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 active:bg-green-200 border border-green-200 rounded-lg transition"
+                >
+                  <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Mark Resolved</span>
+                  <span className="sm:hidden">Resolve</span>
+                </button>
+              </div>
             </div>
 
             <div 
@@ -1979,6 +2075,15 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
             </div>
           </div>
         )}
+
+        {/* User Notes Panel */}
+        <UserNotesPanel
+          userId={notesUserId || ''}
+          userName={notesUserName}
+          isOpen={!!notesUserId}
+          onClose={() => setNotesUserId(null)}
+          authType="session"
+        />
       </div>
     </div>
   );

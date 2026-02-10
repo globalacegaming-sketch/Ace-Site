@@ -29,20 +29,20 @@ const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction
     return next();
   }
 
-  // Try agent auth
+  // Try JWT auth (agent, admin, or super_admin)
   try {
     const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
     const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
 
-    if (decoded.role === 'agent' && decoded.type === 'agent') {
+    if (decoded.type === 'agent') {
       (req as any).agentSession = {
         username: decoded.username,
         role: decoded.role,
-        userId: decoded.userId
+        userId: decoded.userId || decoded.agentId
       };
       return next();
     }
-    logger.warn('Wheel auth: Invalid token role/type', { role: decoded.role, type: decoded.type });
+    logger.warn('Wheel auth: Invalid token type', { role: decoded.role, type: decoded.type });
   } catch (error: any) {
     logger.debug('Wheel auth: JWT verification failed', { error: (error as Error).message });
   }

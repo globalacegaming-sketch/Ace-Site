@@ -144,6 +144,15 @@ router.get('/conversations', async (req: Request, res: Response) => {
           preserveNullAndEmptyArrays: true
         }
       },
+      // Lookup labels for each user
+      {
+        $lookup: {
+          from: 'labels',
+          localField: 'user.labels',
+          foreignField: '_id',
+          as: 'userLabels'
+        }
+      },
       {
         $project: {
           userId: { $toString: '$_id' },
@@ -164,6 +173,13 @@ router.get('/conversations', async (req: Request, res: Response) => {
             metadata: '$lastMessage.metadata'
           },
           unreadCount: 1,
+          labels: {
+            $map: {
+              input: '$userLabels',
+              as: 'lbl',
+              in: { _id: { $toString: '$$lbl._id' }, name: '$$lbl.name', color: '$$lbl.color' }
+            }
+          },
           // Get user info for name/email
           userInfo: {
             firstName: '$user.firstName',
@@ -262,7 +278,8 @@ router.get('/conversations', async (req: Request, res: Response) => {
         name: (typeof conv.name === 'string' ? conv.name.trim() : String(conv.name || '').trim()) || 'User',
         email: conv.email || '',
         lastMessage: conv.lastMessage,
-        unreadCount: conv.unreadCount
+        unreadCount: conv.unreadCount,
+        labels: conv.labels || []
       }))
     });
   } catch (error: any) {
