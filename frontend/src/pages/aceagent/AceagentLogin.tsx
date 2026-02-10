@@ -64,12 +64,14 @@ const AceagentLogin: React.FC = () => {
       console.log('📥 Login response:', response.data);
 
       if (response.data.success) {
-        // Store admin session
+        // Store admin session (including role & permissions from the Agent model)
         const adminSession = {
           token: response.data.data.token,
           expiresAt: response.data.data.expiresAt,
           agentName: response.data.data.agentName,
-          agentBalance: response.data.data.agentBalance || '0.00'
+          agentBalance: response.data.data.agentBalance || '0.00',
+          role: response.data.data.role || 'agent',
+          permissions: response.data.data.permissions || ['chat', 'users', 'verification', 'referrals'],
         };
         localStorage.setItem('admin_session', JSON.stringify(adminSession));
         

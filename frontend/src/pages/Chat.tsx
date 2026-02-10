@@ -10,7 +10,7 @@ import { oneSignalRequestPermission } from '../services/oneSignal';
 interface ChatMessage {
   id: string;
   userId: string;
-  senderType: 'user' | 'admin';
+  senderType: 'user' | 'admin' | 'system';
   message?: string;
   attachmentUrl?: string;
   attachmentName?: string;
@@ -33,6 +33,16 @@ interface ChatMessage {
     reactorType: 'user' | 'admin';
     reactorName?: string;
   }[];
+  metadata?: {
+    type?: string;
+    bonusId?: string;
+    bonusTitle?: string;
+    bonusType?: string;
+    bonusValue?: string;
+    isSystemMessage?: boolean;
+    adminAgentName?: string;
+    recipientName?: string;
+  };
 }
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '😢'];
@@ -62,6 +72,7 @@ const Chat = () => {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [emojiExpanded, setEmojiExpanded] = useState(false);
+  const [closingReply, setClosingReply] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +84,7 @@ const Chat = () => {
   const [isAdminTyping, setIsAdminTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef(0);
+  const initialLoadRef = useRef(true); // Track first message load to force-scroll
 
   const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
   const WS_BASE_URL = useMemo(() => getWsBaseUrl(), []);
@@ -235,6 +247,18 @@ const Chat = () => {
   }, [token, API_BASE_URL]);
 
   useEffect(() => {
+    if (messages.length === 0) return;
+    // On initial load, always jump to the latest message
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      // Use setTimeout to let the DOM render the messages first
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        setNewMsgCount(0);
+        setShowScrollBottom(false);
+      }, 50);
+      return;
+    }
     if (isNearBottom()) {
       scrollToBottom();
     } else {
@@ -533,7 +557,7 @@ const Chat = () => {
                     )}
                     <div
                       ref={(el) => { messageRefs.current[message.id] = el; }}
-                      className={`group flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg ${isFirstInGroup ? 'mt-4' : 'mt-1'}`}
+                      className={`group flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg animate-slide-up ${isFirstInGroup ? 'mt-4' : 'mt-1'}`}
                     >
                     {!isUser && (
                       isFirstInGroup ? (
@@ -575,7 +599,7 @@ const Chat = () => {
                             <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] border p-1.5`} style={{ backgroundColor: '#1A1A2E', borderColor: '#2A2A3E' }}>
                               <div className="flex items-center gap-0.5">
                                 {QUICK_EMOJIS.map((emoji) => (
-                                  <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-110 hover:bg-white/10 transition-all rounded p-1 text-center">
+                                  <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-110 active:scale-125 hover:bg-white/10 transition-all rounded p-1 text-center">
                                     {emoji}
                                   </button>
                                 ))}
@@ -586,7 +610,7 @@ const Chat = () => {
                               {emojiExpanded && (
                                 <div className="flex items-center gap-0.5 mt-0.5">
                                   {MORE_EMOJIS.map((emoji) => (
-                                    <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-110 hover:bg-white/10 transition-all rounded p-1 text-center">
+                                    <button key={emoji} onClick={() => toggleReaction(message.id, emoji)} className="text-base hover:scale-110 active:scale-125 hover:bg-white/10 transition-all rounded p-1 text-center">
                                       {emoji}
                                     </button>
                                   ))}
@@ -655,8 +679,9 @@ const Chat = () => {
                                   <img
                                     src={getAttachmentUrl(message.attachmentUrl)}
                                     alt={message.attachmentName || 'Image attachment'}
-                                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain opacity-0 transition-opacity duration-300"
                                     loading="lazy"
+                                    onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
                                   />
                                 </div>
                                 <a
@@ -755,9 +780,9 @@ const Chat = () => {
                   </div>
                   <div className="rounded-2xl rounded-bl-sm px-4 py-3" style={{ backgroundColor: '#1B1B2F', border: '1px solid #2C2C3A' }}>
                     <div className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-2 h-2 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.4s' }} />
                     </div>
                   </div>
                 </div>
@@ -767,21 +792,19 @@ const Chat = () => {
           )}
         </div>
         {/* Scroll-to-bottom floating button */}
-        {showScrollBottom && (
-          <button
-            onClick={scrollToBottom}
-            className="absolute bottom-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-full shadow-lg transition-all duration-200 opacity-90 hover:opacity-100 hover:scale-105 active:scale-95"
-            style={{ backgroundColor: '#1B1B2F', border: '1px solid #2C2C3A' }}
-            title="Scroll to latest"
-          >
-            <ChevronDown className="w-5 h-5" style={{ color: '#FFD700' }} />
-            {newMsgCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
-                {newMsgCount > 9 ? '9+' : newMsgCount}
-              </span>
-            )}
-          </button>
-        )}
+        <button
+          onClick={scrollToBottom}
+          className={`absolute bottom-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-full shadow-lg transition-all duration-200 hover:opacity-100 hover:scale-105 active:scale-95 ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          style={{ backgroundColor: '#1B1B2F', border: '1px solid #2C2C3A' }}
+          title="Scroll to latest"
+        >
+          <ChevronDown className="w-5 h-5" style={{ color: '#FFD700' }} />
+          {newMsgCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold animate-bounce-gentle">
+              {newMsgCount > 9 ? '9+' : newMsgCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Input Area at Bottom — stays in flex flow, no position:fixed needed */}
@@ -790,7 +813,7 @@ const Chat = () => {
       }}>
         {/* Reply preview bar */}
         {replyingTo && (
-          <div className="mb-2 flex items-center gap-2 p-2 rounded-lg border-l-2" style={{ backgroundColor: 'rgba(255,215,0,0.1)', borderColor: '#FFD700' }}>
+          <div className={`mb-2 flex items-center gap-2 p-2 rounded-lg border-l-2 ${closingReply ? 'animate-slide-out-right' : 'animate-slide-up'}`} style={{ backgroundColor: 'rgba(255,215,0,0.1)', borderColor: '#FFD700' }}>
             <Reply className="w-4 h-4 flex-shrink-0" style={{ color: '#FFD700' }} />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold casino-text-primary">
@@ -801,7 +824,7 @@ const Chat = () => {
               </p>
             </div>
             <button
-              onClick={() => setReplyingTo(null)}
+              onClick={() => { setClosingReply(true); setTimeout(() => { setReplyingTo(null); setClosingReply(false); }, 200); }}
               className="flex-shrink-0 casino-text-secondary hover:casino-text-primary transition-colors"
             >
               <X className="w-4 h-4" />
@@ -830,7 +853,7 @@ const Chat = () => {
         <div className="flex items-end gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-10 h-10 rounded-lg casino-bg-primary casino-border border hover:border-yellow-400 transition-colors flex items-center justify-center flex-shrink-0"
+            className="w-10 h-10 rounded-lg casino-bg-primary casino-border border hover:border-yellow-400 transition-all flex items-center justify-center flex-shrink-0 active:scale-95"
             style={{ boxShadow: '0 0 10px rgba(255, 215, 0, 0.1)' }}
           >
             <span className="text-xl casino-text-primary font-light">+</span>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 import {
@@ -56,6 +56,8 @@ interface ChatMessage {
     bonusType?: string;
     bonusValue?: string;
     isSystemMessage?: boolean;
+    adminAgentName?: string;
+    recipientName?: string;
   };
 }
 
@@ -94,6 +96,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingConversation, setLoadingConversation] = useState(false);
   const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
   const [conversationMessages, setConversationMessages] = useState<Record<string, ChatMessage[]>>({});
   const [hasMoreMessages, setHasMoreMessages] = useState<Record<string, boolean>>({});
@@ -108,6 +111,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [emojiExpanded, setEmojiExpanded] = useState(false);
+  const [closingReply, setClosingReply] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [socketReconnecting, setSocketReconnecting] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -115,6 +119,10 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); // userId -> name
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef(0);
+  const initialConvoLoadRef = useRef<string | null>(null); // Track first load per conversation
+  const sidebarScrollRef = useRef<HTMLDivElement | null>(null); // Sidebar conversation list scroll container
+  const sidebarScrollTop = useRef<number>(0); // Continuously tracked sidebar scroll position
+  const isRestoringScroll = useRef(false); // Guard: true while programmatically restoring scrollTop
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -448,6 +456,19 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   }, [adminToken, apiBaseUrl]);
 
   useEffect(() => {
+    // On initial conversation load, always jump to the latest message
+    if (selectedUserId && initialConvoLoadRef.current === selectedUserId) {
+      const msgs = conversationMessages[selectedUserId];
+      if (msgs && msgs.length > 0) {
+        initialConvoLoadRef.current = null;
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+          setNewMsgCount(0);
+          setShowScrollBottom(false);
+        }, 50);
+        return;
+      }
+    }
     if (isNearBottom()) {
       scrollToBottom();
     } else if (selectedUserId) {
@@ -499,6 +520,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const loadConversation = async (userId: string, loadOlder: boolean = false) => {
     if (!userId) return;
     
+    // Show skeleton for initial conversation load
+    if (!loadOlder) setLoadingConversation(true);
+
     try {
       const currentMessages = conversationMessages[userId] || [];
       const params: Record<string, any> = {
@@ -616,6 +640,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       }
     } finally {
       setLoadingMore(false);
+      setLoadingConversation(false);
     }
   };
 
@@ -702,6 +727,30 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
     playNotificationSoundRef.current = playNotificationSound;
     showPushNotificationRef.current = showPushNotification;
   }, [selectedUserId, playNotificationSound, showPushNotification]);
+
+  // Stabilise sidebar scroll when the conversation list re-sorts.
+  //
+  // When a conversation gets a new message the list re-sorts (newest on top).
+  // React reconciles the DOM, and the browser resets scrollTop to 0.
+  // The onScroll handler below continuously tracks the user's scroll position.
+  //
+  // This layout effect runs synchronously *before* the browser paints.
+  // It sets `isRestoringScroll` to prevent the onScroll handler from
+  // overwriting the saved position with the browser's incorrect "0" value
+  // that occurs during DOM reorder, then restores the real scroll position.
+  useLayoutEffect(() => {
+    const container = sidebarScrollRef.current;
+    if (!container || sidebarScrollTop.current === 0) return;
+
+    isRestoringScroll.current = true;
+    container.scrollTop = sidebarScrollTop.current;
+
+    // The scroll event from the programmatic assignment fires asynchronously.
+    // Clear the guard on the next microtask so future user scrolls are tracked.
+    queueMicrotask(() => {
+      isRestoringScroll.current = false;
+    });
+  }, [conversationSummaries, selectedUserId]);
 
   useEffect(() => {
     // Cleanup any existing reconnection timeout
@@ -845,18 +894,25 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
           }
         }
 
+        // Only update the conversation display name from user-sent messages.
+        // Admin messages carry the agent's name (e.g. "GAGame"), not the user's
+        // name, so using them would overwrite the user's name in the sidebar.
+        // For admin messages, fall back to metadata.recipientName if available.
+        const nameFromMsg = message.senderType === 'user'
+          ? message.name
+          : message.metadata?.recipientName;
+
         const updatedSummary: ConversationSummary = existing
           ? {
               ...existing,
               lastMessage: message,
               unreadCount: Math.max(0, existing.unreadCount + unreadCountChange),
-              // Update name and email if available in the message
-              name: message.name || existing.name,
+              name: nameFromMsg || existing.name,
               email: message.email || existing.email
             }
           : {
               userId: message.userId,
-              name: message.name,
+              name: nameFromMsg || undefined,
               email: message.email,
               lastMessage: message,
               unreadCount: message.senderType === 'user' && message.status === 'unread' ? 1 : 0
@@ -974,6 +1030,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
   const handleSelectConversation = (userId: string) => {
     setSelectedUserId(userId);
     setReplyingTo(null);
+    // Mark this conversation for initial-load scroll
+    initialConvoLoadRef.current = userId;
     // Hide conversations sidebar on mobile when selecting a conversation
     // This ensures chat area takes full width on mobile
     setShowConversations(false);
@@ -985,6 +1043,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       }));
       void loadConversation(userId);
     } else {
+      // Already loaded -- still scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        setNewMsgCount(0);
+        setShowScrollBottom(false);
+      }, 50);
       void markMessagesAsRead(userId, conversationMessages[userId]);
     }
     setConversationSummaries((prev) =>
@@ -1305,7 +1369,16 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div
+          ref={sidebarScrollRef}
+          onScroll={() => {
+            // Only track genuine user scrolls, not programmatic scroll restoration
+            if (!isRestoringScroll.current && sidebarScrollRef.current) {
+              sidebarScrollTop.current = sidebarScrollRef.current.scrollTop;
+            }
+          }}
+          className="flex-1 overflow-y-auto min-h-0"
+        >
           {loading ? (
             <div className="flex justify-center items-center py-12 text-gray-500">
               <Loader2 className="w-6 h-6 animate-spin mr-2" />
@@ -1347,7 +1420,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                               {conversation.name || 'Unknown User'}
                             </p>
                             {conversation.unreadCount > 0 && (
-                              <span className="inline-flex items-center justify-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[18px] sm:min-w-[20px]">
+                              <span className="inline-flex items-center justify-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[18px] sm:min-w-[20px] animate-bounce-gentle">
                                 {conversation.unreadCount}
                               </span>
                             )}
@@ -1416,7 +1489,26 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
               onScroll={handleAdminScroll}
               className="flex-1 overflow-y-auto p-3 sm:p-4 bg-white sm:bg-gray-50 min-h-0 relative"
             >
-              {selectedConversationMessages.length === 0 && !loadingMore ? (
+              {loadingConversation ? (
+                <div className="space-y-4 py-4">
+                  {/* Skeleton message placeholders */}
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className={`flex items-end gap-2 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                      {i % 2 === 0 && <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex-shrink-0" />}
+                      <div className={`rounded-2xl px-4 py-3 max-w-[65%] ${
+                        i % 2 === 0 
+                          ? 'bg-white border border-gray-100 rounded-bl-sm' 
+                          : 'bg-indigo-50 rounded-br-sm'
+                      }`}>
+                        <div className="h-2.5 rounded bg-gray-200 animate-pulse mb-2" style={{ width: `${80 + (i % 3) * 40}px` }} />
+                        <div className="h-2.5 rounded bg-gray-200/60 animate-pulse" style={{ width: `${50 + (i % 2) * 50}px` }} />
+                        {i % 3 === 0 && <div className="h-2.5 rounded bg-gray-200/40 animate-pulse mt-2" style={{ width: `${40 + (i % 2) * 30}px` }} />}
+                      </div>
+                      {i % 2 !== 0 && <div className="w-8 h-8 rounded-full bg-indigo-100 animate-pulse flex-shrink-0" />}
+                    </div>
+                  ))}
+                </div>
+              ) : selectedConversationMessages.length === 0 && !loadingMore ? (
                 <div className="text-center text-gray-500 py-12">
                   <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium">No messages yet</p>
@@ -1424,27 +1516,29 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                 </div>
               ) : (
                 <>
-                  {/* Load More Button - Sticky at top when there are more messages */}
+                  {/* Load More -- inline pill at the top of the conversation */}
                   {hasMoreMessages[selectedUserId] === true && (
-                    <div className="sticky top-0 z-10 flex justify-center py-3 mb-4 bg-gray-50 -mx-4 px-4 border-b border-gray-200 shadow-sm">
+                    <div className="flex items-center justify-center gap-3 py-2 mb-3">
+                      <div className="flex-1 border-t border-gray-200" />
                       <button
                         ref={loadMoreButtonRef}
                         onClick={() => loadConversation(selectedUserId, true)}
                         disabled={loadingMore}
-                        className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-full hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                       >
                         {loadingMore ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Loading older messages...</span>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Loading...</span>
                           </>
                         ) : (
                           <>
-                            <ChevronUp className="w-4 h-4" />
-                            <span>Load Older Messages</span>
+                            <ChevronUp className="w-3 h-3" />
+                            <span>Older messages</span>
                           </>
                         )}
                       </button>
+                      <div className="flex-1 border-t border-gray-200" />
                     </div>
                   )}
                   {selectedConversationMessages.map((msg, index) => {
@@ -1516,7 +1610,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                         )}
                         <div
                           ref={(el) => { messageRefs.current[msg.id] = el; }}
-                          className={`group flex ${isAdmin ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                          className={`group flex ${isAdmin ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg animate-slide-up ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                         >
                           <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[80%] sm:max-w-[70%]`}>
                           {/* Reply & React buttons — visible on mobile, hover on desktop */}
@@ -1541,7 +1635,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                                 <div className={`absolute ${isAdmin ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] bg-white border border-gray-200 p-1.5`}>
                                   <div className="flex items-center gap-0.5">
                                     {QUICK_EMOJIS.map((emoji) => (
-                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded p-1 text-center">
                                         {emoji}
                                       </button>
                                     ))}
@@ -1552,7 +1646,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                                   {emojiExpanded && (
                                     <div className="flex items-center gap-0.5 mt-0.5">
                                       {MORE_EMOJIS.map((emoji) => (
-                                        <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                        <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded p-1 text-center">
                                           {emoji}
                                         </button>
                                       ))}
@@ -1613,8 +1707,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                                       <img
                                         src={getAttachmentUrl(msg.attachmentUrl)}
                                         alt={msg.attachmentName || 'Image attachment'}
-                                        className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                        className="w-full h-auto max-h-48 sm:max-h-64 object-contain opacity-0 transition-opacity duration-300"
                                         loading="lazy"
+                                        onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
                                       />
                                     </div>
                                     <a
@@ -1698,35 +1793,33 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   <div className="rounded-2xl rounded-bl-sm bg-white border border-gray-200 px-4 py-2.5 shadow-sm">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] text-gray-500 mr-1">{typingUsers[selectedUserId]}</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.4s' }} />
                     </div>
                   </div>
                 </div>
               )}
               <div ref={messagesEndRef} />
               {/* Scroll-to-bottom floating button */}
-              {showScrollBottom && (
-                <button
-                  onClick={scrollToBottom}
-                  className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto"
-                  title="Scroll to latest"
-                >
-                  <ChevronDown className="w-5 h-5 text-indigo-600" />
-                  {newMsgCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold">
-                      {newMsgCount > 9 ? '9+' : newMsgCount}
-                    </span>
-                  )}
-                </button>
-              )}
+              <button
+                onClick={scrollToBottom}
+                className={`sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                title="Scroll to latest"
+              >
+                <ChevronDown className="w-5 h-5 text-indigo-600" />
+                {newMsgCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold animate-bounce-gentle">
+                    {newMsgCount > 9 ? '9+' : newMsgCount}
+                  </span>
+                )}
+              </button>
             </div>
 
             <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
               {/* Reply preview */}
               {replyingTo && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl border-l-2 border-indigo-500">
+                <div className={`flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl border-l-2 border-indigo-500 ${closingReply ? 'animate-slide-out-right' : 'animate-slide-up'}`}>
                   <Reply className="w-4 h-4 text-indigo-600 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-indigo-700">
@@ -1737,7 +1830,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                     </p>
                   </div>
                   <button
-                    onClick={() => setReplyingTo(null)}
+                    onClick={() => { setClosingReply(true); setTimeout(() => { setReplyingTo(null); setClosingReply(false); }, 200); }}
                     className="text-indigo-400 hover:text-indigo-700 flex-shrink-0"
                   >
                     <X className="w-4 h-4" />
@@ -1824,7 +1917,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                   </span>
                 )}
                 <div className="flex flex-row sm:flex-col gap-1.5 sm:gap-2">
-                  <label htmlFor="attachment-input" className="flex items-center justify-center text-gray-600 cursor-pointer hover:text-indigo-600 transition p-2 sm:p-2 rounded-lg hover:bg-gray-100 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0">
+                  <label htmlFor="attachment-input" className="flex items-center justify-center text-gray-600 cursor-pointer hover:text-indigo-600 transition-all p-2 sm:p-2 rounded-lg hover:bg-gray-100 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 active:scale-95">
                     <Paperclip className="w-5 h-5" />
                     <input
                       id="attachment-input"

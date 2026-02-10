@@ -20,9 +20,9 @@ class FortunePandaService {
 
   constructor() {
     this.config = {
-      agentName: process.env.FORTUNE_PANDA_AGENT_NAME || 'agent01',
-      agentPasswd: process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456',
-      baseUrl: process.env.FORTUNE_PANDA_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx'
+      agentName: process.env.FORTUNE_PANDA_AGENT_NAME || '',
+      agentPasswd: process.env.FORTUNE_PANDA_AGENT_PASSWORD || '',
+      baseUrl: process.env.FORTUNE_PANDA_API_URL || ''
     };
   }
 

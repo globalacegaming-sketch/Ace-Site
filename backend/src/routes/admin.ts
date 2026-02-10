@@ -3,9 +3,10 @@ import fortunePandaService from '../services/fortunePandaService';
 import agentLoginService from '../services/agentLoginService';
 import User from '../models/User';
 import Wallet from '../models/Wallet';
+import Agent from '../models/Agent';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { createAdminSession } from '../services/adminSessionService';
+import { createAdminSession, revokeAdminSession } from '../services/adminSessionService';
 import { requireAdminAuth } from '../middleware/adminAuth';
 import { authLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
@@ -28,39 +29,28 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       return sendError(res, 'agentName and agentPassword are required', 400);
     }
 
-    // Verify credentials against environment variables
-    // Use standardized Fortune Panda environment variables
-    const envAgentName = process.env.FORTUNE_PANDA_AGENT_NAME || 'agent01';
-    const envAgentPassword = process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456';
+    // Authenticate against the Agent collection (agent role only for this panel)
+    const agent = await Agent.findOne({ agentName, isActive: true, role: 'agent' }).select('+passwordHash');
 
-    logger.debug('🔍 Checking credentials:', { 
-      providedName: agentName, 
-      envName: envAgentName,
-      nameMatch: agentName === envAgentName 
-    });
-
-    if (agentName !== envAgentName) {
-      logger.warn('❌ Agent name mismatch');
-      return sendError(res, 'Invalid agent name', 401);
+    if (!agent) {
+      logger.warn('❌ Agent not found or inactive:', agentName);
+      return sendError(res, 'Invalid agent name or account inactive', 401);
     }
 
-    // Compare password (MD5 hash)
-    const providedPasswordMd5 = crypto.createHash('md5').update(agentPassword).digest('hex');
-    const envPasswordMd5 = crypto.createHash('md5').update(envAgentPassword).digest('hex');
-
-    // Don't log password hashes - security best practice
-    if (providedPasswordMd5 !== envPasswordMd5) {
-      // Log failed attempt without password details
+    const passwordValid = await agent.comparePassword(agentPassword);
+    if (!passwordValid) {
       logger.warn('❌ Admin login failed: Invalid credentials');
       return sendError(res, 'Invalid agent password', 401);
     }
 
+    // Update lastLogin
+    agent.lastLogin = new Date();
+    await agent.save();
+
     logger.info('✅ Credentials verified successfully');
 
     // Fire-and-forget FortunePanda API login — don't block the admin login response.
-    // The external API has a 30s timeout + 3 retries, which would make login feel
-    // frozen for up to 100+ seconds. The agent panel fetches balance separately.
-    let agentBalance = '0.00';
+    const agentBalance = '0.00';
     agentLoginService.loginAgent()
       .then(loginResult => {
         if (loginResult.success) {
@@ -81,19 +71,23 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     logger.info('✅ Admin login successful, creating session');
 
     // ── Store admin session in MongoDB via express-session ──
-    // This makes the admin session persistent across server restarts and
-    // allows Socket.io to read it from the session cookie.
     req.session.adminSession = {
-      agentName,
+      adminId: agent._id.toString(),
+      agentName: agent.agentName,
       token: sessionToken,
       expiresAt,
+      role: agent.role,
+      permissions: agent.permissions,
     };
 
     // Also keep the in-memory store as a fallback for Bearer-token clients
     createAdminSession({
-      agentName,
+      adminId: agent._id.toString(),
+      agentName: agent.agentName,
       token: sessionToken,
-      expiresAt
+      expiresAt,
+      role: agent.role,
+      permissions: agent.permissions,
     });
 
     // Force session save before responding
@@ -105,13 +99,40 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     return sendSuccess(res, 'Admin login successful', {
       token: sessionToken,
       expiresAt,
-      agentName,
-      agentBalance
+      agentName: agent.agentName,
+      agentBalance,
+      role: agent.role,
+      permissions: agent.permissions,
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     logger.error('Admin login error:', errorMessage);
     return sendError(res, 'Internal server error', 500);
+  }
+});
+
+// Admin logout route (requires auth)
+router.post('/logout', requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    // Revoke the in-memory session
+    if (req.adminSession?.token) {
+      revokeAdminSession(req.adminSession.token);
+    }
+
+    // Destroy the express-session
+    await new Promise<void>((resolve, reject) => {
+      req.session.destroy((err) => (err ? reject(err) : resolve()));
+    });
+
+    // Clear the session cookie
+    res.clearCookie('gag.sid');
+
+    logger.info('✅ Admin logout successful:', { agentName: req.adminSession?.agentName });
+    return sendSuccess(res, 'Logged out successfully');
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('Admin logout error:', errorMessage);
+    return sendError(res, 'Logout failed', 500);
   }
 });
 

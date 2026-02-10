@@ -3,7 +3,8 @@ import {
   Plus, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
   Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
   ChevronDown, CheckCircle, Ticket, FileText, Clock, CheckCircle2, XCircle,
-  Send, Upload, Wrench} from 'lucide-react';
+  Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2,
+  ToggleLeft, ToggleRight} from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -69,7 +70,20 @@ interface Notice {
   expiresAt?: string;
 }
 
-type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel';
+interface AgentItem {
+  _id: string;
+  agentName: string;
+  role: 'super_admin' | 'admin' | 'agent';
+  permissions: string[];
+  isActive: boolean;
+  lastLogin?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+const ALL_PERMISSIONS = ['chat', 'users', 'verification', 'referrals'] as const;
+
+type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents';
 
 const AceadminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -93,7 +107,21 @@ const AceadminDashboard: React.FC = () => {
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState<string>('all');
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
-  
+
+  // Agent management states
+  const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [showAgentModal, setShowAgentModal] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<AgentItem | null>(null);
+  const [agentForm, setAgentForm] = useState({
+    agentName: '',
+    password: '',
+    role: 'agent' as 'super_admin' | 'admin' | 'agent',
+    permissions: [...ALL_PERMISSIONS] as string[],
+  });
+  const [savingAgent, setSavingAgent] = useState(false);
+  const [showAgentPassword, setShowAgentPassword] = useState(false);
+
   // Email promotions states
   const [emailForm, setEmailForm] = useState({
     subject: '',
@@ -379,6 +407,127 @@ const AceadminDashboard: React.FC = () => {
     localStorage.removeItem('agent_session');
     toast.success('Logged out successfully');
     navigate('/aceadmin/login');
+  };
+
+  // ── Agent CRUD ───────────────────────────────────────────────────────────
+  const loadAgents = useCallback(async () => {
+    setAgentsLoading(true);
+    try {
+      const token = getAgentToken();
+      const res = await axios.get(`${API_BASE_URL}/agent-auth/agents`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.success) setAgents(res.data.data || []);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to load agents');
+    } finally {
+      setAgentsLoading(false);
+    }
+  }, [API_BASE_URL]);
+
+  useEffect(() => {
+    if (activeSection === 'agents') loadAgents();
+  }, [activeSection, loadAgents]);
+
+  const openAgentModal = (agent?: AgentItem) => {
+    if (agent) {
+      setEditingAgent(agent);
+      setAgentForm({
+        agentName: agent.agentName,
+        password: '',
+        role: agent.role,
+        permissions: [...agent.permissions],
+      });
+    } else {
+      setEditingAgent(null);
+      setAgentForm({
+        agentName: '',
+        password: '',
+        role: 'agent',
+        permissions: [...ALL_PERMISSIONS],
+      });
+    }
+    setShowAgentPassword(false);
+    setShowAgentModal(true);
+  };
+
+  const handleSaveAgent = async () => {
+    if (!agentForm.agentName.trim()) {
+      toast.error('Agent name is required');
+      return;
+    }
+    if (!editingAgent && !agentForm.password) {
+      toast.error('Password is required for new agents');
+      return;
+    }
+
+    setSavingAgent(true);
+    try {
+      const token = getAgentToken();
+      const headers = { Authorization: `Bearer ${token}` };
+
+      if (editingAgent) {
+        // Update
+        const payload: any = {
+          agentName: agentForm.agentName,
+          role: agentForm.role,
+          permissions: agentForm.permissions,
+        };
+        if (agentForm.password) payload.password = agentForm.password;
+
+        await axios.put(`${API_BASE_URL}/agent-auth/agents/${editingAgent._id}`, payload, { headers });
+        toast.success('Agent updated');
+      } else {
+        // Create
+        await axios.post(`${API_BASE_URL}/agent-auth/agents`, {
+          agentName: agentForm.agentName,
+          password: agentForm.password,
+          role: agentForm.role,
+          permissions: agentForm.permissions,
+        }, { headers });
+        toast.success('Agent created');
+      }
+
+      setShowAgentModal(false);
+      loadAgents();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to save agent');
+    } finally {
+      setSavingAgent(false);
+    }
+  };
+
+  const toggleAgentActive = async (agent: AgentItem) => {
+    try {
+      const token = getAgentToken();
+      if (!agent.isActive) {
+        // Reactivate
+        await axios.put(
+          `${API_BASE_URL}/agent-auth/agents/${agent._id}`,
+          { isActive: true },
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        toast.success('Agent reactivated');
+      } else {
+        // Deactivate (soft delete)
+        await axios.delete(`${API_BASE_URL}/agent-auth/agents/${agent._id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        toast.success('Agent deactivated');
+      }
+      loadAgents();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Action failed');
+    }
+  };
+
+  const togglePermission = (perm: string) => {
+    setAgentForm((prev) => ({
+      ...prev,
+      permissions: prev.permissions.includes(perm)
+        ? prev.permissions.filter((p) => p !== perm)
+        : [...prev.permissions, perm],
+    }));
   };
 
   // Render Dashboard Section
@@ -1464,6 +1613,250 @@ const AceadminDashboard: React.FC = () => {
     </div>
   );
 
+  // ── Render Agents Management ──────────────────────────────────────────────
+  const renderAgents = () => (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Shield className="w-6 h-6 text-indigo-600" />
+              Agent Management
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Create, edit and manage agent accounts & permissions
+            </p>
+          </div>
+          <button
+            onClick={() => openAgentModal()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium text-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Agent
+          </button>
+        </div>
+      </div>
+
+      {/* Agents Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {agentsLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+          </div>
+        ) : agents.length === 0 ? (
+          <div className="text-center py-16 text-gray-500">
+            <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p className="font-medium">No agents found</p>
+            <p className="text-sm mt-1">Create your first agent to get started</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Agent</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Role</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">Permissions</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Last Login</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-600">Status</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {agents.map((agent) => (
+                  <tr key={agent._id} className={`hover:bg-gray-50 transition ${!agent.isActive ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <span className="font-medium text-gray-900">{agent.agentName}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        agent.role === 'super_admin'
+                          ? 'bg-purple-100 text-purple-700'
+                          : agent.role === 'admin'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {agent.role === 'super_admin' ? 'Super Admin' : agent.role === 'admin' ? 'Admin' : 'Agent'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      <div className="flex flex-wrap gap-1">
+                        {agent.permissions.map((p) => (
+                          <span key={p} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-600 font-medium">
+                            {p}
+                          </span>
+                        ))}
+                        {agent.permissions.length === 0 && (
+                          <span className="text-xs text-gray-400 italic">None</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell text-gray-500 text-xs">
+                      {agent.lastLogin
+                        ? new Date(agent.lastLogin).toLocaleString()
+                        : 'Never'}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => toggleAgentActive(agent)}
+                        title={agent.isActive ? 'Deactivate' : 'Reactivate'}
+                        className="inline-flex items-center gap-1 text-xs font-medium"
+                      >
+                        {agent.isActive ? (
+                          <ToggleRight className="w-6 h-6 text-green-500" />
+                        ) : (
+                          <ToggleLeft className="w-6 h-6 text-gray-400" />
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => openAgentModal(agent)}
+                        className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                        title="Edit agent"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Agent Modal */}
+      {showAgentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">
+                {editingAgent ? 'Edit Agent' : 'Create Agent'}
+              </h3>
+              <button
+                onClick={() => setShowAgentModal(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Agent Name */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Agent Name</label>
+                <input
+                  type="text"
+                  value={agentForm.agentName}
+                  onChange={(e) => setAgentForm((f) => ({ ...f, agentName: e.target.value }))}
+                  placeholder="e.g. john_agent"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  {editingAgent ? 'New Password (leave blank to keep current)' : 'Password'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAgentPassword ? 'text' : 'password'}
+                    value={agentForm.password}
+                    onChange={(e) => setAgentForm((f) => ({ ...f, password: e.target.value }))}
+                    placeholder={editingAgent ? '••••••' : 'Enter password'}
+                    className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAgentPassword(!showAgentPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showAgentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Role</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['agent', 'admin', 'super_admin'] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setAgentForm((f) => ({ ...f, role: r }))}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${
+                        agentForm.role === r
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-400'
+                      }`}
+                    >
+                      {r === 'super_admin' ? 'Super Admin' : r === 'admin' ? 'Admin' : 'Agent'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Permissions */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Page Permissions
+                  <span className="font-normal text-gray-400 ml-1">(AceAgent dashboard tabs)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_PERMISSIONS.map((perm) => {
+                    const checked = agentForm.permissions.includes(perm);
+                    return (
+                      <button
+                        key={perm}
+                        onClick={() => togglePermission(perm)}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition ${
+                          checked
+                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                          checked ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
+                        }`}>
+                          {checked && (
+                            <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </div>
+                        <span className="capitalize">{perm}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowAgentModal(false)}
+                className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAgent}
+                disabled={savingAgent}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+              >
+                {savingAgent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {editingAgent ? 'Save Changes' : 'Create Agent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
@@ -1484,6 +1877,8 @@ const AceadminDashboard: React.FC = () => {
         return renderNotifications();
       case 'support-tickets':
         return renderSupportTickets();
+      case 'agents':
+        return renderAgents();
       default:
         return renderDashboard();
     }
@@ -1661,6 +2056,24 @@ const AceadminDashboard: React.FC = () => {
             >
               <Gift className="w-5 h-5 flex-shrink-0" />
               <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Wheel Management</span>
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase px-3 py-2`}>
+              Admin
+            </div>
+            <button
+              onClick={() => {
+                setActiveSection('agents');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'agents' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <Shield className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Agents</span>
             </button>
           </div>
         </nav>

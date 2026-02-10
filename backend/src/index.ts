@@ -44,6 +44,9 @@ import agentReferralRoutes from './routes/agentReferrals';
 import webhooksRoutes from './routes/webhooks';
 import walletRoutes from './routes/wallet';
 
+// Import Agent model for seeding
+import Agent from './models/Agent';
+
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
@@ -672,6 +675,27 @@ const startServer = async () => {
       }
     } catch (cleanupErr) {
       logger.warn('⚠️  Session cleanup skipped:', cleanupErr);
+    }
+
+    // Seed super_admin into the Agent collection (one-time, from AGENT_USERNAME / AGENT_PASSWORD env vars).
+    // Regular agents should be created via the AceAdmin UI — FortunePanda credentials are NOT used here.
+    try {
+      const superAdminExists = await Agent.findOne({ role: 'super_admin' });
+      if (!superAdminExists && process.env.AGENT_USERNAME && process.env.AGENT_PASSWORD) {
+        await Agent.create({
+          agentName: process.env.AGENT_USERNAME,
+          passwordHash: process.env.AGENT_PASSWORD, // pre-save hook will bcrypt this
+          role: 'super_admin',
+          permissions: ['chat', 'users', 'verification', 'referrals'],
+          isActive: true,
+        });
+        logger.success('✅ Seeded super_admin agent from AGENT_USERNAME env var');
+      }
+    } catch (seedErr: any) {
+      // Duplicate key errors (code 11000) are expected on subsequent restarts -- ignore
+      if (seedErr.code !== 11000) {
+        logger.warn('⚠️ Agent seeding skipped:', seedErr.message || seedErr);
+      }
     }
 
     // Start server first

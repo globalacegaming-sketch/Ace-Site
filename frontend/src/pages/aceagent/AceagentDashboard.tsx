@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Gift,
   Download,
@@ -16,14 +16,18 @@ import {
   Users,
   MessageCircle,
   Ban,
-  UserCheck
+  UserCheck,
+  LogOut
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 import AdminChatPanel from '../../components/admin/chat/AdminChatPanel';
+import AdminSessionManager from '../../components/admin/AdminSessionManager';
 import { useMusic } from '../../contexts/MusicContext';
+
+type AgentPermission = 'chat' | 'users' | 'verification' | 'referrals';
 
 interface User {
   _id: string;
@@ -58,7 +62,6 @@ const AceagentDashboard: React.FC = () => {
   
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'chat' | 'verification' | 'referrals'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [verificationSearchQuery, setVerificationSearchQuery] = useState('');
@@ -77,6 +80,49 @@ const AceagentDashboard: React.FC = () => {
   const [redeemAmount, setRedeemAmount] = useState('');
   const wsBaseUrl = useMemo(() => getWsBaseUrl(), []);
   const sessionCheckedRef = useRef(false);
+
+  // ── Permissions ────────────────────────────────────────────────────────────
+  const [permissions, setPermissions] = useState<AgentPermission[]>([
+    'chat', 'users', 'verification', 'referrals',
+  ]);
+
+  const hasPermission = useCallback(
+    (perm: AgentPermission) => permissions.includes(perm),
+    [permissions],
+  );
+
+  // Default tab = first allowed permission, or fallback to 'chat'
+  const allTabs: AgentPermission[] = ['users', 'chat', 'verification', 'referrals'];
+  const allowedTabs = allTabs.filter((t) => permissions.includes(t));
+  const [activeTab, setActiveTab] = useState<AgentPermission>(
+    allowedTabs[0] || 'chat',
+  );
+
+  // If the current active tab is no longer allowed, switch to the first allowed
+  useEffect(() => {
+    if (!hasPermission(activeTab) && allowedTabs.length > 0) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [permissions, activeTab, hasPermission, allowedTabs]);
+
+  // ── Logout handler (calls backend) ────────────────────────────────────────
+  const handleLogout = useCallback(async () => {
+    try {
+      const token = getAdminToken();
+      if (token) {
+        await axios.post(
+          `${API_BASE_URL}/admin/logout`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        ).catch(() => { /* swallow network errors */ });
+      }
+    } finally {
+      localStorage.removeItem('admin_session');
+      toast.success('Logged out successfully');
+      navigate('/aceagent/login', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate, API_BASE_URL]);
 
   // Referrals state
   interface AgentReferral {
@@ -217,6 +263,10 @@ const AceagentDashboard: React.FC = () => {
       // Set agent balance from session if available
       if (parsedSession.agentBalance) {
         setAgentBalance(parsedSession.agentBalance);
+      }
+      // Load permissions from session
+      if (Array.isArray(parsedSession.permissions) && parsedSession.permissions.length > 0) {
+        setPermissions(parsedSession.permissions);
       }
       loadUsers();
       loadAgentBalance();
@@ -687,6 +737,7 @@ const AceagentDashboard: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
+      <AdminSessionManager />
       <style>{`
         /* Hide scrollbar for Chrome, Safari and Opera */
         .hide-scrollbar::-webkit-scrollbar {
@@ -711,68 +762,63 @@ const AceagentDashboard: React.FC = () => {
       <nav className="bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white shadow-xl flex-shrink-0">
         <div className="max-w-full mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex flex-row items-center justify-between gap-2 lg:gap-4 py-2 sm:py-2.5">
-            {/* Left Section: Title and Balance */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-3 lg:gap-4 flex-shrink-0 min-w-0">
+            {/* Left Section: Title */}
+            <div className="flex items-center gap-1.5 sm:gap-3 lg:gap-4 flex-shrink-0 min-w-0">
               <h1 className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-white drop-shadow-md whitespace-nowrap">
                 Admin Dashboard
               </h1>
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="text-xs text-blue-100 font-medium whitespace-nowrap">Balance:</span>
-                <span className="text-xs sm:text-sm font-bold text-white bg-white/20 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full backdrop-blur-sm whitespace-nowrap">
-                  ${parseFloat(agentBalance).toFixed(2)}
-                </span>
-                <button
-                  onClick={() => loadAgentBalance()}
-                  className="p-1 sm:p-1.5 text-white/80 hover:text-white hover:bg-white/20 active:bg-white/30 rounded transition-all duration-200 flex items-center justify-center"
-                  title="Refresh balance"
-                >
-                  <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                </button>
-              </div>
             </div>
 
-            {/* Center Section: Navigation Tabs - Desktop only */}
+            {/* Center Section: Navigation Tabs - Desktop only (permission-filtered) */}
             <div className="hidden lg:flex items-center justify-center gap-2 flex-1">
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
-                  activeTab === 'users'
-                    ? 'bg-white text-indigo-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
-                }`}
-              >
-                User Management
-              </button>
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
-                  activeTab === 'chat'
-                    ? 'bg-white text-indigo-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
-                }`}
-              >
-                Support Chat
-              </button>
-              <button
-                onClick={() => setActiveTab('verification')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
-                  activeTab === 'verification'
-                    ? 'bg-white text-indigo-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
-                }`}
-              >
-                User Verification
-              </button>
-              <button
-                onClick={() => setActiveTab('referrals')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
-                  activeTab === 'referrals'
-                    ? 'bg-white text-indigo-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
-                }`}
-              >
-                Referrals
-              </button>
+              {hasPermission('users') && (
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                    activeTab === 'users'
+                      ? 'bg-white text-indigo-600 shadow-md'
+                      : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                  }`}
+                >
+                  User Management
+                </button>
+              )}
+              {hasPermission('chat') && (
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                    activeTab === 'chat'
+                      ? 'bg-white text-indigo-600 shadow-md'
+                      : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                  }`}
+                >
+                  Support Chat
+                </button>
+              )}
+              {hasPermission('verification') && (
+                <button
+                  onClick={() => setActiveTab('verification')}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                    activeTab === 'verification'
+                      ? 'bg-white text-indigo-600 shadow-md'
+                      : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                  }`}
+                >
+                  User Verification
+                </button>
+              )}
+              {hasPermission('referrals') && (
+                <button
+                  onClick={() => setActiveTab('referrals')}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                    activeTab === 'referrals'
+                      ? 'bg-white text-indigo-600 shadow-md'
+                      : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                  }`}
+                >
+                  Referrals
+                </button>
+              )}
             </div>
 
             {/* Right Section: Action Buttons - Icon only on mobile */}
@@ -797,15 +843,11 @@ const AceagentDashboard: React.FC = () => {
                 <span className="hidden sm:inline ml-1.5 text-xs sm:text-sm font-medium">Refresh</span>
               </button>
               <button
-                onClick={() => {
-                  localStorage.removeItem('admin_session');
-                  toast.success('Logged out successfully');
-                  navigate('/aceagent/login');
-                }}
+                onClick={handleLogout}
                 className="p-2 sm:px-3 sm:py-2 bg-white/20 active:bg-white/30 rounded-lg transition-all duration-200 backdrop-blur-sm flex items-center justify-center min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] hover:bg-white/25"
                 title="Logout"
               >
-                <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline ml-1.5 text-xs sm:text-sm font-medium">Logout</span>
               </button>
             </div>
@@ -815,8 +857,32 @@ const AceagentDashboard: React.FC = () => {
 
       <div className="flex-1 overflow-y-auto max-w-full mx-auto w-full px-3 sm:px-4 lg:px-8 py-3 sm:py-4 lg:py-6 pb-20 sm:pb-6" style={{ minHeight: 0, maxHeight: '100%', overflowY: 'auto' }}>
 
-        {activeTab === 'users' ? (
+        {activeTab === 'users' && hasPermission('users') ? (
           <>
+            {/* Agent Balance Card */}
+            <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 rounded-xl shadow-lg p-3 sm:p-4 mb-4 sm:mb-5 border border-indigo-500/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                    <ArrowUp className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-blue-100 font-medium">FortunePanda Agent Balance</p>
+                    <p className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                      ${parseFloat(agentBalance).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => loadAgentBalance()}
+                  className="p-2 sm:p-2.5 text-white/80 hover:text-white hover:bg-white/20 active:bg-white/30 rounded-lg transition-all duration-200 flex items-center justify-center"
+                  title="Refresh balance"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
             {/* Search and Actions Bar */}
             <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 lg:p-6 mb-4 sm:mb-6 border border-gray-100">
               <div className="flex flex-col gap-3">
@@ -1049,7 +1115,7 @@ const AceagentDashboard: React.FC = () => {
               </div>
             </div>
           </>
-        ) : activeTab === 'verification' ? (
+        ) : activeTab === 'verification' && hasPermission('verification') ? (
           <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 lg:p-6 border border-gray-100">
             <div className="mb-4 sm:mb-6">
               <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
@@ -1210,7 +1276,7 @@ const AceagentDashboard: React.FC = () => {
               )}
             </div>
           </div>
-        ) : activeTab === 'chat' ? (
+        ) : activeTab === 'chat' && hasPermission('chat') ? (
           adminToken ? (
             <div className="h-full min-h-[500px] sm:min-h-[600px]">
               <AdminChatPanel
@@ -1230,7 +1296,7 @@ const AceagentDashboard: React.FC = () => {
         ) : null}
 
         {/* Referrals Tab */}
-        {activeTab === 'referrals' && (
+        {activeTab === 'referrals' && hasPermission('referrals') && (
           <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 lg:p-6 border border-gray-100">
             <div className="mb-4 sm:mb-6">
               <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
@@ -1350,7 +1416,7 @@ const AceagentDashboard: React.FC = () => {
         )}
 
         {/* User Update Modal */}
-        {activeTab === 'users' && showUserModal && selectedUser && (
+        {activeTab === 'users' && hasPermission('users') && showUserModal && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
             <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md mx-auto animate-slideUp border border-gray-200 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
               {/* Modal Header */}
@@ -1615,105 +1681,108 @@ const AceagentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Mobile Bottom Navigation Bar - Similar to messaging app UI */}
+      {/* Mobile Bottom Navigation Bar - permission-filtered */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl z-40 sm:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center justify-around h-16 px-2 max-w-full">
-          {/* User Management Tab - Left */}
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
-              activeTab === 'users'
-                ? 'text-indigo-600'
-                : 'text-gray-500 active:text-gray-700'
-            }`}
-          >
-            <div className={`relative mb-1 transition-all duration-200 ${
-              activeTab === 'users' ? 'scale-110' : 'scale-100'
-            }`}>
-              <Users className={`w-6 h-6 transition-colors ${activeTab === 'users' ? 'text-indigo-600' : 'text-gray-500'}`} />
-              {activeTab === 'users' && (
-                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
-              )}
-            </div>
-            <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
-              activeTab === 'users' ? 'text-indigo-600' : 'text-gray-500'
-            }`}>
-              Users
-            </span>
-          </button>
+          {hasPermission('users') && (
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
+                activeTab === 'users'
+                  ? 'text-indigo-600'
+                  : 'text-gray-500 active:text-gray-700'
+              }`}
+            >
+              <div className={`relative mb-1 transition-all duration-200 ${
+                activeTab === 'users' ? 'scale-110' : 'scale-100'
+              }`}>
+                <Users className={`w-6 h-6 transition-colors ${activeTab === 'users' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                {activeTab === 'users' && (
+                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
+                )}
+              </div>
+              <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
+                activeTab === 'users' ? 'text-indigo-600' : 'text-gray-500'
+              }`}>
+                Users
+              </span>
+            </button>
+          )}
 
-          {/* Support Chat Tab - Middle */}
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
-              activeTab === 'chat'
-                ? 'text-indigo-600'
-                : 'text-gray-500 active:text-gray-700'
-            }`}
-          >
-            <div className={`relative mb-1 transition-all duration-200 ${
-              activeTab === 'chat' ? 'scale-110' : 'scale-100'
-            }`}>
-              <MessageCircle className={`w-6 h-6 transition-colors ${activeTab === 'chat' ? 'text-indigo-600' : 'text-gray-500'}`} />
-              {activeTab === 'chat' && (
-                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
-              )}
-            </div>
-            <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
-              activeTab === 'chat' ? 'text-indigo-600' : 'text-gray-500'
-            }`}>
-              Chat
-            </span>
-          </button>
+          {hasPermission('chat') && (
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
+                activeTab === 'chat'
+                  ? 'text-indigo-600'
+                  : 'text-gray-500 active:text-gray-700'
+              }`}
+            >
+              <div className={`relative mb-1 transition-all duration-200 ${
+                activeTab === 'chat' ? 'scale-110' : 'scale-100'
+              }`}>
+                <MessageCircle className={`w-6 h-6 transition-colors ${activeTab === 'chat' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                {activeTab === 'chat' && (
+                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
+                )}
+              </div>
+              <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
+                activeTab === 'chat' ? 'text-indigo-600' : 'text-gray-500'
+              }`}>
+                Chat
+              </span>
+            </button>
+          )}
 
-          {/* User Verification Tab */}
-          <button
-            onClick={() => setActiveTab('verification')}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
-              activeTab === 'verification'
-                ? 'text-indigo-600'
-                : 'text-gray-500 active:text-gray-700'
-            }`}
-          >
-            <div className={`relative mb-1 transition-all duration-200 ${
-              activeTab === 'verification' ? 'scale-110' : 'scale-100'
-            }`}>
-              <Shield className={`w-6 h-6 transition-colors ${activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'}`} />
-              {activeTab === 'verification' && (
-                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
-              )}
-            </div>
-            <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
-              activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'
-            }`}>
-              Verify
-            </span>
-          </button>
+          {hasPermission('verification') && (
+            <button
+              onClick={() => setActiveTab('verification')}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
+                activeTab === 'verification'
+                  ? 'text-indigo-600'
+                  : 'text-gray-500 active:text-gray-700'
+              }`}
+            >
+              <div className={`relative mb-1 transition-all duration-200 ${
+                activeTab === 'verification' ? 'scale-110' : 'scale-100'
+              }`}>
+                <Shield className={`w-6 h-6 transition-colors ${activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                {activeTab === 'verification' && (
+                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
+                )}
+              </div>
+              <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
+                activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'
+              }`}>
+                Verify
+              </span>
+            </button>
+          )}
 
-          {/* Referrals Tab */}
-          <button
-            onClick={() => setActiveTab('referrals')}
-            className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
-              activeTab === 'referrals'
-                ? 'text-indigo-600'
-                : 'text-gray-500 active:text-gray-700'
-            }`}
-          >
-            <div className={`relative mb-1 transition-all duration-200 ${
-              activeTab === 'referrals' ? 'scale-110' : 'scale-100'
-            }`}>
-              <Gift className={`w-6 h-6 transition-colors ${activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'}`} />
-              {activeTab === 'referrals' && (
-                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
-              )}
-            </div>
-            <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
-              activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'
-            }`}>
-              Referrals
-            </span>
-          </button>
-
+          {hasPermission('referrals') && (
+            <button
+              onClick={() => setActiveTab('referrals')}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
+                activeTab === 'referrals'
+                  ? 'text-indigo-600'
+                  : 'text-gray-500 active:text-gray-700'
+              }`}
+            >
+              <div className={`relative mb-1 transition-all duration-200 ${
+                activeTab === 'referrals' ? 'scale-110' : 'scale-100'
+              }`}>
+                <Gift className={`w-6 h-6 transition-colors ${activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                {activeTab === 'referrals' && (
+                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
+                )}
+              </div>
+              <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
+                activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'
+              }`}>
+                Referrals
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>

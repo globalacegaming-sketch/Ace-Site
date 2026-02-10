@@ -33,8 +33,12 @@ const AceadminLogin: React.FC = () => {
       });
 
       if (response.data.success) {
-        // Store agent session
-        localStorage.setItem('agent_session', JSON.stringify(response.data.data));
+        // Store agent session (including role from the Agent model)
+        const sessionData = {
+          ...response.data.data,
+          role: response.data.data.role || 'super_admin',
+        };
+        localStorage.setItem('agent_session', JSON.stringify(sessionData));
         toast.success('Agent login successful!');
         navigate('/aceadmin/dashboard');
       } else {

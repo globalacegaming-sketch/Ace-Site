@@ -30,9 +30,12 @@ declare module 'express-session' {
     ip?: string;
     /** Populated after admin login */
     adminSession?: {
+      adminId: string;
       agentName: string;
       token: string;
       expiresAt: number;
+      role: string;
+      permissions: string[];
     };
   }
 }

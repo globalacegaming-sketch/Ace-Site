@@ -1,7 +1,10 @@
 interface AdminSession {
+  adminId: string;
   agentName: string;
   token: string;
   expiresAt: number;
+  role: string;
+  permissions: string[];
 }
 
 const sessions = new Map<string, AdminSession>();

@@ -41,6 +41,8 @@ interface ChatMessage {
     bonusType?: string;
     bonusValue?: string;
     isSystemMessage?: boolean;
+    adminAgentName?: string;
+    recipientName?: string;
   };
 }
 
@@ -71,6 +73,7 @@ const UserChatWidget = () => {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [emojiExpanded, setEmojiExpanded] = useState(false);
+  const [closingReply, setClosingReply] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isClosing, setIsClosing] = useState(false);     // true during close animation
   const socketRef = useRef<Socket | null>(null);
@@ -83,6 +86,7 @@ const UserChatWidget = () => {
   const [isAdminTyping, setIsAdminTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef(0);
+  const initialLoadRef = useRef(true); // Track first message load to force-scroll
   const [isMobile, setIsMobile] = useState(false);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
 
@@ -269,6 +273,17 @@ const UserChatWidget = () => {
 
   useEffect(() => {
     if (!isOpen) return;
+    if (messages.length === 0) return;
+    // On initial load, always jump to the latest message
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        setNewMsgCount(0);
+        setShowScrollBottom(false);
+      }, 50);
+      return;
+    }
     if (isNearBottom()) {
       scrollToBottom();
     } else {
@@ -669,7 +684,7 @@ const UserChatWidget = () => {
                       )}
                       <div
                         ref={(el) => { messageRefs.current[msg.id] = el; }}
-                        className={`group flex ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                        className={`group flex ${isUser ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg animate-slide-up ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                       >
                         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
                         {/* Reply & React buttons — visible on mobile, hover on desktop */}
@@ -694,7 +709,7 @@ const UserChatWidget = () => {
                               <div className={`absolute ${isUser ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] bg-white border border-gray-200 p-1.5`}>
                                 <div className="flex items-center gap-0.5">
                                   {QUICK_EMOJIS.map((emoji) => (
-                                    <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                    <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded p-1 text-center">
                                       {emoji}
                                     </button>
                                   ))}
@@ -705,7 +720,7 @@ const UserChatWidget = () => {
                                 {emojiExpanded && (
                                   <div className="flex items-center gap-0.5 mt-0.5">
                                     {MORE_EMOJIS.map((emoji) => (
-                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded p-1 text-center">
                                         {emoji}
                                       </button>
                                     ))}
@@ -761,8 +776,9 @@ const UserChatWidget = () => {
                                     <img
                                       src={getAttachmentUrl(msg.attachmentUrl)}
                                       alt={msg.attachmentName || 'Image attachment'}
-                                      className="w-full h-auto max-h-48 sm:max-h-64 object-contain"
+                                      className="w-full h-auto max-h-48 sm:max-h-64 object-contain opacity-0 transition-opacity duration-300"
                                       loading="lazy"
+                                      onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
                                     />
                                   </div>
                                   <a
@@ -847,9 +863,9 @@ const UserChatWidget = () => {
                 <div className="flex justify-start mt-2">
                   <div className="rounded-2xl rounded-bl-sm bg-white border border-gray-100 px-4 py-2.5 shadow-sm">
                     <div className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.4s' }} />
                     </div>
                   </div>
                 </div>
@@ -858,26 +874,24 @@ const UserChatWidget = () => {
               </>
             )}
             {/* Scroll-to-bottom floating button */}
-            {showScrollBottom && (
-              <button
-                onClick={scrollToBottom}
-                className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto"
-                title="Scroll to latest"
-              >
-                <ChevronDown className="w-4 h-4 text-indigo-600" />
-                {newMsgCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold">
-                    {newMsgCount > 9 ? '9+' : newMsgCount}
-                  </span>
-                )}
-              </button>
-            )}
+            <button
+              onClick={scrollToBottom}
+              className={`sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+              title="Scroll to latest"
+            >
+              <ChevronDown className="w-4 h-4 text-indigo-600" />
+              {newMsgCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold">
+                  {newMsgCount > 9 ? '9+' : newMsgCount}
+                </span>
+              )}
+            </button>
           </div>
 
           <div className="border-t border-gray-200 bg-white p-4 space-y-3 flex-shrink-0">
             {/* Reply preview */}
             {replyingTo && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl border-l-2 border-indigo-500">
+              <div className={`flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl border-l-2 border-indigo-500 ${closingReply ? 'animate-slide-out-right' : 'animate-slide-up'}`}>
                 <Reply className="w-4 h-4 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold">
@@ -890,7 +904,7 @@ const UserChatWidget = () => {
                   </p>
                 </div>
                 <button
-                  onClick={() => setReplyingTo(null)}
+                  onClick={() => { setClosingReply(true); setTimeout(() => { setReplyingTo(null); setClosingReply(false); }, 200); }}
                   className="text-indigo-400 hover:text-indigo-700 flex-shrink-0"
                 >
                   <X className="w-4 h-4" />
@@ -930,7 +944,7 @@ const UserChatWidget = () => {
               )}
             </div>
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-indigo-600">
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-indigo-600 active:scale-95 transition-transform">
                 <Paperclip className="w-4 h-4" />
                 <span>Attach file</span>
                 <input

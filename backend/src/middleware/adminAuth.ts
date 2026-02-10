@@ -6,9 +6,12 @@ declare global {
   namespace Express {
     interface Request {
       adminSession?: {
+        adminId: string;
         agentName: string;
         token: string;
         expiresAt: number;
+        role: string;
+        permissions: string[];
       };
     }
   }

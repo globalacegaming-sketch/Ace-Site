@@ -495,6 +495,20 @@ router.post(
         }
       }
       
+      // Build the user's display name so it can be stored alongside the admin name.
+      // This lets the frontend resolve the conversation owner's name from admin
+      // messages without an extra API call.
+      let recipientName: string;
+      if (user.firstName || user.lastName) {
+        recipientName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      } else if (user.username) {
+        recipientName = user.username;
+      } else if (user.email) {
+        recipientName = user.email.split('@')[0];
+      } else {
+        recipientName = 'User';
+      }
+
       const chatMessage = await ChatMessage.create({
         userId,
         senderType: 'admin',
@@ -513,7 +527,8 @@ router.post(
                 attachmentUploadedBy: req.adminSession?.agentName
               }
             : {}),
-          adminAgentName: req.adminSession?.agentName
+          adminAgentName: req.adminSession?.agentName,
+          recipientName
         }
       });
 

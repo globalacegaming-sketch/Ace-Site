@@ -31,10 +31,14 @@ class AgentLoginService {
 
   constructor() {
     this.config = {
-      agentName: process.env.FORTUNE_PANDA_AGENT_NAME || 'agent01',
-      agentPassword: process.env.FORTUNE_PANDA_AGENT_PASSWORD || '123456',
-      apiUrl: process.env.FORTUNE_PANDA_API_URL || 'http://demo.fortunepanda.vip:8033/ws/service.ashx'
+      agentName: process.env.FORTUNE_PANDA_AGENT_NAME || '',
+      agentPassword: process.env.FORTUNE_PANDA_AGENT_PASSWORD || '',
+      apiUrl: process.env.FORTUNE_PANDA_API_URL || ''
     };
+
+    if (!this.config.agentName || !this.config.agentPassword || !this.config.apiUrl) {
+      logger.warn('⚠️ FORTUNE_PANDA_AGENT_NAME, FORTUNE_PANDA_AGENT_PASSWORD, or FORTUNE_PANDA_API_URL not set in environment variables');
+    }
   }
 
   // Helper method to sleep/delay

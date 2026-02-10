@@ -16,6 +16,8 @@ const serializeMessage = (message: IChatMessage) => {
   return {
     ...json,
     id: message._id.toString(),
+    userId: message.userId.toString(),
+    adminId: message.adminId ? message.adminId.toString() : undefined,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt
   };
