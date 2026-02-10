@@ -43,7 +43,8 @@ interface SpinStatus {
   bonusSpins: number;
   totalAvailable: number;  // normal + bonus (-1 = unlimited)
   spinsPerDay: number;
-  nextResetTime: string;   // ISO timestamp of next midnight reset
+  nextResetTime: string;   // ISO timestamp of next 12h window reset
+  wheelEnabled: boolean;
 }
 
 // ── Segments (must match backend/src/config/wheelSegments.ts) ────────────────
@@ -158,8 +159,11 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [lastResult, setLastResult] = useState<SpinResult | null>(null);
-  const [, setSpinStatus] = useState<SpinStatus | null>(null);
-  // countdown state removed — badge was removed in earlier cleanup
+  const [spinStatus, setSpinStatus] = useState<SpinStatus | null>(null);
+  // Countdown timer state
+  const [countdown, setCountdown] = useState<{ hours: number; minutes: number; seconds: number } | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const API_BASE_URL = getApiBaseUrl();
 
@@ -205,9 +209,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
     if (isOpen && isAuthenticated) fetchSpinStatus();
   }, [isOpen, isAuthenticated, fetchSpinStatus]);
 
-  // Countdown timer removed — spin-count badge was removed in earlier cleanup
-
-  // ── Canvas geometry (casino frame layout) ──
+  // ── Canvas geometry (casino frame layout) — must be before drawTimerWheel ──
   const centerX = size / 2;
   const centerY = size / 2;
   const frameWidth = Math.max(14, size * 0.058);
@@ -216,6 +218,214 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const bulbRingR = (outerR + wheelR) / 2;
   const bulbDotR = Math.max(2.5, frameWidth * 0.2);
   const centerHubR = Math.max(18, size / 9.5);
+
+  // Whether spins are exhausted (show timer mode)
+  const outOfSpins = spinStatus !== null && spinStatus.spinsRemaining === 0 && spinStatus.spinsPerDay !== -1;
+
+  // ── Countdown timer logic (ticks every second when out of spins) ──
+  useEffect(() => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (!spinStatus || !outOfSpins) {
+      setCountdown(null);
+      return;
+    }
+    const tick = () => {
+      const now = Date.now();
+      const resetAt = new Date(spinStatus.nextResetTime).getTime();
+      const diff = Math.max(0, resetAt - now);
+      if (diff <= 0) {
+        setCountdown({ hours: 0, minutes: 0, seconds: 0 });
+        // Auto-refresh spin status when timer hits zero
+        fetchSpinStatus();
+        if (countdownRef.current) clearInterval(countdownRef.current);
+        return;
+      }
+      setCountdown({
+        hours: Math.floor(diff / 3600000),
+        minutes: Math.floor((diff % 3600000) / 60000),
+        seconds: Math.floor((diff % 60000) / 1000),
+      });
+    };
+    tick();
+    countdownRef.current = setInterval(tick, 1000);
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [spinStatus, outOfSpins, fetchSpinStatus]);
+
+  // ── Draw countdown timer on canvas (clock-style) ──
+  const drawTimerWheel = useCallback(() => {
+    const canvas = timerCanvasRef.current;
+    if (!canvas || !countdown) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, size, size);
+    const cx = size / 2;
+    const cy = size / 2;
+    const now = Date.now();
+
+    // Total seconds in 12h and remaining
+    const totalSecs = countdown.hours * 3600 + countdown.minutes * 60 + countdown.seconds;
+    const maxSecs = 12 * 3600;
+    const progress = 1 - totalSecs / maxSecs; // 0 = full time left, 1 = timer done
+
+    // ── LAYER 1: Outer mahogany frame (matches wheel) ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, 0, TAU);
+    ctx.arc(cx, cy, wheelR + 1, 0, TAU, true);
+    const frameGrad = ctx.createRadialGradient(cx, cy, wheelR, cx, cy, outerR);
+    frameGrad.addColorStop(0, '#6B1515');
+    frameGrad.addColorStop(0.3, '#8B2222');
+    frameGrad.addColorStop(0.7, '#7A1A1A');
+    frameGrad.addColorStop(1, '#4A0A0A');
+    ctx.fillStyle = frameGrad;
+    ctx.fill();
+    ctx.restore();
+
+    // Gold trim
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, 0, TAU);
+    ctx.strokeStyle = '#DAA520';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, wheelR + 1, 0, TAU);
+    ctx.strokeStyle = '#B8860B';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // ── LAYER 2: Bulbs (pulsing slowly) ──
+    for (let i = 0; i < NUM_BULBS; i++) {
+      const bAngle = (i / NUM_BULBS) * TAU - Math.PI / 2;
+      const bx = cx + Math.cos(bAngle) * bulbRingR;
+      const by = cy + Math.sin(bAngle) * bulbRingR;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 1200 + i * 0.4);
+
+      ctx.beginPath();
+      ctx.arc(bx, by, bulbDotR * 2.2, 0, TAU);
+      const glowG = ctx.createRadialGradient(bx, by, 0, bx, by, bulbDotR * 2.2);
+      glowG.addColorStop(0, `rgba(255,200,50,${0.15 + pulse * 0.2})`);
+      glowG.addColorStop(1, 'rgba(255,165,0,0)');
+      ctx.fillStyle = glowG;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(bx, by, bulbDotR, 0, TAU);
+      const bGrad = ctx.createRadialGradient(bx - bulbDotR * 0.25, by - bulbDotR * 0.25, 0, bx, by, bulbDotR);
+      bGrad.addColorStop(0, `rgba(255,255,230,${0.5 + pulse * 0.35})`);
+      bGrad.addColorStop(0.4, `rgba(255,215,0,${0.5 + pulse * 0.35})`);
+      bGrad.addColorStop(1, `rgba(200,140,0,${0.35 + pulse * 0.2})`);
+      ctx.fillStyle = bGrad;
+      ctx.fill();
+    }
+
+    // ── LAYER 3: Dark clock face ──
+    ctx.beginPath();
+    ctx.arc(cx, cy, wheelR - 1, 0, TAU);
+    const faceGrad = ctx.createRadialGradient(cx, cy - wheelR * 0.2, 0, cx, cy, wheelR);
+    faceGrad.addColorStop(0, '#1A1A2E');
+    faceGrad.addColorStop(0.5, '#0F0F1A');
+    faceGrad.addColorStop(1, '#050510');
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
+
+    // Inner gold rim
+    ctx.beginPath();
+    ctx.arc(cx, cy, wheelR - 1, 0, TAU);
+    ctx.strokeStyle = '#B8860B';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // ── LAYER 4: Progress arc (golden sweep showing time elapsed) ──
+    const arcR = wheelR * 0.78;
+    const arcWidth = Math.max(8, size * 0.04);
+    const startA = -Math.PI / 2;
+    const endA = startA + progress * TAU;
+
+    // Track (dark ring)
+    ctx.beginPath();
+    ctx.arc(cx, cy, arcR, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,215,0,0.08)';
+    ctx.lineWidth = arcWidth;
+    ctx.stroke();
+
+    // Filled arc
+    if (progress > 0.001) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcR, startA, endA);
+      const arcGrad = ctx.createLinearGradient(cx - arcR, cy, cx + arcR, cy);
+      arcGrad.addColorStop(0, '#FFD700');
+      arcGrad.addColorStop(0.5, '#FFA000');
+      arcGrad.addColorStop(1, '#FF6B00');
+      ctx.strokeStyle = arcGrad;
+      ctx.lineWidth = arcWidth;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Glow on the arc
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcR, startA, endA);
+      ctx.strokeStyle = 'rgba(255,215,0,0.25)';
+      ctx.lineWidth = arcWidth + 6;
+      ctx.stroke();
+    }
+
+    // ── LAYER 5: 12-hour tick marks ──
+    for (let i = 0; i < 12; i++) {
+      const tickA = (i / 12) * TAU - Math.PI / 2;
+      const tickOuterR = wheelR * 0.90;
+      const tickInnerR = i % 3 === 0 ? wheelR * 0.84 : wheelR * 0.86;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(tickA) * tickInnerR, cy + Math.sin(tickA) * tickInnerR);
+      ctx.lineTo(cx + Math.cos(tickA) * tickOuterR, cy + Math.sin(tickA) * tickOuterR);
+      ctx.strokeStyle = i % 3 === 0 ? 'rgba(255,215,0,0.7)' : 'rgba(255,215,0,0.3)';
+      ctx.lineWidth = i % 3 === 0 ? 2.5 : 1.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    // ── LAYER 6: Countdown text ──
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${pad(countdown.hours)}:${pad(countdown.minutes)}:${pad(countdown.seconds)}`;
+    const timeFontSize = Math.max(22, Math.round(size / 8));
+
+    // Time digits
+    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold ${timeFontSize}px 'Orbitron', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(255,215,0,0.6)';
+    ctx.shadowBlur = 15;
+    ctx.fillText(timeStr, cx, cy - size * 0.02);
+    ctx.shadowBlur = 0;
+
+    // "NEXT SPIN IN" label
+    const labelFontSize = Math.max(9, Math.round(size / 28));
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = `600 ${labelFontSize}px 'Orbitron', sans-serif`;
+    ctx.fillText('NEXT SPIN IN', cx, cy - size * 0.17);
+
+    // Hourglass emoji
+    const emojiFontSize = Math.max(16, Math.round(size / 14));
+    ctx.font = `${emojiFontSize}px serif`;
+    ctx.fillText('⏳', cx, cy + size * 0.15);
+
+    // "Earn free spins" hint at bottom
+    const hintFontSize = Math.max(8, Math.round(size / 35));
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `500 ${hintFontSize}px 'Orbitron', sans-serif`;
+    ctx.fillText('Earn free spins from daily streaks!', cx, cy + size * 0.26);
+  }, [size, countdown, outerR, wheelR, bulbRingR, bulbDotR]);
+
+  // ── Repaint timer canvas every second ──
+  useEffect(() => {
+    if (outOfSpins && countdown && isOpen) {
+      drawTimerWheel();
+    }
+  }, [outOfSpins, countdown, isOpen, drawTimerWheel]);
 
   // ── Sparkle particles (memoized) ──
   const particles = useMemo(() =>
@@ -645,14 +855,16 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       anim.targetAngle = randomStop;
       anim.phase = 'decelerating';
 
-      // Show appropriate error toast
+      // Show appropriate error
       if (error.response?.status === 401) {
         useAuthStore.getState().logout();
         toast.error('Your session has expired. Please login again.');
       } else if (error.response?.status === 400) {
         const msg = error.response.data.message || 'Unable to spin the wheel';
-        if (msg.includes('already used') || msg.includes('spin limit') || msg.includes('all your spins')) {
-          toast.error('You have used all your spins!', { duration: 5000, icon: '⚠️' });
+        if (msg.includes('used all') || msg.includes('spin limit') || msg.includes('Next reset')) {
+          // Refresh spin status — this will trigger the countdown timer UI
+          fetchSpinStatus();
+          toast('⏳ Out of spins! Timer started.', { duration: 3000 });
         } else {
           toast.error(msg, { duration: 4000 });
         }
@@ -742,10 +954,25 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       <div className="fixed z-[100] top-1/2 -translate-y-[calc(50%-2px)] right-4 sm:right-6">
         <button
           onClick={() => setIsOpen(true)}
-          className="flex items-center justify-center p-1.5 bg-transparent hover:scale-110 active:scale-95 transition-transform touch-manipulation min-w-[60px] min-h-[60px] sm:min-w-[72px] sm:min-h-[72px]"
+          className="relative flex items-center justify-center p-1.5 bg-transparent hover:scale-110 active:scale-95 transition-transform touch-manipulation min-w-[60px] min-h-[60px] sm:min-w-[72px] sm:min-h-[72px]"
           aria-label="Open Wheel of Fortune"
         >
           <img src="/WHeels.png" alt="" className="w-[100px] h-[100px] object-contain drop-shadow-md" />
+          {/* Mini countdown badge on floating button */}
+          {outOfSpins && countdown && (
+            <span
+              className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+              style={{
+                background: 'linear-gradient(135deg, #4A0000, #8B0000)',
+                color: '#FFD700',
+                border: '1px solid rgba(255,215,0,0.4)',
+                boxShadow: '0 0 8px rgba(139,0,0,0.6)',
+                fontFamily: "'Orbitron', monospace",
+              }}
+            >
+              {countdown.hours > 0 ? `${countdown.hours}h ${countdown.minutes}m` : `${countdown.minutes}m ${countdown.seconds}s`}
+            </span>
+          )}
         </button>
       </div>
 
@@ -854,10 +1081,10 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                 }}
               />
 
-              {/* Golden pointer (SVG) */}
+              {/* Golden pointer (SVG) — hidden in timer mode */}
               <div
                 className="absolute left-1/2 z-10 pointer-events-none"
-                style={{ top: -4, transform: 'translateX(-50%)' }}
+                style={{ top: -4, transform: 'translateX(-50%)', opacity: outOfSpins ? 0 : 1, transition: 'opacity 0.4s ease' }}
               >
                 <svg
                   width={size < 380 ? 26 : 34}
@@ -883,20 +1110,34 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                 </svg>
               </div>
 
-              {/* Canvas */}
-              <canvas
-                ref={canvasRef}
-                width={size}
-                height={size}
-                className="relative z-[1] cursor-pointer touch-manipulation"
-                style={{
-                  filter: isSpinning
-                    ? 'drop-shadow(0 0 25px rgba(255,170,0,0.5)) drop-shadow(0 0 50px rgba(180,20,0,0.35))'
-                    : 'drop-shadow(0 0 12px rgba(255,170,0,0.25))',
-                  transition: 'filter 0.6s ease',
-                }}
-                onClick={handleSpinClick}
-              />
+              {/* Canvas: wheel or countdown timer */}
+              {outOfSpins && countdown ? (
+                <canvas
+                  ref={timerCanvasRef}
+                  width={size}
+                  height={size}
+                  className="relative z-[1] touch-manipulation"
+                  style={{
+                    background: 'transparent',
+                    filter: 'drop-shadow(0 0 15px rgba(255,170,0,0.2))',
+                    transition: 'filter 0.6s ease',
+                  }}
+                />
+              ) : (
+                <canvas
+                  ref={canvasRef}
+                  width={size}
+                  height={size}
+                  className="relative z-[1] cursor-pointer touch-manipulation"
+                  style={{
+                    filter: isSpinning
+                      ? 'drop-shadow(0 0 25px rgba(255,170,0,0.5)) drop-shadow(0 0 50px rgba(180,20,0,0.35))'
+                      : 'drop-shadow(0 0 12px rgba(255,170,0,0.25))',
+                    transition: 'filter 0.6s ease',
+                  }}
+                  onClick={handleSpinClick}
+                />
+              )}
 
               {/* Login Modal */}
               {showLoginModal && (
@@ -937,13 +1178,14 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
               )}
             </div>
 
-            {/* Spin count badge removed — the wheel itself communicates availability */}
+            {/* Timer info is rendered directly on the canvas — no extra card needed */}
 
           </div>
 
-          {/* ─── Result card ─── */}
+          {/* ─── Result card (hidden in timer mode) ─── */}
           {showResult &&
             lastResult &&
+            !outOfSpins &&
             (() => {
               const actualSegment =
                 lastResult.sliceOrder != null

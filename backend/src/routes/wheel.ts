@@ -219,11 +219,11 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
     } catch (campaignError: any) {
       const msg = campaignError.message || '';
 
-      // User hit their spin limit
-      if (msg.includes('already used') || msg.includes('not eligible')) {
+      // User hit their spin limit — pass the specific message from the service
+      if (msg.includes('already used') || msg.includes('not eligible') || msg.includes('spins for today')) {
         return res.status(400).json({
           success: false,
-          message: 'You have used all your spins'
+          message: msg
         });
       }
 
@@ -250,25 +250,22 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
     }
 
     const userId = req.user._id;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const now = new Date();
+    const msIn12h = 12 * 60 * 60 * 1000;
+    const cutoff = new Date(now.getTime() - msIn12h);
 
     // Campaign system is the only source of truth
     const campaign = await WheelCampaign.findOne({ status: 'live' });
     if (!campaign) {
-      // No live campaign — wheel is off, no spins available
       return res.json({
         success: true,
         data: {
           spinsRemaining: 0,
           bonusSpins: 0,
           totalAvailable: 0,
-          spinsPerUser: 0,
-          todaySpins: 0,
-          totalSpins: 0,
-          nextResetTime: tomorrow.toISOString(),
+          spinsPerDay: 0,
+          windowSpins: 0,
+          nextResetTime: new Date(now.getTime() + msIn12h).toISOString(),
           wheelEnabled: false
         }
       });
@@ -277,22 +274,39 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
     const campaignId = campaign._id as Types.ObjectId;
     const fairnessRules = await WheelFairnessRules.findOne({ campaignId });
 
-    const spinsPerUser = fairnessRules?.spinsPerUser ?? -1;
+    // Default to 2 if spinsPerDay is missing from an old DB document
+    const spinsPerDay = fairnessRules?.spinsPerDay ?? 2;
 
-    // Count spins scoped to the active campaign
-    const campaignSpinCount = await WheelSpin.countDocuments({ userId, campaignId });
+    // Count spins in the last 12 hours (rolling window from user's perspective)
+    const recentSpinCount = await WheelSpin.countDocuments({
+      userId, campaignId, createdAt: { $gte: cutoff }
+    });
 
-    // The admin-set spinsPerUser is the hard cap
-    const spinsRemaining = spinsPerUser !== -1
-      ? Math.max(0, spinsPerUser - campaignSpinCount)
+    const spinsRemaining = spinsPerDay !== -1
+      ? Math.max(0, spinsPerDay - recentSpinCount)
       : -1; // unlimited
+
+    // Calculate next reset: 12h after the oldest spin in the window
+    let nextResetTime: string;
+    if (spinsRemaining === 0 && spinsPerDay !== -1) {
+      const oldestRecentSpin = await WheelSpin.findOne({
+        userId, campaignId, createdAt: { $gte: cutoff }
+      }).sort({ createdAt: 1 }).select('createdAt').lean();
+      
+      nextResetTime = oldestRecentSpin
+        ? new Date(new Date(oldestRecentSpin.createdAt).getTime() + msIn12h).toISOString()
+        : new Date(now.getTime() + msIn12h).toISOString();
+    } else {
+      nextResetTime = new Date(now.getTime() + msIn12h).toISOString();
+    }
 
     logger.info('📊 spin-status:', {
       userId: userId.toString(),
       campaignId: campaignId.toString(),
-      spinsPerUser,
-      campaignSpinCount,
+      spinsPerDay,
+      recentSpinCount,
       spinsRemaining,
+      nextReset: nextResetTime,
     });
 
     return res.json({
@@ -301,10 +315,9 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
         spinsRemaining,
         bonusSpins: 0,
         totalAvailable: spinsRemaining,
-        spinsPerUser,
-        todaySpins: 0,
-        totalSpins: campaignSpinCount,
-        nextResetTime: tomorrow.toISOString(),
+        spinsPerDay,
+        windowSpins: recentSpinCount,
+        nextResetTime,
         wheelEnabled: true
       }
     });

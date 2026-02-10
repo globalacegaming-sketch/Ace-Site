@@ -48,7 +48,7 @@ const WheelManagementPanel = () => {
 
   // Section 4: Fairness Rules
   const [fairnessRules, setFairnessRules] = useState({
-    spinsPerUser: 1,
+    spinsPerDay: 2,
     freeSpinCannotTriggerFreeSpin: true
   });
 
@@ -161,7 +161,7 @@ const WheelManagementPanel = () => {
       if (rulesRes.data.success) {
         const r = rulesRes.data.data;
         setFairnessRules({
-          spinsPerUser: r.spinsPerUser ?? 1,
+          spinsPerDay: r.spinsPerDay ?? 2,
           freeSpinCannotTriggerFreeSpin: r.freeSpinCannotTriggerFreeSpin !== false
         });
       }
@@ -507,16 +507,16 @@ const WheelManagementPanel = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Spins Per User (-1 for unlimited)
+                      Spins Per Day (-1 for unlimited)
                     </label>
                     <input
                       type="number"
-                      value={fairnessRules.spinsPerUser}
-                      onChange={(e) => setFairnessRules({ ...fairnessRules, spinsPerUser: parseInt(e.target.value) || -1 })}
+                      value={fairnessRules.spinsPerDay}
+                      onChange={(e) => setFairnessRules({ ...fairnessRules, spinsPerDay: parseInt(e.target.value) || -1 })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black"
                       min="-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Limits the total number of spins per user</p>
+                    <p className="text-xs text-gray-500 mt-1">How many spins a user gets each day (resets at midnight)</p>
                   </div>
                 </div>
               </div>

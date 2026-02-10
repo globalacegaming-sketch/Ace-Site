@@ -4,7 +4,7 @@ export interface IWheelFairnessRules extends Document {
   campaignId: Types.ObjectId;
   
   // Spin Limits
-  spinsPerUser: number; // -1 for unlimited
+  spinsPerDay: number;   // Daily cap (resets at midnight). -1 = unlimited
   
   // Free Spin Rules
   // maxFreeSpinsPerUser is hardcoded to 1 per 24 hours in the service
@@ -23,10 +23,10 @@ const WheelFairnessRulesSchema = new Schema<IWheelFairnessRules>(
       unique: true,
       index: true
     },
-    spinsPerUser: {
+    spinsPerDay: {
       type: Number,
-      default: 1,
-      min: [-1, 'Spins per user must be -1 (unlimited) or positive']
+      default: 2,
+      min: [-1, 'Spins per day must be -1 (unlimited) or positive']
     },
     freeSpinCannotTriggerFreeSpin: {
       type: Boolean,

@@ -41,14 +41,40 @@ class WheelSpinService {
     userEmail?: string,
     userPhone?: string
   ): Promise<{ eligible: boolean; message?: string }> {
-    // Check spins per user
-    if (fairnessRules.spinsPerUser !== -1) {
-      const userSpinCount = await WheelSpin.countDocuments({ 
-        userId, 
-        campaignId 
+    // Check spin cap (resets 12 hours after the user's first spin in the current cycle)
+    // Default to 2 if spinsPerDay is missing from an old DB document
+    const spinsPerDay = fairnessRules.spinsPerDay ?? 2;
+    logger.info('🎯 Eligibility check:', { userId: userId.toString(), spinsPerDay, rawValue: fairnessRules.spinsPerDay });
+    if (spinsPerDay !== -1) {
+      const now = new Date();
+      const msIn12h = 12 * 60 * 60 * 1000;
+      const cutoff = new Date(now.getTime() - msIn12h);
+      
+      // Count spins in the last 12 hours
+      const recentSpinCount = await WheelSpin.countDocuments({
+        userId,
+        campaignId,
+        createdAt: { $gte: cutoff }
       });
-      if (userSpinCount >= fairnessRules.spinsPerUser) {
-        return { eligible: false, message: 'You have already used all your spins' };
+      logger.info('🎯 Spin count in last 12h:', { recentSpinCount, spinsPerDay, cutoff: cutoff.toISOString() });
+      if (recentSpinCount >= spinsPerDay) {
+        // Find the oldest spin in the window to compute when 12h expires from it
+        const oldestRecentSpin = await WheelSpin.findOne({
+          userId,
+          campaignId,
+          createdAt: { $gte: cutoff }
+        }).sort({ createdAt: 1 }).select('createdAt').lean();
+        
+        const resetAt = oldestRecentSpin
+          ? new Date(new Date(oldestRecentSpin.createdAt).getTime() + msIn12h)
+          : new Date(now.getTime() + msIn12h);
+        const msLeft = Math.max(0, resetAt.getTime() - now.getTime());
+        const hours = Math.floor(msLeft / 3600000);
+        const minutes = Math.floor((msLeft % 3600000) / 60000);
+        return { 
+          eligible: false, 
+          message: `You've used all your spins! Next reset in ${hours}h ${minutes}m` 
+        };
       }
     }
 
