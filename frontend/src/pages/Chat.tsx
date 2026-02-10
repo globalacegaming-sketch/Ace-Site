@@ -489,20 +489,6 @@ const Chat = () => {
         <div className="absolute top-1/2 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-6" style={{ backgroundColor: '#FFD700' }}></div>
       </div>
 
-      {/* Fixed Header - Show on all screens */}
-      <div className="casino-bg-secondary border-b casino-border px-4 py-3 flex items-center gap-3 flex-shrink-0 relative" style={{ zIndex: 60 }}>
-        <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ 
-          background: 'linear-gradient(135deg, #6A1B9A 0%, #00B0FF 100%)',
-          boxShadow: '0 0 20px rgba(106, 27, 154, 0.3)'
-        }}>
-          <MessageCircle className="w-5 h-5 text-white" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold casino-text-primary">Support Chat</h1>
-          <p className="text-xs casino-text-secondary">We're here to help you 24/7</p>
-        </div>
-      </div>
-
       {/* Scrollable Messages Container */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 relative min-h-0">
         <div className="max-w-4xl mx-auto">
@@ -670,31 +656,17 @@ const Chat = () => {
                         {message.attachmentUrl && (
                           <div className="mt-2">
                             {isImageAttachment(message.attachmentType, message.attachmentName) ? (
-                              <div className="space-y-2">
-                                <div
-                                  onClick={() => setImageModal({ url: getAttachmentUrl(message.attachmentUrl!), name: message.attachmentName || 'Image' })}
-                                  className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
-                                  style={isUser ? { borderColor: 'rgba(10, 10, 15, 0.2)' } : { borderColor: 'rgba(0, 176, 255, 0.2)' }}
-                                >
-                                  <img
-                                    src={getAttachmentUrl(message.attachmentUrl)}
-                                    alt={message.attachmentName || 'Image attachment'}
-                                    className="w-full h-auto max-h-48 sm:max-h-64 object-contain opacity-0 transition-opacity duration-300"
-                                    loading="lazy"
-                                    onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
-                                  />
-                                </div>
-                                <a
-                                  href={getAttachmentUrl(message.attachmentUrl)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  download={message.attachmentName}
-                                  className="inline-flex items-center gap-2 text-xs underline"
-                                  style={isUser ? { color: '#0A0A0F' } : { color: '#00B0FF' }}
-                                >
-                                  <ImageIcon className="w-3 h-3" />
-                                  <span>{message.attachmentName || 'Download image'}</span>
-                                </a>
+                              <div
+                                onClick={() => setImageModal({ url: getAttachmentUrl(message.attachmentUrl!), name: message.attachmentName || 'Image' })}
+                                className="rounded-lg overflow-hidden max-w-full sm:max-w-xs cursor-pointer"
+                              >
+                                <img
+                                  src={getAttachmentUrl(message.attachmentUrl)}
+                                  alt="attachment"
+                                  className="w-full h-auto max-h-48 sm:max-h-64 object-cover rounded-lg opacity-0 transition-opacity duration-300"
+                                  loading="lazy"
+                                  onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
+                                />
                               </div>
                             ) : (
                               <a

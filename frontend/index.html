@@ -26,6 +26,8 @@
         await OneSignal.init({
           appId: "85f288b7-130d-4334-9a01-304bd9070551",
           allowLocalhostAsSecureOrigin: true,
+          serviceWorkerPath: "/OneSignalSDKWorker.js",
+          serviceWorkerParam: { scope: "/onesignal/" },
           promptOptions: {
             slidedown: {
               prompts: [{

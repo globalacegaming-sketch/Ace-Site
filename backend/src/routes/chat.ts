@@ -167,19 +167,35 @@ router.post(
         if (isCloudinaryEnabled()) {
           try {
             const userId = req.user._id.toString();
-            const result = await cloudinary.uploader.upload(req.file.path, {
-              folder: `chat/${userId}`
-            });
-            attachmentUrl = result.secure_url;
-            
-            // Delete temporary file after upload
-            fs.unlinkSync(req.file.path);
-          } catch (cloudinaryError: any) {
-            // Clean up temp file even if Cloudinary upload fails
-            if (req.file?.path && fs.existsSync(req.file.path)) {
-              fs.unlinkSync(req.file.path);
+            const filePath = req.file.path;
+
+            // Verify temp file exists before uploading
+            if (!filePath || !fs.existsSync(filePath)) {
+              logger.warn('Temp file not found, falling back to local storage');
+              attachmentUrl = getChatAttachmentUrl(attachment.filename);
+            } else {
+              logger.debug('Uploading to Cloudinary:', { filePath, mimetype: req.file.mimetype, size: req.file.size });
+
+              const result = await cloudinary.uploader.upload(filePath, {
+                folder: `chat/${userId}`,
+                resource_type: 'auto',
+              });
+              attachmentUrl = result.secure_url;
+
+              // Delete temporary file after upload
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             }
-            throw new Error(`Failed to upload attachment: ${cloudinaryError.message}`);
+          } catch (cloudinaryError: any) {
+            // Cloudinary failed -- fall back to local storage instead of crashing
+            const errMsg =
+              cloudinaryError?.message ||
+              cloudinaryError?.error?.message ||
+              (cloudinaryError?.http_code ? `HTTP ${cloudinaryError.http_code}` : null) ||
+              'Unknown Cloudinary error';
+            logger.warn('Cloudinary upload failed, falling back to local storage:', errMsg);
+
+            // The file is already saved to disk by multer, so just use it
+            attachmentUrl = getChatAttachmentUrl(attachment.filename);
           }
         } else {
           // Fall back to local storage if Cloudinary is not configured
@@ -221,11 +237,13 @@ router.post(
         userId: req.user?._id,
         hasAttachment: !!req.file
       });
-      res.status(500).json({
-        success: false,
-        message: 'Failed to send message',
-        error: error.message
-      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to send message',
+          error: error.message
+        });
+      }
     }
   }
 );

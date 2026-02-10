@@ -1699,31 +1699,17 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
                             {msg.attachmentUrl && (
                               <div className="mt-3">
                                 {isImageAttachment(msg.attachmentType, msg.attachmentName) ? (
-                                  <div className="space-y-2">
-                                    <div
-                                      onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
-                                      className="block rounded-lg overflow-hidden border-2 border-opacity-20 hover:border-opacity-40 active:border-opacity-60 transition-all max-w-full sm:max-w-md cursor-pointer touch-manipulation"
-                                    >
-                                      <img
-                                        src={getAttachmentUrl(msg.attachmentUrl)}
-                                        alt={msg.attachmentName || 'Image attachment'}
-                                        className="w-full h-auto max-h-48 sm:max-h-64 object-contain opacity-0 transition-opacity duration-300"
-                                        loading="lazy"
-                                        onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
-                                      />
-                                    </div>
-                                    <a
-                                      href={getAttachmentUrl(msg.attachmentUrl)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      download={msg.attachmentName}
-                                      className={`inline-flex items-center gap-2 text-xs font-semibold underline transition ${
-                                        isAdmin ? 'text-indigo-200 hover:text-indigo-100' : 'text-indigo-600 hover:text-indigo-700'
-                                      }`}
-                                    >
-                                      <ImageIcon className="w-3 h-3" />
-                                      <span>{msg.attachmentName || 'Download image'}</span>
-                                    </a>
+                                  <div
+                                    onClick={() => setImageModal({ url: getAttachmentUrl(msg.attachmentUrl!), name: msg.attachmentName || 'Image' })}
+                                    className="rounded-lg overflow-hidden max-w-full sm:max-w-xs cursor-pointer"
+                                  >
+                                    <img
+                                      src={getAttachmentUrl(msg.attachmentUrl)}
+                                      alt="attachment"
+                                      className="w-full h-auto max-h-48 sm:max-h-64 object-cover rounded-lg opacity-0 transition-opacity duration-300"
+                                      loading="lazy"
+                                      onLoad={(e) => e.currentTarget.classList.replace('opacity-0', 'opacity-100')}
+                                    />
                                   </div>
                                 ) : (
                                   <a

@@ -8,6 +8,7 @@ import { getSocketServerInstance } from '../utils/socketManager';
 import { sanitizeText } from '../utils/sanitize';
 import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
 import fs from 'fs';
+import logger from '../utils/logger';
 import { sendChatMessagePush } from '../services/oneSignalService';
 
 const router = Router();
@@ -475,19 +476,29 @@ router.post(
       if (attachment && req.file) {
         if (isCloudinaryEnabled()) {
           try {
-            const result = await cloudinary.uploader.upload(req.file.path, {
-              folder: `chat/${userId}`
-            });
-            attachmentUrl = result.secure_url;
-            
-            // Delete temporary file after upload
-            fs.unlinkSync(req.file.path);
-          } catch (cloudinaryError: any) {
-            // Clean up temp file even if Cloudinary upload fails
-            if (req.file?.path && fs.existsSync(req.file.path)) {
-              fs.unlinkSync(req.file.path);
+            const filePath = req.file.path;
+            if (!filePath || !fs.existsSync(filePath)) {
+              logger.warn('Temp file not found, falling back to local storage');
+              attachmentUrl = getChatAttachmentUrl(attachment.filename);
+            } else {
+              const result = await cloudinary.uploader.upload(filePath, {
+                folder: `chat/${userId}`,
+                resource_type: 'auto',
+              });
+              attachmentUrl = result.secure_url;
+
+              // Delete temporary file after upload
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             }
-            throw new Error(`Failed to upload attachment: ${cloudinaryError.message}`);
+          } catch (cloudinaryError: any) {
+            // Cloudinary failed -- fall back to local storage instead of crashing
+            const errMsg =
+              cloudinaryError?.message ||
+              cloudinaryError?.error?.message ||
+              (cloudinaryError?.http_code ? `HTTP ${cloudinaryError.http_code}` : null) ||
+              'Unknown Cloudinary error';
+            logger.warn('Cloudinary upload failed, falling back to local storage:', errMsg);
+            attachmentUrl = getChatAttachmentUrl(attachment.filename);
           }
         } else {
           // Fall back to local storage if Cloudinary is not configured
