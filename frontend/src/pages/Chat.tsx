@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, Loader2, FileText, MessageCircle, Image as ImageIcon, X, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
+import { Send, Loader2, FileText, MessageCircle, X, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';

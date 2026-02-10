@@ -18,8 +18,7 @@ import {
   Ban,
   UserCheck,
   LogOut,
-  StickyNote,
-  Tag
+  StickyNote
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Image as ImageIcon, Download, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Download, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';

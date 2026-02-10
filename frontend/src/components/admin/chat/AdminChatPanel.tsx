@@ -16,11 +16,9 @@ import {
   Gift,
   ChevronUp,
   ChevronDown,
-  Image as ImageIcon,
   Reply,
   SmilePlus,
-  StickyNote,
-  Tag
+  StickyNote
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAttachmentUrl, isImageAttachment } from '../../../utils/api';
