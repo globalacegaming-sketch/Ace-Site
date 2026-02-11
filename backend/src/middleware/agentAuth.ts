@@ -31,7 +31,9 @@ export const requireAgentAuth = (req: Request, res: Response, next: NextFunction
   try {
     const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
     
-    if (decoded.role !== 'agent' || decoded.type !== 'agent') {
+    // Accept any agent-system JWT: super_admin, admin, or agent roles
+    const validRoles = ['super_admin', 'admin', 'agent'];
+    if (decoded.type !== 'agent' || !validRoles.includes(decoded.role)) {
       res.status(403).json({
         success: false,
         message: 'Invalid token type. Agent token required.'
@@ -43,7 +45,7 @@ export const requireAgentAuth = (req: Request, res: Response, next: NextFunction
     req.agentSession = {
       username: decoded.username,
       role: decoded.role,
-      userId: decoded.userId
+      userId: decoded.userId || decoded.agentId
     };
 
     next();
