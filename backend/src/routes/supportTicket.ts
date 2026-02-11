@@ -5,6 +5,7 @@ import SupportTicket, { SupportTicketCategory, SupportTicketStatus } from '../mo
 import User from '../models/User';
 import { supportAttachmentUpload, getSupportAttachmentUrl } from '../config/supportUploads';
 import { verifyToken } from '../utils/jwt';
+import * as supportEmailService from '../services/supportEmailService';
 
 const router = Router();
 
@@ -201,7 +202,17 @@ router.post(
         name: ticketName,
         email: ticketEmail,
         phone: ticketPhone,
-        status: 'pending'
+        status: 'pending',
+        statusHistory: [{ status: 'pending', changedAt: new Date(), notifyUser: true }]
+      });
+
+      // Send transactional email (fire-and-forget, don't block response)
+      void supportEmailService.sendTicketCreatedEmail(ticket).then((r) => {
+        if (r.success) {
+          SupportTicket.findByIdAndUpdate(ticket._id, { lastEmailSentAt: new Date(), lastEmailStatus: 'sent' }).catch(() => {});
+        } else {
+          SupportTicket.findByIdAndUpdate(ticket._id, { lastEmailStatus: 'failed' }).catch(() => {});
+        }
       });
 
       res.status(201).json({
@@ -290,7 +301,13 @@ router.post(
             name: retryTicketName,
             email: retryTicketEmail,
             phone: retryTicketPhone,
-            status: 'pending'
+            status: 'pending',
+            statusHistory: [{ status: 'pending', changedAt: new Date(), notifyUser: true }]
+          });
+
+          void supportEmailService.sendTicketCreatedEmail(ticket).then((r) => {
+            if (r.success) SupportTicket.findByIdAndUpdate(ticket._id, { lastEmailSentAt: new Date(), lastEmailStatus: 'sent' }).catch(() => {});
+            else SupportTicket.findByIdAndUpdate(ticket._id, { lastEmailStatus: 'failed' }).catch(() => {});
           });
           
           return res.status(201).json({
@@ -445,7 +462,7 @@ router.get('/', requireAgentAuth, async (req: Request, res: Response) => {
 router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
+    const { status, notes, notifyUser = true } = req.body;
 
     if (!status || !['pending', 'in_progress', 'resolved', 'closed'].includes(status)) {
       return res.status(400).json({
@@ -462,22 +479,29 @@ router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) 
       });
     }
 
-    const updateData: any = { status };
-    
-    if (notes) {
-      updateData.notes = notes;
+    const previousStatus = ticket.status;
+    if (previousStatus === status) {
+      return res.json({ success: true, message: 'No change', data: ticket });
     }
 
-      if (status === 'resolved' || status === 'closed') {
-        updateData.resolvedAt = new Date();
-        // Note: resolvedBy will be set to the agent's user ID if they have one
-        // For now, we'll leave it undefined as agents don't have user accounts
-      }
+    const agentName = (req as any).agentSession?.username || 'Support';
+    const statusHistoryEntry = {
+      status: status as SupportTicketStatus,
+      changedAt: new Date(),
+      changedByName: agentName,
+      note: notes || undefined,
+      notifyUser: notifyUser !== false
+    };
 
-      if (status === 'in_progress' && !ticket.assignedTo) {
-        // Note: assignedTo will be set to the agent's user ID if they have one
-        // For now, we'll leave it undefined as agents don't have user accounts
-      }
+    const updateData: any = {
+      status,
+      $push: { statusHistory: statusHistoryEntry }
+    };
+
+    if (notes) updateData.notes = notes;
+    if (status === 'resolved' || status === 'closed') {
+      updateData.resolvedAt = new Date();
+    }
 
     const updatedTicket = await SupportTicket.findByIdAndUpdate(
       id,
@@ -488,6 +512,20 @@ router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) 
       .populate('assignedTo', 'username')
       .populate('resolvedBy', 'username')
       .lean();
+
+    // Send transactional email when status changed (if notifyUser is true)
+    if (notifyUser !== false) {
+      void supportEmailService.sendTicketStatusChangedEmail({
+        ticket: updatedTicket as any,
+        previousStatus,
+        note: notes
+      }).then((r) => {
+        SupportTicket.findByIdAndUpdate(id, {
+          lastEmailSentAt: r.success ? new Date() : undefined,
+          lastEmailStatus: r.success ? 'sent' : 'failed'
+        }).catch(() => {});
+      });
+    }
 
     res.json({
       success: true,

@@ -35,6 +35,20 @@ export interface ISupportTicket extends Document {
   resolvedBy?: mongoose.Types.ObjectId;
   notes?: string; // Internal notes from agents
   
+  // Status history for audit and email context
+  statusHistory?: {
+    status: SupportTicketStatus;
+    changedAt: Date;
+    changedBy?: mongoose.Types.ObjectId;
+    changedByName?: string;
+    note?: string;
+    notifyUser?: boolean;
+  }[];
+  
+  // Email delivery tracking (avoid duplicates)
+  lastEmailSentAt?: Date;
+  lastEmailStatus?: 'sent' | 'failed';
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -125,7 +139,17 @@ const SupportTicketSchema = new Schema<ISupportTicket>({
     type: String,
     trim: true,
     maxlength: [2000, 'Notes cannot exceed 2000 characters']
-  }
+  },
+  statusHistory: [{
+    status: { type: String, enum: ['pending', 'in_progress', 'resolved', 'closed'] },
+    changedAt: { type: Date, default: Date.now },
+    changedBy: { type: Schema.Types.ObjectId, ref: 'Agent' },
+    changedByName: String,
+    note: String,
+    notifyUser: { type: Boolean, default: true }
+  }],
+  lastEmailSentAt: Date,
+  lastEmailStatus: { type: String, enum: ['sent', 'failed'] }
 }, {
   timestamps: true
 });

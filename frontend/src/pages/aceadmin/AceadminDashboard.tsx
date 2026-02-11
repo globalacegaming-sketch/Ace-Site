@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
   Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
-  ChevronDown, CheckCircle, Ticket, FileText, Clock, CheckCircle2, XCircle,
+  ChevronDown, CheckCircle, Ticket, FileText,
   Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2,
   ToggleLeft, ToggleRight, Tag} from 'lucide-react';
 import axios from 'axios';
@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { getApiBaseUrl } from '../../utils/api';
 import { useMusic } from '../../contexts/MusicContext';
 import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
+import SupportTicketSection from '../../components/support/SupportTicketSection';
 import type { LabelData } from '../../components/admin/LabelBadge';
 
 // Types
@@ -108,6 +109,9 @@ const AceadminDashboard: React.FC = () => {
   const [completedTickets, setCompletedTickets] = useState<any[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState<string>('all');
+  const [showClosedTickets, setShowClosedTickets] = useState<boolean>(false);
+  const [ticketSearchQuery, setTicketSearchQuery] = useState<string>('');
+  const [ticketSortOrder, setTicketSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
 
   // Agent management states
@@ -286,7 +290,13 @@ const AceadminDashboard: React.FC = () => {
     if (activeSection === 'support-tickets') {
       loadSupportTickets();
     }
-  }, [activeSection, ticketCategoryFilter]);
+  }, [activeSection, ticketCategoryFilter, showClosedTickets]);
+
+  useEffect(() => {
+    if (activeSection !== 'support-tickets') return;
+    const t = setTimeout(() => loadSupportTickets(), 300);
+    return () => clearTimeout(t);
+  }, [ticketSearchQuery]);
 
   const getAgentToken = () => {
     const session = localStorage.getItem('agent_session');
@@ -476,6 +486,7 @@ const AceadminDashboard: React.FC = () => {
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       const baseParams: any = {};
       if (ticketCategoryFilter !== 'all') baseParams.category = ticketCategoryFilter;
+      if (ticketSearchQuery.trim()) baseParams.search = ticketSearchQuery.trim();
 
       const [activeRes, completedRes] = await Promise.all([
         axios.get(`${API_BASE_URL}/support-tickets`, {
@@ -484,7 +495,7 @@ const AceadminDashboard: React.FC = () => {
         }),
         axios.get(`${API_BASE_URL}/support-tickets`, {
           headers,
-          params: { ...baseParams, statusIn: 'resolved,closed', limit: 100 }
+          params: { ...baseParams, statusIn: showClosedTickets ? 'resolved,closed' : 'resolved', limit: 100 }
         })
       ]);
 
@@ -1505,219 +1516,42 @@ const AceadminDashboard: React.FC = () => {
     </div>
   );
 
-  // Render Support Tickets Section
-  const renderSupportTickets = () => {
-    const getStatusColor = (status: string) => {
-      switch (status) {
-        case 'pending': return 'bg-yellow-100 text-yellow-800';
-        case 'in_progress': return 'bg-blue-100 text-blue-800';
-        case 'resolved': return 'bg-green-100 text-green-800';
-        case 'closed': return 'bg-gray-100 text-gray-800';
-        default: return 'bg-gray-100 text-gray-800';
-      }
-    };
-
-    const getStatusIcon = (status: string) => {
-      switch (status) {
-        case 'pending': return <Clock className="w-4 h-4" />;
-        case 'in_progress': return <Loader2 className="w-4 h-4 animate-spin" />;
-        case 'resolved': return <CheckCircle2 className="w-4 h-4" />;
-        case 'closed': return <XCircle className="w-4 h-4" />;
-        default: return <Clock className="w-4 h-4" />;
-      }
-    };
-
-    const getCategoryLabel = (category: string) => {
-      const labels: { [key: string]: string } = {
-        'payment_related_queries': 'Payment Related Queries',
-        'game_issue': 'Game Issue',
-        'complaint': 'Complaint',
-        'feedback': 'Feedback',
-        'business_queries': 'Business Queries'
-      };
-      return labels[category] || category;
-    };
-
-    const updateTicketStatus = async (ticketId: string, newStatus: string) => {
-      try {
-        setLoading(true);
-        const token = getAgentToken();
-        await axios.put(
-          `${API_BASE_URL}/support-tickets/${ticketId}/status`,
-          { status: newStatus },
-          { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }
-        );
-        toast.success('Ticket status updated');
-        loadSupportTickets();
-      } catch (error: any) {
-        toast.error(error.response?.data?.message || 'Failed to update ticket status');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const renderTicketCard = (ticket: any, isActive: boolean) => (
-      <div key={ticket._id} className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-lg font-semibold text-gray-900">{ticket.ticketNumber}</h3>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getStatusColor(ticket.status)}`}>
-                {getStatusIcon(ticket.status)}
-                {ticket.status.replace('_', ' ').toUpperCase()}
-              </span>
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                {getCategoryLabel(ticket.category)}
-              </span>
-            </div>
-            <div className="space-y-1 text-sm text-gray-600">
-              <p><span className="font-medium">Name:</span> {ticket.name}</p>
-              <p><span className="font-medium">Email:</span> {ticket.email}</p>
-              {ticket.phone && <p><span className="font-medium">Phone:</span> {ticket.phone}</p>}
-              {ticket.userId && (
-                <p><span className="font-medium">User:</span> {ticket.userId?.username || ticket.userId?.email || 'N/A'}</p>
-              )}
-            </div>
-          </div>
-          <div className="text-right text-sm text-gray-500">
-            <p>{new Date(ticket.createdAt).toLocaleDateString()}</p>
-            <p className="text-xs">{new Date(ticket.createdAt).toLocaleTimeString()}</p>
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{ticket.description}</p>
-        </div>
-
-        {ticket.attachmentUrl && (
-          <div className="mb-4">
-            <a
-              href={`${API_BASE_URL}${ticket.attachmentUrl}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm"
-            >
-              <FileText className="w-4 h-4" />
-              {ticket.attachmentName || 'View Attachment'}
-            </a>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-          <div className="flex gap-2 flex-wrap">
-            {isActive ? (
-              <>
-                {ticket.status !== 'pending' && (
-                  <button
-                    onClick={() => updateTicketStatus(ticket._id, 'pending')}
-                    className="px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded text-sm hover:bg-yellow-200"
-                  >
-                    Mark Pending
-                  </button>
-                )}
-                {ticket.status !== 'in_progress' && (
-                  <button
-                    onClick={() => updateTicketStatus(ticket._id, 'in_progress')}
-                    className="px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200"
-                  >
-                    Mark In Progress
-                  </button>
-                )}
-                <button
-                  onClick={() => updateTicketStatus(ticket._id, 'resolved')}
-                  className="px-3 py-1.5 bg-green-100 text-green-800 rounded text-sm hover:bg-green-200"
-                >
-                  Mark Resolved
-                </button>
-                <button
-                  onClick={() => updateTicketStatus(ticket._id, 'closed')}
-                  className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded text-sm hover:bg-gray-200"
-                >
-                  Close Ticket
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => updateTicketStatus(ticket._id, 'pending')}
-                className="px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded text-sm hover:bg-yellow-200"
-              >
-                Reopen (Mark Pending)
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center flex-wrap gap-4">
-          <h2 className="text-2xl font-bold text-gray-900">Support Tickets</h2>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <select
-              value={ticketCategoryFilter}
-              onChange={(e) => setTicketCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-            >
-              <option value="all">All Categories</option>
-              <option value="payment_related_queries">Payment Related Queries</option>
-              <option value="game_issue">Game Issue</option>
-              <option value="complaint">Complaint</option>
-              <option value="feedback">Feedback</option>
-              <option value="business_queries">Business Queries</option>
-            </select>
-          </div>
-        </div>
-
-        {ticketsLoading ? (
-          <div className="flex justify-center items-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Active: Pending + In Progress */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                Active ({activeTickets.length})
-              </h3>
-              <p className="text-sm text-gray-500">Pending & In Progress</p>
-              {activeTickets.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-                  <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No active tickets</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {activeTickets.map((ticket: any) => renderTicketCard(ticket, true))}
-                </div>
-              )}
-            </div>
-
-            {/* Completed: Resolved + Closed */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-gray-400"></span>
-                Completed ({completedTickets.length})
-              </h3>
-              <p className="text-sm text-gray-500">Resolved & Closed</p>
-              {completedTickets.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-                  <CheckCircle2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No completed tickets</p>
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto">
-                  {completedTickets.map((ticket: any) => renderTicketCard(ticket, false))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
+  const updateTicketStatus = async (ticketId: string, newStatus: string) => {
+    try {
+      setLoading(true);
+      const token = getAgentToken();
+      await axios.put(
+        `${API_BASE_URL}/support-tickets/${ticketId}/status`,
+        { status: newStatus },
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      toast.success('Ticket status updated');
+      loadSupportTickets();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update ticket status');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Render Support Tickets Section
+  const renderSupportTickets = () => (
+    <SupportTicketSection
+      activeTickets={activeTickets}
+      completedTickets={completedTickets}
+      ticketsLoading={ticketsLoading}
+      ticketCategoryFilter={ticketCategoryFilter}
+      showClosedTickets={showClosedTickets}
+      ticketSearchQuery={ticketSearchQuery}
+      ticketSortOrder={ticketSortOrder}
+      apiBaseUrl={API_BASE_URL}
+      onCategoryChange={setTicketCategoryFilter}
+      onShowClosedChange={setShowClosedTickets}
+      onSearchChange={setTicketSearchQuery}
+      onSortChange={setTicketSortOrder}
+      onUpdateStatus={updateTicketStatus}
+    />
+  );
 
   // Render Notifications Section
   const renderNotifications = () => (

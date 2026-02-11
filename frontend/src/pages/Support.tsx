@@ -229,9 +229,19 @@ const Support = () => {
           <h1 className="text-4xl font-bold text-white mb-4">
             Support & Help Center
           </h1>
-          <p className="text-gray-300 text-lg">
+          <p className="text-gray-300 text-lg mb-6">
             Find answers to frequently asked questions
           </p>
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-8 text-sm">
+            <div className="flex items-center gap-2 text-gray-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Average response time: <strong className="text-white">15 mins</strong></span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-200">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span>Support available <strong className="text-white">24/7</strong></span>
+            </div>
+          </div>
         </div>
 
         {/* Support Form */}
