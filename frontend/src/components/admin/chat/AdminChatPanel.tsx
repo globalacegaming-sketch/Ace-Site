@@ -825,7 +825,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       setSocketConnected(true);
       setSocketReconnecting(false);
       reconnectAttemptsRef.current = 0;
-      // Note: Conversation refresh on reconnection is handled by the 'reconnect' event handler
+      // Refresh conversations whenever connection is established (initial + reconnect)
+      // so admins see the latest messages without reloading the page
+      fetchConversations();
+      if (selectedUserIdRef.current) {
+        loadConversation(selectedUserIdRef.current);
+      }
     });
 
     socket.on('disconnect', (reason) => {
@@ -851,17 +856,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
 
     socket.on('reconnect', (attemptNumber) => {
       console.log(`✅ Socket reconnected after ${attemptNumber} attempts`);
-      setSocketConnected(true);
-      setSocketReconnecting(false);
-      reconnectAttemptsRef.current = 0;
-      
-      // Refresh conversations after reconnection to sync state
-      fetchConversations();
-      
-      // If viewing a conversation, reload it to ensure we have all messages
-      if (selectedUserIdRef.current) {
-        loadConversation(selectedUserIdRef.current);
-      }
+      // Refresh is handled in 'connect' which also fires on reconnect
     });
 
     socket.on('reconnect_attempt', (attemptNumber) => {
