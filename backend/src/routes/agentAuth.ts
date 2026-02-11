@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { authLimiter } from '../middleware/rateLimiter';
+import { adminAuthLimiter } from '../middleware/rateLimiter';
 import Agent, { AGENT_PERMISSIONS } from '../models/Agent';
 import logger from '../utils/logger';
 
@@ -40,7 +40,7 @@ const requireSuperAdmin = (req: Request, res: Response, next: NextFunction): voi
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /agent-auth/login  -- AceAdmin login (super_admin / admin roles)
 // ──────────────────────────────────────────────────────────────────────────────
-router.post('/login', authLimiter, async (req: Request, res: Response) => {
+router.post('/login', adminAuthLimiter, async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 

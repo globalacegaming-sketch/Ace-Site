@@ -12,13 +12,28 @@ export const generalLimiter = rateLimit({
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
-// Strict rate limiter for authentication endpoints - prevents brute force attacks
+// Rate limiter for authentication endpoints - prevents brute force attacks
+// Increased limits to prevent blocking legitimate users
 export const authLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 15, // Limit each IP to 15 requests per windowMs (increased from 5)
   message: {
     success: false,
-    message: 'Too many authentication attempts, please try again after 5 minutes.'
+    message: 'Too many authentication attempts, please try again after 10 minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful requests
+});
+
+// More lenient rate limiter for admin/agent logins
+// These accounts need higher limits for legitimate access
+export const adminAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 requests per windowMs
+  message: {
+    success: false,
+    message: 'Too many authentication attempts, please try again after 15 minutes.'
   },
   standardHeaders: true,
   legacyHeaders: false,

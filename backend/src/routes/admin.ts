@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { createAdminSession, revokeAdminSession } from '../services/adminSessionService';
 import { requireAdminAuth } from '../middleware/adminAuth';
-import { authLimiter } from '../middleware/rateLimiter';
+import { adminAuthLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
@@ -19,7 +19,7 @@ const router = Router();
 // Debug endpoint removed for production security
 
 // Admin login route (no auth required) - apply rate limiting
-router.post('/login', authLimiter, async (req: Request, res: Response) => {
+router.post('/login', adminAuthLimiter, async (req: Request, res: Response) => {
   try {
     const { agentName, agentPassword } = req.body;
 
