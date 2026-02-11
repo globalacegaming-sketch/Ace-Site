@@ -104,9 +104,9 @@ const AceadminDashboard: React.FC = () => {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [recentActions, setRecentActions] = useState<any[]>([]);
-  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [activeTickets, setActiveTickets] = useState<any[]>([]);
+  const [completedTickets, setCompletedTickets] = useState<any[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
-  const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState<string>('all');
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
 
@@ -286,7 +286,7 @@ const AceadminDashboard: React.FC = () => {
     if (activeSection === 'support-tickets') {
       loadSupportTickets();
     }
-  }, [activeSection, ticketStatusFilter, ticketCategoryFilter]);
+  }, [activeSection, ticketCategoryFilter]);
 
   const getAgentToken = () => {
     const session = localStorage.getItem('agent_session');
@@ -473,17 +473,23 @@ const AceadminDashboard: React.FC = () => {
     try {
       setTicketsLoading(true);
       const token = getAgentToken();
-      const params: any = {};
-      if (ticketStatusFilter !== 'all') params.status = ticketStatusFilter;
-      if (ticketCategoryFilter !== 'all') params.category = ticketCategoryFilter;
-      
-      const response = await axios.get(`${API_BASE_URL}/support-tickets`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        params
-      });
-      if (response.data.success) {
-        setSupportTickets(response.data.data || []);
-      }
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const baseParams: any = {};
+      if (ticketCategoryFilter !== 'all') baseParams.category = ticketCategoryFilter;
+
+      const [activeRes, completedRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/support-tickets`, {
+          headers,
+          params: { ...baseParams, statusIn: 'pending,in_progress', limit: 100 }
+        }),
+        axios.get(`${API_BASE_URL}/support-tickets`, {
+          headers,
+          params: { ...baseParams, statusIn: 'resolved,closed', limit: 100 }
+        })
+      ]);
+
+      if (activeRes.data.success) setActiveTickets(activeRes.data.data || []);
+      if (completedRes.data.success) setCompletedTickets(completedRes.data.data || []);
     } catch (error) {
       console.error('Failed to load support tickets');
       toast.error('Failed to load support tickets');
@@ -1550,28 +1556,103 @@ const AceadminDashboard: React.FC = () => {
       }
     };
 
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-900">Support Tickets</h2>
+    const renderTicketCard = (ticket: any, isActive: boolean) => (
+      <div key={ticket._id} className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex justify-between items-start mb-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900">{ticket.ticketNumber}</h3>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getStatusColor(ticket.status)}`}>
+                {getStatusIcon(ticket.status)}
+                {ticket.status.replace('_', ' ').toUpperCase()}
+              </span>
+              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                {getCategoryLabel(ticket.category)}
+              </span>
+            </div>
+            <div className="space-y-1 text-sm text-gray-600">
+              <p><span className="font-medium">Name:</span> {ticket.name}</p>
+              <p><span className="font-medium">Email:</span> {ticket.email}</p>
+              {ticket.phone && <p><span className="font-medium">Phone:</span> {ticket.phone}</p>}
+              {ticket.userId && (
+                <p><span className="font-medium">User:</span> {ticket.userId?.username || ticket.userId?.email || 'N/A'}</p>
+              )}
+            </div>
+          </div>
+          <div className="text-right text-sm text-gray-500">
+            <p>{new Date(ticket.createdAt).toLocaleDateString()}</p>
+            <p className="text-xs">{new Date(ticket.createdAt).toLocaleTimeString()}</p>
+          </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-4 flex-wrap">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
-              value={ticketStatusFilter}
-              onChange={(e) => setTicketStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
+        <div className="mb-4">
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{ticket.description}</p>
+        </div>
+
+        {ticket.attachmentUrl && (
+          <div className="mb-4">
+            <a
+              href={`${API_BASE_URL}${ticket.attachmentUrl}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm"
             >
-              <option value="all">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="in_progress">In Progress</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
-            </select>
+              <FileText className="w-4 h-4" />
+              {ticket.attachmentName || 'View Attachment'}
+            </a>
           </div>
+        )}
+
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <div className="flex gap-2 flex-wrap">
+            {isActive ? (
+              <>
+                {ticket.status !== 'pending' && (
+                  <button
+                    onClick={() => updateTicketStatus(ticket._id, 'pending')}
+                    className="px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded text-sm hover:bg-yellow-200"
+                  >
+                    Mark Pending
+                  </button>
+                )}
+                {ticket.status !== 'in_progress' && (
+                  <button
+                    onClick={() => updateTicketStatus(ticket._id, 'in_progress')}
+                    className="px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200"
+                  >
+                    Mark In Progress
+                  </button>
+                )}
+                <button
+                  onClick={() => updateTicketStatus(ticket._id, 'resolved')}
+                  className="px-3 py-1.5 bg-green-100 text-green-800 rounded text-sm hover:bg-green-200"
+                >
+                  Mark Resolved
+                </button>
+                <button
+                  onClick={() => updateTicketStatus(ticket._id, 'closed')}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded text-sm hover:bg-gray-200"
+                >
+                  Close Ticket
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => updateTicketStatus(ticket._id, 'pending')}
+                className="px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded text-sm hover:bg-yellow-200"
+              >
+                Reopen (Mark Pending)
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <h2 className="text-2xl font-bold text-gray-900">Support Tickets</h2>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select
@@ -1589,105 +1670,49 @@ const AceadminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Tickets List */}
         {ticketsLoading ? (
           <div className="flex justify-center items-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
-        ) : supportTickets.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-            <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No support tickets found</p>
-          </div>
         ) : (
-          <div className="space-y-4">
-            {supportTickets.map((ticket: any) => (
-              <div key={ticket._id} className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {ticket.ticketNumber}
-                      </h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getStatusColor(ticket.status)}`}>
-                        {getStatusIcon(ticket.status)}
-                        {ticket.status.replace('_', ' ').toUpperCase()}
-                      </span>
-                      <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                        {getCategoryLabel(ticket.category)}
-                      </span>
-                    </div>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      <p><span className="font-medium">Name:</span> {ticket.name}</p>
-                      <p><span className="font-medium">Email:</span> {ticket.email}</p>
-                      {ticket.phone && <p><span className="font-medium">Phone:</span> {ticket.phone}</p>}
-                      {ticket.userId && (
-                        <p><span className="font-medium">User:</span> {ticket.userId?.username || ticket.userId?.email || 'N/A'}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right text-sm text-gray-500">
-                    <p>{new Date(ticket.createdAt).toLocaleDateString()}</p>
-                    <p className="text-xs">{new Date(ticket.createdAt).toLocaleTimeString()}</p>
-                  </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Active: Pending + In Progress */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                Active ({activeTickets.length})
+              </h3>
+              <p className="text-sm text-gray-500">Pending & In Progress</p>
+              {activeTickets.length === 0 ? (
+                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+                  <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No active tickets</p>
                 </div>
-
-                <div className="mb-4">
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{ticket.description}</p>
+              ) : (
+                <div className="space-y-4">
+                  {activeTickets.map((ticket: any) => renderTicketCard(ticket, true))}
                 </div>
+              )}
+            </div>
 
-                {ticket.attachmentUrl && (
-                  <div className="mb-4">
-                    <a
-                      href={`${API_BASE_URL}${ticket.attachmentUrl}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      <FileText className="w-4 h-4" />
-                      {ticket.attachmentName || 'View Attachment'}
-                    </a>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                  <div className="flex gap-2">
-                    {ticket.status !== 'pending' && (
-                      <button
-                        onClick={() => updateTicketStatus(ticket._id, 'pending')}
-                        className="px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded text-sm hover:bg-yellow-200"
-                      >
-                        Mark Pending
-                      </button>
-                    )}
-                    {ticket.status !== 'in_progress' && (
-                      <button
-                        onClick={() => updateTicketStatus(ticket._id, 'in_progress')}
-                        className="px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200"
-                      >
-                        Mark In Progress
-                      </button>
-                    )}
-                    {ticket.status !== 'resolved' && (
-                      <button
-                        onClick={() => updateTicketStatus(ticket._id, 'resolved')}
-                        className="px-3 py-1.5 bg-green-100 text-green-800 rounded text-sm hover:bg-green-200"
-                      >
-                        Mark Resolved
-                      </button>
-                    )}
-                    {ticket.status !== 'closed' && (
-                      <button
-                        onClick={() => updateTicketStatus(ticket._id, 'closed')}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded text-sm hover:bg-gray-200"
-                      >
-                        Close Ticket
-                      </button>
-                    )}
-                  </div>
+            {/* Completed: Resolved + Closed */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                Completed ({completedTickets.length})
+              </h3>
+              <p className="text-sm text-gray-500">Resolved & Closed</p>
+              {completedTickets.length === 0 ? (
+                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+                  <CheckCircle2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No completed tickets</p>
                 </div>
-              </div>
-            ))}
+              ) : (
+                <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto">
+                  {completedTickets.map((ticket: any) => renderTicketCard(ticket, false))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

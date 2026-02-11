@@ -373,14 +373,21 @@ router.get('/my-tickets', authenticate, async (req: Request, res: Response) => {
 // Get all tickets (agent/admin only)
 router.get('/', requireAgentAuth, async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 50, status, category, search } = req.query;
+    const { page = 1, limit = 50, status, statusIn, category, search, excludeClosed } = req.query;
     const pageNumber = Number(page) || 1;
     const limitNumber = Math.min(Number(limit) || 50, 100);
 
     const query: any = {};
     
-    if (status && ['pending', 'in_progress', 'resolved', 'closed'].includes(status as string)) {
+    if (statusIn && typeof statusIn === 'string') {
+      const statuses = statusIn.split(',').map((s: string) => s.trim()).filter((s: string) =>
+        ['pending', 'in_progress', 'resolved', 'closed'].includes(s)
+      );
+      if (statuses.length > 0) query.status = { $in: statuses };
+    } else if (status && ['pending', 'in_progress', 'resolved', 'closed'].includes(status as string)) {
       query.status = status;
+    } else if (excludeClosed === 'true' || excludeClosed === true) {
+      query.status = { $nin: ['closed'] };
     }
     
     if (category && [
