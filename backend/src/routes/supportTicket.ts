@@ -386,7 +386,7 @@ router.get('/', requireAgentAuth, async (req: Request, res: Response) => {
       if (statuses.length > 0) query.status = { $in: statuses };
     } else if (status && ['pending', 'in_progress', 'resolved', 'closed'].includes(status as string)) {
       query.status = status;
-    } else if (excludeClosed === 'true' || excludeClosed === true) {
+    } else if (excludeClosed === 'true') {
       query.status = { $nin: ['closed'] };
     }
     
