@@ -1,6 +1,8 @@
 import rateLimit from 'express-rate-limit';
+import slowDown from 'express-slow-down';
 
 // General API rate limiter - applies to all routes
+// This provides basic DDoS protection by limiting request frequency per IP
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
@@ -10,6 +12,22 @@ export const generalLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Skip rate limiting for health checks and static files
+  skip: (req) => {
+    return req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads');
+  },
+});
+
+// Progressive rate limiting - slows down responses after initial burst
+// This helps mitigate DDoS attacks by making them less effective
+export const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  delayAfter: 50, // Start delaying after 50 requests
+  delayMs: 100, // Add 100ms delay per request after delayAfter
+  maxDelayMs: 2000, // Maximum delay of 2 seconds
+  skip: (req) => {
+    return req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads');
+  },
 });
 
 // Rate limiter for authentication endpoints - prevents brute force attacks

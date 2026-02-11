@@ -53,6 +53,7 @@ import Agent from './models/Agent';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { requestIdMiddleware } from './middleware/requestId';
+import { generalLimiter, speedLimiter } from './middleware/rateLimiter';
 import { setSocketServerInstance } from './utils/socketManager';
 import { verifyToken } from './utils/jwt';
 import User from './models/User';
@@ -103,11 +104,37 @@ const io = new Server(server, {
 setSocketServerInstance(io);
 
 // Middleware
-// Configure helmet to allow CORS
+// Enhanced Helmet configuration for security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 63072000, // 2 years
+    includeSubDomains: true,
+    preload: true
+  },
+  noSniff: true,
+  xssFilter: true,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" }
 }));
+
+// Global rate limiting - DDoS protection
+// Apply to all routes except health checks and static files
+app.use(generalLimiter);
+app.use(speedLimiter);
 
 // Request timeout middleware (30 seconds default, configurable via env)
 const requestTimeout = process.env.REQUEST_TIMEOUT || '30s';
