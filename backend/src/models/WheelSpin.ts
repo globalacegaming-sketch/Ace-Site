@@ -21,20 +21,17 @@ const WheelSpinSchema = new Schema<IWheelSpin>(
     campaignId: {
       type: Schema.Types.ObjectId,
       ref: 'WheelCampaign',
-      required: true,
-      index: true
+      required: true
     },
     sliceId: {
       type: Schema.Types.ObjectId,
       ref: 'WheelSlice',
-      required: true,
-      index: true
+      required: true
     },
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
-      index: true
+      required: true
     },
     rewardType: {
       type: String,

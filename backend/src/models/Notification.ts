@@ -18,8 +18,7 @@ const NotificationSchema = new Schema<INotification>(
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
-      index: true
+      required: true
     },
     title: {
       type: String,
@@ -41,8 +40,7 @@ const NotificationSchema = new Schema<INotification>(
     },
     isRead: {
       type: Boolean,
-      default: false,
-      index: true
+      default: false
     },
     readAt: {
       type: Date

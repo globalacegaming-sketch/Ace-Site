@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
-export type ChatMessageStatus = 'unread' | 'read' | 'resolved';
+export type ChatMessageStatus = 'unread' | 'read' | 'resolved' | 'sent';
 export type ChatMessageSender = 'user' | 'admin' | 'system';
 
 export interface IReplyTo {
@@ -45,8 +45,7 @@ const ChatMessageSchema = new Schema<IChatMessage>(
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
-      index: true
+      required: true
     },
     adminId: {
       type: Schema.Types.ObjectId,
@@ -79,7 +78,7 @@ const ChatMessageSchema = new Schema<IChatMessage>(
     },
     status: {
       type: String,
-      enum: ['unread', 'read', 'resolved'],
+      enum: ['unread', 'read', 'resolved', 'sent'],
       default: 'unread',
       index: true
     },

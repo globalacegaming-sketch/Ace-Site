@@ -35,8 +35,7 @@ const WheelBudgetSchema = new Schema<IWheelBudget>(
       type: Schema.Types.ObjectId,
       ref: 'WheelCampaign',
       required: true,
-      unique: true,
-      index: true
+      unique: true
     },
     mode: {
       type: String,

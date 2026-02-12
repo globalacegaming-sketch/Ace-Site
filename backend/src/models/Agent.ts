@@ -63,7 +63,7 @@ const AgentSchema = new Schema<IAgent>(
   }
 );
 
-AgentSchema.index({ agentName: 1 });
+// agentName index created by unique: true on field
 AgentSchema.index({ role: 1, isActive: 1 });
 
 // Hash password before saving

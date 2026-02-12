@@ -16,8 +16,7 @@ const BannedIPSchema = new Schema<IBannedIP>({
     type: String,
     required: [true, 'IP address is required'],
     unique: true,
-    trim: true,
-    index: true
+    trim: true
   },
   bannedAt: {
     type: Date,
@@ -41,8 +40,7 @@ const BannedIPSchema = new Schema<IBannedIP>({
   timestamps: true
 });
 
-// Index for fast IP lookups
-BannedIPSchema.index({ ip: 1 }, { unique: true });
+// ip index created by unique: true on field
 BannedIPSchema.index({ bannedAt: -1 });
 
 export default mongoose.model<IBannedIP>('BannedIP', BannedIPSchema);

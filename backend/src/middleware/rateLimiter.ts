@@ -19,12 +19,15 @@ export const generalLimiter = rateLimit({
 });
 
 // Progressive rate limiting - slows down responses after initial burst
-// This helps mitigate DDoS attacks by making them less effective
+// express-slow-down v2+: delayMs is (used, req, res) => delay in ms; used = hits in current window
+const DELAY_AFTER = 50;
+const DELAY_MS_PER_HIT = 100;
+const MAX_DELAY_MS = 2000;
+
 export const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  delayAfter: 50, // Start delaying after 50 requests
-  delayMs: 100, // Add 100ms delay per request after delayAfter
-  maxDelayMs: 2000, // Maximum delay of 2 seconds
+  delayAfter: DELAY_AFTER,
+  delayMs: (used) => Math.min(MAX_DELAY_MS, Math.max(0, (used - DELAY_AFTER) * DELAY_MS_PER_HIT)),
   skip: (req) => {
     return req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads');
   },

@@ -22,8 +22,7 @@ const WheelSliceSchema = new Schema<IWheelSlice>(
     campaignId: {
       type: Schema.Types.ObjectId,
       ref: 'WheelCampaign',
-      required: true,
-      index: true
+      required: true
     },
     label: {
       type: String,

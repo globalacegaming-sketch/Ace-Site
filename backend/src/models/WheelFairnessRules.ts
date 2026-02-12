@@ -20,8 +20,7 @@ const WheelFairnessRulesSchema = new Schema<IWheelFairnessRules>(
       type: Schema.Types.ObjectId,
       ref: 'WheelCampaign',
       required: true,
-      unique: true,
-      index: true
+      unique: true
     },
     spinsPerDay: {
       type: Number,

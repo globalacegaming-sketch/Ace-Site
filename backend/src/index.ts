@@ -93,6 +93,12 @@ const devAllowedOrigins = (isProduction && !allowLocalhostInProd) ? [] : [
 const allowedOrigins = [...baseAllowedOrigins, ...devAllowedOrigins];
 
 const app = express();
+
+// Trust the first proxy (e.g. Render). Required for:
+// - req.ip / req.secure to be correct when X-Forwarded-For and X-Forwarded-Proto are set
+// - express-rate-limit to use client IP instead of throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+app.set('trust proxy', 1);
+
 const server = createServer(app);
 const io = new Server(server, {
   cors: {

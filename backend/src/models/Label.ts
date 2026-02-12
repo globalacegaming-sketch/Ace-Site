@@ -52,7 +52,7 @@ const LabelSchema = new Schema<ILabel>(
   }
 );
 
-LabelSchema.index({ name: 1 }, { unique: true });
+// name index created by unique: true on field
 LabelSchema.index({ sortOrder: 1 });
 
 export default mongoose.model<ILabel>('Label', LabelSchema);
