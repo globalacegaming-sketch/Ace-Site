@@ -115,15 +115,6 @@ const Home = () => {
     }
   ];
 
-
-
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     setCurrentBannerIndex((prev) => (prev + 1) % heroBanners.length);
-  //   }, 5000);
-  //   return () => clearInterval(interval);
-  // }, [heroBanners.length]);
-
   return (
     <div className="min-h-screen">
       <PageMeta
@@ -252,200 +243,260 @@ const Home = () => {
         </div>
       </section>
 
-      {/* SEO: Play online slots, fish, table games in one place */}
-      <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8" style={{ background: 'linear-gradient(135deg, #0A0A0F 0%, #1B1B2F 100%)' }}>
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-lg sm:text-xl font-bold casino-text-primary mb-3">
-            Play online slots, online fish games, and online table games in one place
-          </h2>
-          <p className="text-sm sm:text-base casino-text-secondary mb-4">
-            Global Ace Gaming gives you slots, fish-style games, table games, and sports in a single platform. Create an account, pick a category in the lobby, and start playing. See <Link to="/games" className="text-yellow-400 hover:underline">Games</Link> to explore and <Link to="/bonuses" className="text-yellow-400 hover:underline">Bonuses</Link> for current offers. Need help? <Link to="/support" className="text-yellow-400 hover:underline">Support</Link>.
-          </p>
-          <ul className="text-left inline-block text-sm casino-text-secondary space-y-1">
-            <li><strong className="casino-text-primary">Online slots</strong> — Video slot–style games, multiple themes and features.</li>
-            <li><strong className="casino-text-primary">Online fish games</strong> — Fish table and arcade-style games similar to Milkyway, Orionstars, Juwa, Gamevault, and Firekirin.</li>
-            <li><strong className="casino-text-primary">Online table games</strong> — Live and table-style games.</li>
-            <li><strong className="casino-text-primary">Sports</strong> — Sports-themed options in the same lobby.</li>
-          </ul>
+      {/* Main content wrapper — consistent dark background */}
+      <div style={{ background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)' }}>
+
+        {/* Decorative orbs */}
+        <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
+          <div className="absolute top-[80vh] left-10 w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: 'var(--casino-accent-purple)' }} />
+          <div className="absolute top-[160vh] right-10 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ backgroundColor: 'var(--casino-accent-blue)' }} />
         </div>
-      </section>
 
-      {/* Features Section */}
-      <section className="py-8 sm:py-12 lg:py-16 px-4 sm:px-6 lg:px-8 casino-bg-secondary">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-6 sm:mb-10 lg:mb-12">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 casino-text-primary">
-              Why Choose Global Ace Gaming?
-            </h2>
-            <p className="text-sm sm:text-base lg:text-lg max-w-3xl mx-auto casino-text-secondary">
-              Experience gaming excellence with our cutting-edge platform designed for champions
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
-            {features.map((feature) => (
-              <div key={feature.id} className="text-center group">
-                <div className="casino-feature-card p-4 sm:p-6 rounded-xl mb-3 sm:mb-4 transform group-hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                  <feature.icon className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mx-auto" style={{ color: '#FFD700' }} />
-                </div>
-                <h3 className="text-base sm:text-lg font-bold mb-2 casino-text-primary">{feature.title}</h3>
-                <p className="text-xs sm:text-sm casino-text-secondary">{feature.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Popular Games Section */}
-      <section className="py-8 sm:py-12 lg:py-16 px-4 sm:px-6 lg:px-8" style={{ background: 'linear-gradient(135deg, #0A0A0F 0%, #1B1B2F 100%)' }}>
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-6 sm:mb-10 lg:mb-12">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 casino-text-primary">
-              Popular Games
-            </h2>
-            <p className="text-sm sm:text-base lg:text-lg casino-text-secondary">
-              Join thousands of players enjoying our most popular titles
-            </p>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-              {Array.from({ length: 3 }, (_, i) => (
-                <GameCardSkeleton key={i} />
-              ))}
+        {/* 1. Popular Games Section */}
+        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-6 sm:mb-10">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
+                Popular Games
+              </h2>
+              <p className="text-sm sm:text-base casino-text-secondary">
+                Join thousands of players enjoying our most popular titles
+              </p>
             </div>
-          ) : error ? (
-            <div className="text-center py-12 sm:py-16">
-              <div className="casino-bg-secondary rounded-xl p-6 sm:p-8 max-w-md mx-auto casino-border" style={{ borderColor: '#E53935' }}>
-                <p className="mb-4 sm:mb-6 text-base sm:text-lg font-semibold" style={{ color: '#E53935' }}>{error}</p>
+
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {Array.from({ length: 3 }, (_, i) => (
+                  <GameCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-center py-10 sm:py-14">
+                <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-6 sm:p-8 max-w-md mx-auto casino-border border" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+                  <p className="mb-4 sm:mb-6 text-sm sm:text-base font-semibold" style={{ color: '#E53935' }}>{error}</p>
+                  <button
+                    onClick={fetchGames}
+                    className="py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
+                    style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F' }}
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            ) : popularGames.length === 0 ? (
+              <div className="text-center py-10 sm:py-14">
+                <p className="text-sm sm:text-base casino-text-secondary">No games available right now</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {popularGames.map((game) => (
+                  <div
+                    key={game.kindId}
+                    className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border overflow-hidden group transition-all duration-300 hover:border-[#FFD700]/40 hover:scale-[1.03]"
+                    style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                  >
+                    <div className="relative h-40 sm:h-48 lg:h-52">
+                      <LazyImage src={game.gameLogo} alt={game.gameName} />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                        <button
+                          onClick={handlePlayGame}
+                          className="py-2.5 px-5 rounded-lg font-bold text-sm transition-all duration-200 hover:scale-110 active:scale-95 touch-manipulation flex items-center gap-2"
+                          style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F', boxShadow: '0 0 15px rgba(255,215,0,0.3)' }}
+                        >
+                          <Play className="w-4 h-4" />
+                          {isAuthenticated ? 'Play Now' : 'Login to Play'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-3 sm:p-4 lg:p-5">
+                      <h3 className="text-sm sm:text-base font-bold casino-text-primary mb-1">{game.gameName}</h3>
+                      <p className="text-xs casino-text-secondary mb-2 sm:mb-3">{game.gameType}</p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <Star className="w-3.5 h-3.5 fill-current" style={{ color: '#FFD700' }} />
+                          <span className="font-semibold text-xs casino-text-primary">4.8</span>
+                        </div>
+                        <div className="flex items-center gap-1 casino-text-secondary">
+                          <Users className="w-3.5 h-3.5" />
+                          <span className="text-xs">Live</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="text-center mt-6 sm:mt-8">
+              <Link
+                to="/games"
+                className="inline-block py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
+                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F', boxShadow: '0 0 15px rgba(255,215,0,0.25)' }}
+              >
+                View All Games
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* 2. CTA Section — Ready to Start */}
+        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
+          <div className="max-w-4xl mx-auto">
+            <div
+              className="rounded-xl sm:rounded-2xl p-6 sm:p-10 text-center"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(139,0,0,0.2) 50%, rgba(255,215,0,0.1) 100%)',
+                border: '1px solid rgba(255,215,0,0.2)',
+                boxShadow: '0 4px 30px rgba(0,0,0,0.3)',
+              }}
+            >
+              <h2 className="text-xl sm:text-3xl font-bold casino-text-primary mb-3 sm:mb-4">
+                Ready to Start Your Gaming Journey?
+              </h2>
+              <p className="text-sm sm:text-base casino-text-secondary mb-5 sm:mb-8 max-w-2xl mx-auto">
+                Join thousands of players and experience the ultimate gaming platform
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
                 <button
-                  onClick={fetchGames}
-                  className="btn-casino-primary py-2 sm:py-3 px-6 sm:px-8 rounded-full text-sm sm:text-base"
+                  onClick={handleGetStartedClick}
+                  className="py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
+                  style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F', boxShadow: '0 0 15px rgba(255,215,0,0.25)' }}
                 >
-                  Try Again
+                  {isAuthenticated ? 'Go to Dashboard' : 'Get Started Now'}
+                </button>
+                <button
+                  onClick={handleLearnMoreClick}
+                  className="py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation casino-text-primary"
+                  style={{ border: '2px solid rgba(255,215,0,0.4)', background: 'rgba(255,255,255,0.04)' }}
+                >
+                  Learn More
                 </button>
               </div>
             </div>
-          ) : popularGames.length === 0 ? (
-            <div className="text-center py-12 sm:py-16">
-              <p className="text-base sm:text-lg casino-text-secondary">No games available right now 🚫</p>
+          </div>
+        </section>
+
+        {/* 3. Operating Hours Section */}
+        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-6 sm:mb-8">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
+                Operating Hours
+              </h2>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-            {popularGames.map((game) => (
-                <div key={game.kindId} className="casino-game-card rounded-xl overflow-hidden group hover:transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <div className="relative h-36 sm:h-44 lg:h-48">
-                  <LazyImage
-                    src={game.gameLogo}
-                    alt={game.gameName}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                      <button 
-                        onClick={handlePlayGame}
-                        className="btn-casino-primary py-2 sm:py-3 px-4 sm:px-6 rounded-full text-xs sm:text-sm transform hover:scale-110 transition-all duration-300"
-                      >
-                        <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-2 inline" />
-                        {isAuthenticated ? 'Play Now' : 'Login to Play'}
-                    </button>
-                  </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+              {/* Open */}
+              <div
+                className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 flex items-center gap-3 sm:gap-4"
+                style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)', borderColor: 'rgba(34,197,94,0.25)' }}
+              >
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.15)' }}>
+                  <div className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-green-500" />
                 </div>
-                  <div className="p-3 sm:p-4 lg:p-6">
-                    <h3 className="text-base sm:text-lg font-bold mb-2 casino-text-primary">{game.gameName}</h3>
-                    <p className="mb-2 sm:mb-3 text-xs sm:text-sm casino-text-secondary">{game.gameType}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                        <Star className="w-3 h-3 sm:w-4 sm:h-4 fill-current" style={{ color: '#FFD700' }} />
-                        <span className="font-semibold text-xs sm:text-sm casino-text-primary">4.8</span>
-                    </div>
-                      <div className="flex items-center gap-1 casino-text-secondary">
-                        <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span className="text-xs">Live</span>
-                    </div>
-                  </div>
+                <div>
+                  <p className="text-sm sm:text-base font-semibold casino-text-primary">Open Hours</p>
+                  <p className="text-xs sm:text-sm casino-text-secondary">6:00 PM – 12:00 PM (CST) next day</p>
                 </div>
               </div>
-            ))}
-          </div>
-          )}
 
-          <div className="text-center mt-6 sm:mt-8 lg:mt-10">
-            <Link to="/games">
-              <button className="btn-casino-primary py-2 sm:py-3 px-5 sm:px-7 rounded-full text-sm sm:text-base transform hover:scale-105 transition-all duration-300 shadow-lg">
-                View All Games
-              </button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Operating Hours Section */}
-      <section className="py-8 sm:py-12 lg:py-16 px-4 sm:px-6 lg:px-8 casino-bg-secondary">
-        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
-          {/* Open Hours */}
-          <div className="flex items-start gap-3 sm:gap-4">
-            <span className="text-2xl sm:text-3xl">🟢</span>
-            <div className="flex-1">
-              <p className="text-base sm:text-lg font-semibold casino-text-primary mb-1">
-                Open Hours:
-              </p>
-              <p className="text-sm sm:text-base casino-text-secondary">
-                6:00 PM – 12:00 PM (CST) (the following day)
-              </p>
+              {/* Closed */}
+              <div
+                className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 flex items-center gap-3 sm:gap-4"
+                style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)', borderColor: 'rgba(239,68,68,0.25)' }}
+              >
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.15)' }}>
+                  <div className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-red-500" />
+                </div>
+                <div>
+                  <p className="text-sm sm:text-base font-semibold casino-text-primary">Closed Hours</p>
+                  <p className="text-xs sm:text-sm casino-text-secondary">12:00 PM – 6:00 PM (CST)</p>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Closed Hours */}
-          <div className="flex items-start gap-3 sm:gap-4">
-            <span className="text-2xl sm:text-3xl">🔴</span>
-            <div className="flex-1">
-              <p className="text-base sm:text-lg font-semibold casino-text-primary mb-1">
-                Closed Hours:
-              </p>
-              <p className="text-sm sm:text-base casino-text-secondary">
-                12:00 PM – 6:00 PM (CST)
-              </p>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="h-px bg-gradient-to-r from-transparent via-yellow-500/30 to-transparent my-4 sm:my-6"></div>
-
-
-          {/* Apology Message */}
-          <div className="flex items-start gap-3 sm:gap-4 pt-2">
-            <span className="text-2xl sm:text-3xl">🙏</span>
-            <p className="text-sm sm:text-base casino-text-secondary flex-1 italic">
-              We sincerely apologize for any inconvenience this may cause and truly appreciate your patience, understanding, and continued support
+            <p className="text-center text-xs sm:text-sm casino-text-secondary italic max-w-xl mx-auto leading-relaxed">
+              We sincerely apologize for any inconvenience this may cause and truly appreciate your patience, understanding, and continued support.
             </p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* CTA Section */}
-      <section className="py-8 sm:py-12 lg:py-16 px-4 sm:px-6 lg:px-8 casino-cta-section">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 lg:mb-6 casino-text-primary">
-            Ready to Start Your Gaming Journey?
-          </h2>
-          <p className="text-sm sm:text-base lg:text-lg mb-4 sm:mb-6 lg:mb-8 casino-text-secondary">
-            Join thousands of players and experience the ultimate gaming platform
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-            <button 
-              onClick={handleGetStartedClick}
-              className="btn-casino-primary py-2 sm:py-3 px-5 sm:px-7 rounded-full text-sm sm:text-base transform hover:scale-105 transition-all duration-300"
-            >
-              {isAuthenticated ? 'Go to Dashboard' : 'Get Started Now'}
-            </button>
-            <button 
-              onClick={handleLearnMoreClick}
-              className="btn-casino-outline py-2 sm:py-3 px-5 sm:px-7 rounded-full text-sm sm:text-base transform hover:scale-105 transition-all duration-300"
-            >
-              Learn More
-            </button>
+        {/* 4. Why Choose — Features Section */}
+        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-6 sm:mb-10">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
+                Why Choose Global Ace Gaming?
+              </h2>
+              <p className="text-sm sm:text-base casino-text-secondary max-w-3xl mx-auto">
+                Experience gaming excellence with our cutting-edge platform designed for champions
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+              {features.map((feature) => (
+                <div
+                  key={feature.id}
+                  className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 text-center transition-all duration-300 hover:border-[#FFD700]/40"
+                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                >
+                  <div
+                    className="w-11 h-11 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))', border: '1px solid rgba(255,215,0,0.2)' }}
+                  >
+                    <feature.icon className="w-5 h-5 sm:w-7 sm:h-7" style={{ color: '#FFD700' }} />
+                  </div>
+                  <h3 className="text-sm sm:text-base font-bold casino-text-primary mb-1 sm:mb-2">{feature.title}</h3>
+                  <p className="text-[11px] sm:text-xs casino-text-secondary leading-relaxed">{feature.description}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        {/* 5. Game Categories — SEO block (last) */}
+        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-6 sm:mb-10">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
+                Play Online Slots, Fish & Table Games in One Place
+              </h2>
+              <p className="text-sm sm:text-base casino-text-secondary max-w-3xl mx-auto">
+                Global Ace Gaming gives you slots, fish-style games, table games, and sports in a single platform. Create an account, pick a category, and start playing.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+              {[
+                { title: 'Online Slots', desc: 'Video slot-style games, multiple themes and features.', icon: '🎰' },
+                { title: 'Fish Games', desc: 'Arcade-style games similar to Milkyway, Orionstars, Juwa & more.', icon: '🐟' },
+                { title: 'Table Games', desc: 'Live and table-style games for classic casino fans.', icon: '🃏' },
+                { title: 'Sports', desc: 'Sports-themed options in the same lobby.', icon: '🏆' },
+              ].map((cat, i) => (
+                <Link
+                  key={i}
+                  to="/games"
+                  className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-5 text-center transition-all duration-300 hover:border-[#FFD700]/40 hover:scale-[1.03] group"
+                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                >
+                  <div className="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform duration-300">{cat.icon}</div>
+                  <h3 className="text-sm sm:text-base font-bold casino-text-primary mb-1">{cat.title}</h3>
+                  <p className="text-[11px] sm:text-xs casino-text-secondary leading-relaxed">{cat.desc}</p>
+                </Link>
+              ))}
+            </div>
+
+            <div className="flex justify-center gap-3 mt-6 sm:mt-8 text-xs sm:text-sm casino-text-secondary">
+              <span>See <Link to="/games" className="font-semibold hover:underline" style={{ color: '#FFD700' }}>Games</Link></span>
+              <span className="opacity-30">|</span>
+              <span>Check <Link to="/bonuses" className="font-semibold hover:underline" style={{ color: '#FFD700' }}>Bonuses</Link></span>
+              <span className="opacity-30">|</span>
+              <span>Need help? <Link to="/support" className="font-semibold hover:underline" style={{ color: '#FFD700' }}>Support</Link></span>
+            </div>
+          </div>
+        </section>
+
+      </div>
     </div>
   );
 };
