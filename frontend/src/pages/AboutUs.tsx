@@ -1,5 +1,6 @@
 import { Users, Award, Shield, Globe, Heart, Target } from 'lucide-react';
 import { PageMeta } from '../components/PageMeta';
+import { Link } from 'react-router-dom';
 
 const AboutUs = () => {
   const stats = [
@@ -32,93 +33,114 @@ const AboutUs = () => {
     }
   ];
 
-
   return (
-    <div className="min-h-screen bg-gray-50 pt-16">
+    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{
+      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
+    }}>
       <PageMeta title="About Global Ace Gaming | Our Platform & Games" description="Learn about Global Ace Gaming: online slots, fish, table games, and our commitment to safe, transparent play." />
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-primary-600 to-secondary-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="text-center">
-            <h1 className="text-4xl md:text-6xl font-bold mb-6">
-              About Global Ace Gaming
-            </h1>
-            <p className="text-xl md:text-2xl text-primary-100 max-w-3xl mx-auto">
-              Your premier destination for online gaming excellence, where entertainment meets innovation
-            </p>
-          </div>
-        </div>
+
+      {/* Decorative orbs */}
+      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
+        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: 'var(--casino-accent-purple)' }} />
+        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ backgroundColor: 'var(--casino-accent-blue)' }} />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-8">
+        {/* Header */}
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-2xl sm:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
+            About Global Ace Gaming
+          </h1>
+          <p className="text-sm sm:text-xl casino-text-secondary max-w-3xl mx-auto">
+            Your premier destination for online gaming excellence, where entertainment meets innovation
+          </p>
+        </div>
+
         {/* Stats Section */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-16">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-8 sm:mb-12">
           {stats.map((stat, index) => {
             const IconComponent = stat.icon;
             return (
-              <div key={index} className="text-center">
-                <div className="bg-white rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                  <IconComponent className="w-8 h-8 text-primary-600" />
+              <div
+                key={index}
+                className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 text-center transition-all duration-300 hover:border-[#FFD700]/40"
+                style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+              >
+                <div
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3"
+                  style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))', border: '1px solid rgba(255,215,0,0.2)' }}
+                >
+                  <IconComponent className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: 'var(--casino-highlight-gold)' }} />
                 </div>
-                <div className="text-3xl font-bold text-gray-900 mb-2">{stat.number}</div>
-                <div className="text-gray-600">{stat.label}</div>
+                <div className="text-2xl sm:text-3xl font-bold mb-1" style={{ color: 'var(--casino-highlight-gold)' }}>
+                  {stat.number}
+                </div>
+                <div className="text-xs sm:text-sm casino-text-secondary">{stat.label}</div>
               </div>
             );
           })}
         </div>
 
         {/* Our Story */}
-        <div className="mb-16">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-8 mb-6 sm:mb-8" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-10 items-center">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-6">Our Story</h2>
-              <div className="space-y-4 text-gray-700">
+              <h2 className="text-xl sm:text-2xl font-bold casino-text-primary mb-4 sm:mb-6">Our Story</h2>
+              <div className="space-y-3 sm:space-y-4 text-sm sm:text-base casino-text-secondary leading-relaxed">
                 <p>
-                  Founded in 2020, Global Ace Gaming emerged from a simple vision: to create 
-                  the most engaging, secure, and innovative online gaming platform. What started 
-                  as a small team of gaming enthusiasts has grown into a global platform serving 
+                  Founded in 2020, Global Ace Gaming emerged from a simple vision: to create
+                  the most engaging, secure, and innovative online gaming platform. What started
+                  as a small team of gaming enthusiasts has grown into a global platform serving
                   thousands of players worldwide.
                 </p>
                 <p>
-                  Our journey began with a commitment to fair play, cutting-edge technology, 
-                  and exceptional customer service. Today, we're proud to offer a diverse 
-                  portfolio of games, from classic casino favorites to the latest Fortune Panda 
+                  Our journey began with a commitment to fair play, cutting-edge technology,
+                  and exceptional customer service. Today, we're proud to offer a diverse
+                  portfolio of games, from classic casino favorites to the latest Fortune Panda
                   slots, all powered by state-of-the-art technology.
                 </p>
                 <p>
-                  We believe that gaming should be fun, fair, and accessible to everyone. 
-                  That's why we've built our platform with player safety and satisfaction 
+                  We believe that gaming should be fun, fair, and accessible to everyone.
+                  That's why we've built our platform with player safety and satisfaction
                   at its core, ensuring every player has an amazing experience.
                 </p>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-primary-100 to-secondary-100 rounded-xl p-8">
-              <div className="text-center">
-                <Target className="w-16 h-16 text-primary-600 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Our Mission</h3>
-                <p className="text-gray-700">
-                  To provide the ultimate gaming experience through innovative technology, 
-                  fair play, and exceptional service, while maintaining the highest standards 
-                  of security and responsible gaming.
-                </p>
-              </div>
+            <div
+              className="rounded-xl sm:rounded-2xl p-6 sm:p-8 text-center"
+              style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.08), rgba(106,27,154,0.1))', border: '1px solid rgba(255,215,0,0.15)' }}
+            >
+              <Target className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4" style={{ color: 'var(--casino-highlight-gold)' }} />
+              <h3 className="text-xl sm:text-2xl font-bold casino-text-primary mb-3 sm:mb-4">Our Mission</h3>
+              <p className="text-sm sm:text-base casino-text-secondary leading-relaxed">
+                To provide the ultimate gaming experience through innovative technology,
+                fair play, and exceptional service, while maintaining the highest standards
+                of security and responsible gaming.
+              </p>
             </div>
           </div>
         </div>
 
         {/* Our Values */}
-        <div className="mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">Our Values</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-xl sm:text-2xl font-bold casino-text-primary text-center mb-6 sm:mb-8">Our Values</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {values.map((value, index) => {
               const IconComponent = value.icon;
               return (
-                <div key={index} className="bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-shadow duration-300">
-                  <div className="bg-primary-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                    <IconComponent className="w-8 h-8 text-primary-600" />
+                <div
+                  key={index}
+                  className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 text-center transition-all duration-300 hover:border-[#FFD700]/40"
+                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                >
+                  <div
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
+                    style={{ background: 'linear-gradient(135deg, rgba(106,27,154,0.2), rgba(0,176,255,0.15))', border: '1px solid rgba(106,27,154,0.25)' }}
+                  >
+                    <IconComponent className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: 'var(--casino-highlight-gold)' }} />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-3">{value.title}</h3>
-                  <p className="text-gray-600">{value.description}</p>
+                  <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-2 sm:mb-3">{value.title}</h3>
+                  <p className="text-xs sm:text-sm casino-text-secondary">{value.description}</p>
                 </div>
               );
             })}
@@ -126,52 +148,66 @@ const AboutUs = () => {
         </div>
 
         {/* Why Choose Us */}
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">Why Choose Global Ace Gaming?</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="bg-primary-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <Shield className="w-8 h-8 text-primary-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Licensed & Regulated</h3>
-              <p className="text-gray-600">
-                We operate under strict licensing requirements, ensuring your safety and security at all times.
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="bg-primary-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <Award className="w-8 h-8 text-primary-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Award-Winning Games</h3>
-              <p className="text-gray-600">
-                Our game portfolio includes award-winning titles from top providers, ensuring quality entertainment.
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="bg-primary-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <Globe className="w-8 h-8 text-primary-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Global Community</h3>
-              <p className="text-gray-600">
-                Join a worldwide community of players and enjoy localized support in multiple languages.
-              </p>
-            </div>
+        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-8 mb-6 sm:mb-8" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+          <h2 className="text-xl sm:text-2xl font-bold casino-text-primary text-center mb-6 sm:mb-8">Why Choose Global Ace Gaming?</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+            {[
+              { icon: Shield, title: 'Licensed & Regulated', desc: 'We operate under strict licensing requirements, ensuring your safety and security at all times.' },
+              { icon: Award, title: 'Award-Winning Games', desc: 'Our game portfolio includes award-winning titles from top providers, ensuring quality entertainment.' },
+              { icon: Globe, title: 'Global Community', desc: 'Join a worldwide community of players and enjoy localized support in multiple languages.' },
+            ].map((item, index) => {
+              const IconComponent = item.icon;
+              return (
+                <div key={index} className="text-center">
+                  <div
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))', border: '1px solid rgba(255,215,0,0.2)' }}
+                  >
+                    <IconComponent className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: 'var(--casino-highlight-gold)' }} />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-2 sm:mb-3">{item.title}</h3>
+                  <p className="text-xs sm:text-sm casino-text-secondary">{item.desc}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
 
         {/* Call to Action */}
-        <div className="bg-gradient-to-r from-primary-600 to-secondary-600 rounded-xl p-8 text-center text-white">
-          <h2 className="text-3xl font-bold mb-4">Ready to Start Your Gaming Journey?</h2>
-          <p className="text-xl text-primary-100 mb-8">
+        <div
+          className="rounded-xl sm:rounded-2xl p-6 sm:p-10 text-center"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(139,0,0,0.2) 50%, rgba(255,215,0,0.1) 100%)',
+            border: '1px solid rgba(255,215,0,0.2)',
+            boxShadow: '0 4px 30px rgba(0,0,0,0.3)',
+          }}
+        >
+          <h2 className="text-xl sm:text-3xl font-bold casino-text-primary mb-3 sm:mb-4">Ready to Start Your Gaming Journey?</h2>
+          <p className="text-sm sm:text-lg casino-text-secondary mb-6 sm:mb-8 max-w-2xl mx-auto">
             Join thousands of satisfied players and experience the best in online gaming
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="bg-white text-primary-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors duration-200">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+            <Link
+              to="/register"
+              className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
+              style={{
+                background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                color: '#0A0A0F',
+                boxShadow: '0 0 15px rgba(255,215,0,0.25)',
+              }}
+            >
               Get Started Today
-            </button>
-            <button className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-primary-600 transition-colors duration-200">
-              Learn More
-            </button>
+            </Link>
+            <Link
+              to="/games"
+              className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation casino-text-primary"
+              style={{
+                border: '2px solid rgba(255,215,0,0.4)',
+                background: 'rgba(255,255,255,0.04)',
+              }}
+            >
+              Explore Games
+            </Link>
           </div>
         </div>
       </div>
