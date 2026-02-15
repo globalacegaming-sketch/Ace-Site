@@ -8,7 +8,6 @@ import User from '../models/User';
 import WheelFairnessRules from '../models/WheelFairnessRules';
 import WheelSlice from '../models/WheelSlice';
 import ChatMessage from '../models/ChatMessage';
-import User from '../models/User';
 import { getSocketServerInstance } from '../utils/socketManager';
 import wheelSpinService from '../services/wheelSpinService';
 import logger from '../utils/logger';
