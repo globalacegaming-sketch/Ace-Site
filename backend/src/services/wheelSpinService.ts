@@ -1,4 +1,4 @@
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import WheelCampaign from '../models/WheelCampaign';
 import WheelSlice from '../models/WheelSlice';
 import WheelBudget from '../models/WheelBudget';
@@ -76,11 +76,12 @@ class WheelSpinService {
       });
       logger.info('🎯 Spin count in last 12h:', { recentSpinCount, spinsPerDay, cutoff: cutoff.toISOString() });
       if (recentSpinCount >= spinsPerDay) {
-        // Find the oldest spin in the window to compute when 12h expires from it
+        // Find the oldest spin that counts toward limit (same filter as count) for 12h reset
         const oldestRecentSpin = await WheelSpin.findOne({
           userId,
           campaignId,
-          createdAt: { $gte: cutoff }
+          createdAt: { $gte: cutoff },
+          $or: [{ usedBonusSpin: { $ne: true } }, { usedBonusSpin: { $exists: false } }]
         }).sort({ createdAt: 1 }).select('createdAt').lean();
         
         const resetAt = oldestRecentSpin
@@ -484,47 +485,88 @@ class WheelSpinService {
     if (!selectedSlice) selectedSlice = slices[0];
     if (!selectedSlice) throw new Error('No slice available for tracking');
 
-    // Step 6b: Re-validate immediately before creating (prevents race)
-    if (consumingBonusSpin) {
-      const again = await User.findById(userId).select('bonusSpins').lean();
-      if (((again as any)?.bonusSpins ?? 0) < 1) {
-        throw new Error('No bonus spin available. Please try again later.');
+    // Step 6b & 7 & 8: Atomic claim of spin slot (transaction) so double-click or multi-instance cannot grant two spins
+    const countFilter = {
+      userId,
+      campaignId: campaign._id,
+      createdAt: { $gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
+      $or: [{ usedBonusSpin: { $ne: true } }, { usedBonusSpin: { $exists: false } }]
+    };
+
+    let spin: any;
+    try {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          if (consumingBonusSpin) {
+            const again = await User.findById(userId).select('bonusSpins').session(session).lean();
+            if (((again as any)?.bonusSpins ?? 0) < 1) {
+              throw new Error('No bonus spin available. Please try again later.');
+            }
+          } else {
+            const count = await WheelSpin.countDocuments(countFilter).session(session);
+            const spinsPerDay = fairnessRules.spinsPerDay ?? 2;
+            if (count >= spinsPerDay) {
+              throw new Error("You've used all your spins! Check back later.");
+            }
+          }
+
+          const [created] = await WheelSpin.create([{
+            campaignId: campaign._id,
+            sliceId: selectedSlice._id,
+            userId,
+            rewardType: rewardInfo.rewardType,
+            rewardValue: rewardInfo.rewardValue || undefined,
+            cost: actualCost,
+            usedBonusSpin: consumingBonusSpin,
+            bonusSent: false
+          }], { session });
+          spin = created;
+
+          budget.budgetRemaining -= actualCost;
+          budget.budgetSpent += actualCost;
+          budget.totalSpins += 1;
+          budget.averagePayoutPerSpin = budget.budgetSpent / budget.totalSpins;
+          await budget.save({ session });
+
+          selectedSlice.currentWins += 1;
+          await selectedSlice.save({ session });
+        });
+      } finally {
+        await session.endSession();
       }
-    } else {
-      const reEligibility = await this.validateUserEligibility(
-        userId,
-        campaign._id as Types.ObjectId,
-        fairnessRules,
-        userEmail,
-        userPhone
-      );
-      if (!reEligibility.eligible) {
-        throw new Error(reEligibility.message || 'User not eligible to spin');
+    } catch (txErr: any) {
+      // MongoDB standalone does not support transactions; fall back to non-atomic path
+      if (txErr.message?.includes('replica set') || txErr.message?.includes('transaction') || txErr.code === 251) {
+        logger.warn('Wheel: transactions not supported, using fallback (multi-instance double-spin possible)', txErr.message);
+        if (consumingBonusSpin) {
+          const again = await User.findById(userId).select('bonusSpins').lean();
+          if (((again as any)?.bonusSpins ?? 0) < 1) throw new Error('No bonus spin available. Please try again later.');
+        } else {
+          const reEligibility = await this.validateUserEligibility(userId, campaign._id as Types.ObjectId, fairnessRules, userEmail, userPhone);
+          if (!reEligibility.eligible) throw new Error(reEligibility.message || 'User not eligible to spin');
+        }
+        spin = await WheelSpin.create({
+          campaignId: campaign._id,
+          sliceId: selectedSlice._id,
+          userId,
+          rewardType: rewardInfo.rewardType,
+          rewardValue: rewardInfo.rewardValue || undefined,
+          cost: actualCost,
+          usedBonusSpin: consumingBonusSpin,
+          bonusSent: false
+        });
+        budget.budgetRemaining -= actualCost;
+        budget.budgetSpent += actualCost;
+        budget.totalSpins += 1;
+        budget.averagePayoutPerSpin = budget.budgetSpent / budget.totalSpins;
+        await budget.save();
+        selectedSlice.currentWins += 1;
+        await selectedSlice.save();
+      } else {
+        throw txErr;
       }
     }
-
-    // Step 7: Create spin record
-    const spin = await WheelSpin.create({
-      campaignId: campaign._id,
-      sliceId: selectedSlice._id,
-      userId,
-      rewardType: rewardInfo.rewardType,
-      rewardValue: rewardInfo.rewardValue || undefined,
-      cost: actualCost,
-      usedBonusSpin: consumingBonusSpin,
-      bonusSent: false
-    });
-
-    // Step 8: Update budget
-    budget.budgetRemaining -= actualCost;
-    budget.budgetSpent += actualCost;
-    budget.totalSpins += 1;
-    budget.averagePayoutPerSpin = budget.budgetSpent / budget.totalSpins;
-    await budget.save();
-
-    // Update slice wins for tracking
-    selectedSlice.currentWins += 1;
-    await selectedSlice.save();
 
     // Consume one bonus spin if this spin used one
     if (consumingBonusSpin) {

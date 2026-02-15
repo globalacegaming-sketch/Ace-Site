@@ -303,13 +303,16 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
       ? Math.max(0, spinsPerDay - recentSpinCount)
       : -1; // unlimited
 
-    // Calculate next reset: 12h after the oldest spin in the window
+    // Calculate next reset: 12h after the oldest spin that counts toward the limit (same filter as count)
     let nextResetTime: string;
     if (spinsRemaining === 0 && spinsPerDay !== -1) {
       const oldestRecentSpin = await WheelSpin.findOne({
-        userId, campaignId, createdAt: { $gte: cutoff }
+        userId,
+        campaignId,
+        createdAt: { $gte: cutoff },
+        $or: [{ usedBonusSpin: { $ne: true } }, { usedBonusSpin: { $exists: false } }]
       }).sort({ createdAt: 1 }).select('createdAt').lean();
-      
+
       nextResetTime = oldestRecentSpin
         ? new Date(new Date(oldestRecentSpin.createdAt).getTime() + msIn12h).toISOString()
         : new Date(now.getTime() + msIn12h).toISOString();

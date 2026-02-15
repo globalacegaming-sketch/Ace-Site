@@ -151,6 +151,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const animFrameRef = useRef<number | null>(null);
   const angleRef = useRef(0);
   const animRef = useRef<AnimState>(defaultAnimState());
+  const spinRequestInFlightRef = useRef(false);
 
   // ── UI state (not used per-frame — only for React renders) ──
   const [isOpen, setIsOpen] = useState(false);
@@ -876,7 +877,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
     }
   }, [startAnimLoop, calculateTargetAngle, fetchSpinStatus]);
 
-  // ── Handle canvas click ──
+  // ── Handle canvas click (block double-tap / double-click from sending two spin requests) ──
   const handleSpinClick = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -885,14 +886,17 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         setShowLoginModal(true);
         return;
       }
-      if (animRef.current.phase !== 'idle') return;
+      if (spinRequestInFlightRef.current || animRef.current.phase !== 'idle') return;
       if (!checkSession()) {
         logout();
         toast.error('Your session has expired. Please login again.');
         return;
       }
 
-      doSpin();
+      spinRequestInFlightRef.current = true;
+      doSpin().finally(() => {
+        spinRequestInFlightRef.current = false;
+      });
     },
     [isAuthenticated, checkSession, logout, doSpin]
   );
