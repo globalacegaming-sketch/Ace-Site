@@ -64,8 +64,8 @@ class WheelSpinService {
     userPhone?: string
   ): Promise<{ eligible: boolean; message?: string }> {
     // Check spin cap (resets 12 hours after the user's first spin in the current cycle)
-    // Default to 2 if spinsPerDay is missing from an old DB document
-    const spinsPerDay = fairnessRules.spinsPerDay ?? 2;
+    // Default to 1 if spinsPerDay is missing from an old DB document
+    const spinsPerDay = fairnessRules.spinsPerDay ?? 1;
     logger.info('🎯 Eligibility check:', { userId: userId.toString(), spinsPerDay, rawValue: fairnessRules.spinsPerDay });
     if (spinsPerDay !== -1) {
       const now = new Date();
@@ -209,7 +209,15 @@ class WheelSpinService {
 
     // Step 2b: Check if user has a bonus (free) spin to use — if so, this spin won't count toward limit and cannot land on Free Spin +1
     const userDoc = await User.findById(userId).select('bonusSpins').lean();
-    const userBonusSpins = (userDoc as any)?.bonusSpins ?? 0;
+    let userBonusSpins = (userDoc as any)?.bonusSpins ?? 0;
+
+    // Cap bonus spins at 1 — prevents unbounded accumulation from older code
+    if (userBonusSpins > 1) {
+      await User.findByIdAndUpdate(userId, { $set: { bonusSpins: 1 } });
+      logger.warn('🛡️ Capped excess bonus spins', { userId: userId.toString(), was: userBonusSpins, now: 1 });
+      userBonusSpins = 1;
+    }
+
     const consumingBonusSpin = userBonusSpins > 0;
 
     // Step 3: Validate user eligibility (skip daily limit if using a bonus spin)
@@ -311,8 +319,25 @@ class WheelSpinService {
       logger.info('🎁 Free spin used — try_again excluded', { eligibleSegmentIndices });
     }
 
-    // Per-user expensive-win cap: limit $5+ wins to 2 per 24h and $10+ wins to 1 per 24h
+    // ── Per-user caps (24h rolling window) ──
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Free Spin +1 cap: max 1 free-spin WIN per user per 24h
+    // Without this, users accumulate unlimited bonus spins and bypass the daily limit.
+    const freeSpinWins24h = await WheelSpin.countDocuments({
+      userId,
+      campaignId: campaign._id,
+      rewardType: 'try_again',
+      createdAt: { $gte: twentyFourHoursAgo }
+    });
+    if (freeSpinWins24h >= 1) {
+      eligibleSegmentIndices = eligibleSegmentIndices.filter(
+        (idx) => WHEEL_SEGMENTS[idx].type !== 'try_again'
+      );
+      logger.info('🛡️ User already won Free Spin in last 24h — excluding try_again segments');
+    }
+
+    // Per-user expensive-win cap: limit $5+ wins to 2 per 24h and $10+ wins to 1 per 24h
     const recentUserWins = await WheelSpin.find({
       userId,
       campaignId: campaign._id,
@@ -419,9 +444,18 @@ class WheelSpinService {
 
     let spin: any;
     // Compute bonus spin delta: -1 if consuming, +1 if winning Free Spin +1, 0 otherwise
+    // Cap at 1: if user already has 1+ bonus spins, don't grant another
     let bonusSpinDelta = 0;
     if (consumingBonusSpin) bonusSpinDelta -= 1;
-    if (rewardInfo.rewardType === 'try_again') bonusSpinDelta += 1;
+    if (rewardInfo.rewardType === 'try_again') {
+      // Only grant +1 if user will end up at ≤ 1 bonus spin
+      const projectedBonusSpins = userBonusSpins + bonusSpinDelta + 1;
+      if (projectedBonusSpins <= 1) {
+        bonusSpinDelta += 1;
+      } else {
+        logger.info('🛡️ Bonus spin grant skipped — user would exceed cap of 1', { userId: userId.toString(), current: userBonusSpins });
+      }
+    }
 
     try {
       const session = await mongoose.startSession();
@@ -434,7 +468,7 @@ class WheelSpinService {
             }
           } else {
             const count = await WheelSpin.countDocuments(countFilter).session(session);
-            const spinsPerDay = fairnessRules.spinsPerDay ?? 2;
+            const spinsPerDay = fairnessRules.spinsPerDay ?? 1;
             if (count >= spinsPerDay) {
               throw new Error("You've used all your spins! Check back later.");
             }

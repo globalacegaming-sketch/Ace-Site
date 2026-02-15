@@ -24,7 +24,7 @@ const WheelFairnessRulesSchema = new Schema<IWheelFairnessRules>(
     },
     spinsPerDay: {
       type: Number,
-      default: 2,
+      default: 1,
       min: [-1, 'Spins per day must be -1 (unlimited) or positive']
     },
     freeSpinCannotTriggerFreeSpin: {

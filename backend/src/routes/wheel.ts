@@ -294,8 +294,8 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
     const campaignId = campaign._id as Types.ObjectId;
     const fairnessRules = await WheelFairnessRules.findOne({ campaignId });
 
-    // Default to 2 if spinsPerDay is missing from an old DB document
-    const spinsPerDay = fairnessRules?.spinsPerDay ?? 2;
+    // Default to 1 if spinsPerDay is missing from an old DB document
+    const spinsPerDay = fairnessRules?.spinsPerDay ?? 1;
 
     // Count spins in the last 12 hours that count toward the limit (exclude spins that used a bonus/free spin)
     const recentSpinCount = await WheelSpin.countDocuments({

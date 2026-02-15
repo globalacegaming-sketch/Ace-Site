@@ -50,7 +50,7 @@ const WheelManagementPanel = () => {
 
   // Section 4: Fairness Rules
   const [fairnessRules, setFairnessRules] = useState({
-    spinsPerDay: 2,
+    spinsPerDay: 1,
     freeSpinCannotTriggerFreeSpin: true
   });
 
@@ -165,7 +165,7 @@ const WheelManagementPanel = () => {
       if (rulesRes.data.success) {
         const r = rulesRes.data.data;
         setFairnessRules({
-          spinsPerDay: r.spinsPerDay ?? 2,
+          spinsPerDay: r.spinsPerDay ?? 1,
           freeSpinCannotTriggerFreeSpin: r.freeSpinCannotTriggerFreeSpin !== false
         });
       }
