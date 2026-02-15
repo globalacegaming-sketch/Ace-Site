@@ -438,16 +438,115 @@ const Offers = () => {
         )}
 
         {/* Terms and Conditions */}
-        <div className="mt-8 sm:mt-12 casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border border">
-          <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-3 sm:mb-4">
+        <div className="mt-8 sm:mt-12 casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-8 casino-border border">
+          <h2 className="text-lg sm:text-2xl font-bold casino-text-primary mb-4 sm:mb-6">
             Terms and Conditions
-          </h3>
-          <div className="text-xs sm:text-sm casino-text-secondary space-y-2">
-            <p>All offers are subject to terms and conditions</p>
-            <p>Bonuses must be wagered before withdrawal</p>
-            <p>One bonus per user per offer</p>
-            <p>Global Ace Gaming reserves the right to modify or cancel offers</p>
-            <p>Please gamble responsibly</p>
+          </h2>
+          <p className="text-xs sm:text-sm casino-text-secondary mb-6">
+            All offers are subject to the following Terms and Conditions:
+          </p>
+
+          <div className="space-y-6">
+            {/* General Conditions */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                General Conditions
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>All promotions, bonuses, and offers are subject to these Terms and Conditions.</li>
+                <li>Global Ace Gaming reserves the right to modify, suspend, or cancel any promotion at any time without prior notice.</li>
+              </ul>
+            </div>
+
+            {/* Bonus Wagering Requirement */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Bonus Wagering Requirement
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>All bonuses must be fully wagered before any withdrawal request can be processed.</li>
+                <li>Wagering requirements must be completed within the promotional validity period.</li>
+              </ul>
+            </div>
+
+            {/* Minimum Deposit Requirement */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Minimum Deposit Requirement
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>A minimum deposit of $10 or more per week is required to qualify for any bonus.</li>
+                <li>The same minimum deposit requirement of $10 or more applies to all Wheel of Fortune bonuses.</li>
+              </ul>
+            </div>
+
+            {/* One Bonus Policy */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                One Bonus Policy
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>Only one bonus per user per offer is allowed.</li>
+                <li>Bonuses cannot be combined unless explicitly stated.</li>
+              </ul>
+            </div>
+
+            {/* Wheel of Fortune Rules */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Wheel of Fortune Rules
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>The Wheel of Fortune is available once every 12 hours per user.</li>
+                <li>Multiple spins caused by technical issues will not be counted. Only the first recorded spin in the system will be considered valid.</li>
+                <li>Rewards from the wheel are subject to standard wagering requirements.</li>
+              </ul>
+            </div>
+
+            {/* Account & Fair Play Policy */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Account & Fair Play Policy
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>Any suspicious activity, abuse of promotions, or creation of multiple accounts will result in immediate suspension or permanent ban.</li>
+                <li>Users are allowed only one account per person, household, IP address, and device.</li>
+                <li>Global Ace Gaming reserves the right to verify user identity at any time.</li>
+              </ul>
+            </div>
+
+            {/* Bonus Abuse & Fraud */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Bonus Abuse & Fraud
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>Any attempt to manipulate, exploit, or abuse promotions may result in forfeiture of bonuses, winnings, and account closure.</li>
+                <li>Irregular betting patterns or system exploitation will be investigated.</li>
+              </ul>
+            </div>
+
+            {/* Withdrawal Policy */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Withdrawal Policy
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>Deposits must be wagered at least once before withdrawal.</li>
+                <li>Verification documents may be required before processing withdrawals.</li>
+              </ul>
+            </div>
+
+            {/* Responsible Gaming */}
+            <div>
+              <h3 className="text-sm sm:text-base font-semibold casino-text-primary mb-2" style={{ color: 'var(--casino-highlight-gold)' }}>
+                Responsible Gaming
+              </h3>
+              <ul className="text-xs sm:text-sm casino-text-secondary space-y-1.5 list-disc list-inside">
+                <li>Please gamble responsibly.</li>
+                <li>If you believe you have a gambling problem, please seek professional assistance.</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
