@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { authenticate } from '../middleware/auth';
+import { wheelSpinLimiter } from '../middleware/rateLimiter';
 import WheelSpin from '../models/WheelSpin';
 import WheelCampaign from '../models/WheelCampaign';
+import User from '../models/User';
 import WheelFairnessRules from '../models/WheelFairnessRules';
 import WheelSlice from '../models/WheelSlice';
 import ChatMessage from '../models/ChatMessage';
@@ -179,12 +181,19 @@ router.get('/slices', async (req: Request, res: Response) => {
   }
 });
 
-// ── POST /spin — authenticated, SERVER picks the winner ─────────────────────
+// ── POST /spin — authenticated, rate-limited, SERVER picks the winner ───────
 // Campaign system is the ONLY path. No campaign = wheel is off.
-router.post('/spin', authenticate, async (req: Request, res: Response) => {
+router.post('/spin', authenticate, wheelSpinLimiter, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    // Reject client-supplied outcome (server is the only source of truth)
+    const body = req.body as Record<string, unknown>;
+    if (body && (typeof body.sliceOrder === 'number' || body.rewardType || body.rewardLabel)) {
+      logger.warn('Wheel spin rejected: client sent outcome fields', { userId: (req.user as any)._id });
+      return res.status(400).json({ success: false, message: 'Invalid request' });
     }
 
     const userId = new Types.ObjectId(req.user._id);
@@ -201,6 +210,9 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
         messageId = await sendRewardToChat(userId, spin, result.rewardLabel, result.rewardType, result.rewardValue);
       }
 
+      const updatedUser = await User.findById(req.user._id).select('bonusSpins').lean();
+      const bonusSpins = (updatedUser as any)?.bonusSpins ?? 0;
+
       return res.json({
         success: true,
         message: 'Spin completed successfully',
@@ -213,7 +225,7 @@ router.post('/spin', authenticate, async (req: Request, res: Response) => {
           rewardColor: result.rewardColor,
           bonusSent: spin.bonusSent,
           messageId,
-          bonusSpins: 0
+          bonusSpins
         }
       });
     } catch (campaignError: any) {
@@ -277,10 +289,16 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
     // Default to 2 if spinsPerDay is missing from an old DB document
     const spinsPerDay = fairnessRules?.spinsPerDay ?? 2;
 
-    // Count spins in the last 12 hours (rolling window from user's perspective)
+    // Count spins in the last 12 hours that count toward the limit (exclude spins that used a bonus/free spin)
     const recentSpinCount = await WheelSpin.countDocuments({
-      userId, campaignId, createdAt: { $gte: cutoff }
+      userId,
+      campaignId,
+      createdAt: { $gte: cutoff },
+      $or: [{ usedBonusSpin: { $ne: true } }, { usedBonusSpin: { $exists: false } }]
     });
+
+    const userDoc = await User.findById(userId).select('bonusSpins').lean();
+    const bonusSpins = (userDoc as any)?.bonusSpins ?? 0;
 
     const spinsRemaining = spinsPerDay !== -1
       ? Math.max(0, spinsPerDay - recentSpinCount)
@@ -309,12 +327,14 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
       nextReset: nextResetTime,
     });
 
+    const totalAvailable = spinsRemaining + bonusSpins;
+
     return res.json({
       success: true,
       data: {
         spinsRemaining,
-        bonusSpins: 0,
-        totalAvailable: spinsRemaining,
+        bonusSpins,
+        totalAvailable,
         spinsPerDay,
         windowSpins: recentSpinCount,
         nextResetTime,

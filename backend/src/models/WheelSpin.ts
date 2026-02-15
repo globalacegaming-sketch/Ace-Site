@@ -7,6 +7,7 @@ export interface IWheelSpin extends Document {
   rewardType: 'better_luck' | 'try_again' | 'bonus_1' | 'bonus_5' | 'bonus_10' | 'bonus_50_percent';
   rewardValue?: string; // e.g., "$1", "$5", "$10", "50%"
   cost: number; // Cost to business for this spin
+  usedBonusSpin?: boolean; // True when this spin used a free spin (doesn't count toward daily limit; outcome was not try_again)
   bonusSent: boolean; // Whether bonus message was sent to chat
   messageId?: Types.ObjectId; // Reference to ChatMessage if bonus was sent
   redeemed: boolean; // Whether prize has been redeemed
@@ -46,6 +47,10 @@ const WheelSpinSchema = new Schema<IWheelSpin>(
       type: Number,
       required: true,
       min: [0, 'Cost cannot be negative']
+    },
+    usedBonusSpin: {
+      type: Boolean,
+      default: false
     },
     bonusSent: {
       type: Boolean,

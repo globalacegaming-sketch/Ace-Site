@@ -219,8 +219,10 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   const bulbDotR = Math.max(2.5, frameWidth * 0.2);
   const centerHubR = Math.max(18, size / 9.5);
 
-  // Whether spins are exhausted (show timer mode)
-  const outOfSpins = spinStatus !== null && spinStatus.spinsRemaining === 0 && spinStatus.spinsPerDay !== -1;
+  // Whether spins are exhausted (show timer mode). Use totalAvailable so bonus spins (Free Spin +1) still allow spinning.
+  const outOfSpins = spinStatus !== null && spinStatus.totalAvailable === 0 && spinStatus.spinsPerDay !== -1;
+  const showingWinResult = Boolean(showResult && lastResult);
+  const showTimerMode = outOfSpins && !showingWinResult;
 
   // ── Countdown timer logic (ticks every second when out of spins) ──
   useEffect(() => {
@@ -422,10 +424,10 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
 
   // ── Repaint timer canvas every second ──
   useEffect(() => {
-    if (outOfSpins && countdown && isOpen) {
+    if (showTimerMode && countdown && isOpen) {
       drawTimerWheel();
     }
-  }, [outOfSpins, countdown, isOpen, drawTimerWheel]);
+  }, [showTimerMode, countdown, isOpen, drawTimerWheel]);
 
   // ── Sparkle particles (memoized) ──
   const particles = useMemo(() =>
@@ -1084,7 +1086,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
               {/* Golden pointer (SVG) — hidden in timer mode */}
               <div
                 className="absolute left-1/2 z-10 pointer-events-none"
-                style={{ top: -4, transform: 'translateX(-50%)', opacity: outOfSpins ? 0 : 1, transition: 'opacity 0.4s ease' }}
+                style={{ top: -4, transform: 'translateX(-50%)', opacity: showTimerMode ? 0 : 1, transition: 'opacity 0.4s ease' }}
               >
                 <svg
                   width={size < 380 ? 26 : 34}
@@ -1110,8 +1112,8 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                 </svg>
               </div>
 
-              {/* Canvas: wheel or countdown timer */}
-              {outOfSpins && countdown ? (
+              {/* Canvas: wheel or countdown timer (keep wheel visible while showing win result) */}
+              {showTimerMode && countdown ? (
                 <canvas
                   ref={timerCanvasRef}
                   width={size}
@@ -1182,10 +1184,9 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
 
           </div>
 
-          {/* ─── Result card (hidden in timer mode) ─── */}
+          {/* ─── Result card (always show win so user can see it before timer) ─── */}
           {showResult &&
             lastResult &&
-            !outOfSpins &&
             (() => {
               const actualSegment =
                 lastResult.sliceOrder != null

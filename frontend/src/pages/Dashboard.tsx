@@ -7,7 +7,6 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import WelcomeBonusBanner from '../components/WelcomeBonusBanner';
 import PromoCarousel from '../components/PromoCarousel';
-import LoginStreakCalendar from '../components/LoginStreakCalendar';
 
 const QUICK_ACTIONS = [
   { to: '/games', icon: Gamepad2, label: 'Games', desc: 'Browse & play your favourite games', grad: 'linear-gradient(135deg, #FFD700, #FFA000)', shadow: 'rgba(255,215,0,0.25)', dark: true },
@@ -88,16 +87,9 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* ── Desktop two-column layout: Carousel + Streak side-by-side ── */}
-        <div className="lg:grid lg:grid-cols-5 lg:gap-6 xl:gap-8">
-          {/* Left: Carousel (wider) */}
-          <div className="lg:col-span-3">
-            <PromoCarousel />
-          </div>
-          {/* Right: Streak Calendar */}
-          <div className="lg:col-span-2">
-            <LoginStreakCalendar />
-          </div>
+        {/* ── Promo carousel ── */}
+        <div className="mb-4 sm:mb-5 md:mb-6 lg:mb-8">
+          <PromoCarousel />
         </div>
 
         {/* ── Welcome Bonus (new users only) ── */}

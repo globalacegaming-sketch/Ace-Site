@@ -8,6 +8,23 @@ import User from '../models/User';
 import logger from '../utils/logger';
 import { WHEEL_SEGMENTS, REWARD_COLORS } from '../config/wheelSegments';
 
+/** Per-user lock to prevent concurrent spins (double-spin race). */
+const userSpinLocks = new Map<string, Promise<void>>();
+
+async function withUserSpinLock<T>(userId: Types.ObjectId, fn: () => Promise<T>): Promise<T> {
+  const key = userId.toString();
+  const prev = userSpinLocks.get(key) ?? Promise.resolve();
+  let resolveLock: () => void;
+  const next = new Promise<void>((r) => { resolveLock = r; });
+  userSpinLocks.set(key, prev.then(() => next));
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    resolveLock!();
+  }
+}
+
 interface SpinResult {
   spinId: Types.ObjectId;
   sliceId: Types.ObjectId;
@@ -50,11 +67,12 @@ class WheelSpinService {
       const msIn12h = 12 * 60 * 60 * 1000;
       const cutoff = new Date(now.getTime() - msIn12h);
       
-      // Count spins in the last 12 hours
+      // Count spins in the last 12 hours (exclude spins that used a bonus/free spin)
       const recentSpinCount = await WheelSpin.countDocuments({
         userId,
         campaignId,
-        createdAt: { $gte: cutoff }
+        createdAt: { $gte: cutoff },
+        $or: [{ usedBonusSpin: { $ne: true } }, { usedBonusSpin: { $exists: false } }]
       });
       logger.info('🎯 Spin count in last 12h:', { recentSpinCount, spinsPerDay, cutoff: cutoff.toISOString() });
       if (recentSpinCount >= spinsPerDay) {
@@ -312,8 +330,17 @@ class WheelSpinService {
   // ─────────────────────────────────────────────────────────────────────────
   // spinWheel — SERVER picks the winning segment. This is the ONLY spin
   // method the POST /wheel/spin route should call.
+  // Wrapped in a per-user lock to prevent double-spin race (concurrent requests).
   // ─────────────────────────────────────────────────────────────────────────
   async spinWheel(
+    userId: Types.ObjectId,
+    userEmail?: string,
+    userPhone?: string
+  ): Promise<SpinResult> {
+    return withUserSpinLock(userId, () => this.executeSpin(userId, userEmail, userPhone));
+  }
+
+  private async executeSpin(
     userId: Types.ObjectId,
     userEmail?: string,
     userPhone?: string
@@ -332,16 +359,23 @@ class WheelSpinService {
     if (!fairnessRules) throw new Error('Fairness rules not configured');
     if (slices.length < 2) throw new Error('At least 2 enabled slices are required');
 
-    // Step 3: Validate user eligibility
-    const eligibility = await this.validateUserEligibility(
-      userId,
-      campaign._id as Types.ObjectId,
-      fairnessRules,
-      userEmail,
-      userPhone
-    );
-    if (!eligibility.eligible) {
-      throw new Error(eligibility.message || 'User not eligible to spin');
+    // Step 2b: Check if user has a bonus (free) spin to use — if so, this spin won't count toward limit and cannot land on Free Spin +1
+    const userDoc = await User.findById(userId).select('bonusSpins').lean();
+    const userBonusSpins = (userDoc as any)?.bonusSpins ?? 0;
+    const consumingBonusSpin = userBonusSpins > 0;
+
+    // Step 3: Validate user eligibility (skip daily limit if using a bonus spin)
+    if (!consumingBonusSpin) {
+      const eligibility = await this.validateUserEligibility(
+        userId,
+        campaign._id as Types.ObjectId,
+        fairnessRules,
+        userEmail,
+        userPhone
+      );
+      if (!eligibility.eligible) {
+        throw new Error(eligibility.message || 'User not eligible to spin');
+      }
     }
 
     // Step 4: Use shared WHEEL_SEGMENTS for selection (single source of truth)
@@ -390,6 +424,14 @@ class WheelSpinService {
       logger.info('✅ Budget available - eligible segment indices:', eligibleSegmentIndices);
     }
     
+    // When using a free spin, exclude Free Spin +1 so the outcome cannot be another free spin
+    if (consumingBonusSpin) {
+      eligibleSegmentIndices = eligibleSegmentIndices.filter(
+        (idx) => WHEEL_SEGMENTS[idx].type !== 'try_again'
+      );
+      logger.info('🎁 Free spin used — try_again excluded from outcome', { eligibleSegmentIndices });
+    }
+
     if (eligibleSegmentIndices.length === 0) {
       throw new Error('No eligible segments available');
     }
@@ -442,6 +484,25 @@ class WheelSpinService {
     if (!selectedSlice) selectedSlice = slices[0];
     if (!selectedSlice) throw new Error('No slice available for tracking');
 
+    // Step 6b: Re-validate immediately before creating (prevents race)
+    if (consumingBonusSpin) {
+      const again = await User.findById(userId).select('bonusSpins').lean();
+      if (((again as any)?.bonusSpins ?? 0) < 1) {
+        throw new Error('No bonus spin available. Please try again later.');
+      }
+    } else {
+      const reEligibility = await this.validateUserEligibility(
+        userId,
+        campaign._id as Types.ObjectId,
+        fairnessRules,
+        userEmail,
+        userPhone
+      );
+      if (!reEligibility.eligible) {
+        throw new Error(reEligibility.message || 'User not eligible to spin');
+      }
+    }
+
     // Step 7: Create spin record
     const spin = await WheelSpin.create({
       campaignId: campaign._id,
@@ -450,6 +511,7 @@ class WheelSpinService {
       rewardType: rewardInfo.rewardType,
       rewardValue: rewardInfo.rewardValue || undefined,
       cost: actualCost,
+      usedBonusSpin: consumingBonusSpin,
       bonusSent: false
     });
 
@@ -463,6 +525,17 @@ class WheelSpinService {
     // Update slice wins for tracking
     selectedSlice.currentWins += 1;
     await selectedSlice.save();
+
+    // Consume one bonus spin if this spin used one
+    if (consumingBonusSpin) {
+      await User.findByIdAndUpdate(userId, { $inc: { bonusSpins: -1 } });
+      logger.info('🎁 Consumed 1 bonus spin', { userId: userId.toString() });
+    }
+    // Grant one bonus spin when outcome is Free Spin +1 (so they get one extra spin that cannot land on Free Spin +1 again)
+    if (rewardInfo.rewardType === 'try_again') {
+      await User.findByIdAndUpdate(userId, { $inc: { bonusSpins: 1 } });
+      logger.info('🎁 Granted 1 bonus spin (Free Spin +1)', { userId: userId.toString() });
+    }
 
     const returnValue = {
       spinId: spin._id as Types.ObjectId,

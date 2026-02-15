@@ -99,3 +99,20 @@ export const registerLimiter = rateLimit({
   // This prevents attackers from creating unlimited accounts from a single IP
 });
 
+// Wheel spin: per-user limit (must run after authenticate so req.user is set)
+// Prevents rapid repeated spin attempts / scripted abuse
+export const wheelSpinLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Max 10 spin attempts per minute per user (covers double-click + a few retries)
+  message: {
+    success: false,
+    message: 'Too many spin attempts. Please wait a moment and try again.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => {
+    const uid = req.user?._id ?? req.user?.id;
+    return uid ? `wheel:${uid}` : req.ip ?? 'anonymous';
+  },
+});
+
