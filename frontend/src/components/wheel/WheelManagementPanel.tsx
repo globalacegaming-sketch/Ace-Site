@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Loader2, Calendar, DollarSign, Settings, BarChart3, Power } from 'lucide-react';
+import { Save, Loader2, Calendar, DollarSign, Settings, BarChart3, Power, RefreshCcw, RotateCcw } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { getApiBaseUrl } from '../../utils/api';
@@ -13,6 +13,8 @@ const WheelManagementPanel = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [togglingWheel, setTogglingWheel] = useState(false);
+  const [resettingBudget, setResettingBudget] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const getAgentToken = () => {
     const session = localStorage.getItem('agent_session');
@@ -65,6 +67,9 @@ const WheelManagementPanel = () => {
     totalBudget: 0,
     averagePayout: 0
   });
+
+  // Win breakdown by reward type (from stats endpoint)
+  const [winBreakdown, setWinBreakdown] = useState<Record<string, { count: number; totalCost: number; label: string }>>({});
 
   useEffect(() => {
     loadCampaignData();
@@ -145,14 +150,13 @@ const WheelManagementPanel = () => {
         });
       }
 
-      // Load stats
+      // Load stats (includes win breakdown)
       try {
         const statsRes = await axios.get(`${API_BASE_URL}/agent/wheel/stats`, { headers });
         if (statsRes.data.success) {
-          setBudgetStats(prev => ({
-            ...prev,
-            ...statsRes.data.data
-          }));
+          const { winBreakdown: wb, ...rest } = statsRes.data.data;
+          setBudgetStats(prev => ({ ...prev, ...rest }));
+          if (wb) setWinBreakdown(wb);
         }
       } catch (error) {
         // Stats loading is optional
@@ -236,6 +240,28 @@ const WheelManagementPanel = () => {
       toast.error(error.response?.data?.message || 'Failed to update wheel visibility');
     } finally {
       setTogglingWheel(false);
+    }
+  };
+
+  const handleBudgetReset = async () => {
+    const token = getAgentToken();
+    if (!token) { toast.error('Please login as agent'); return; }
+    setResettingBudget(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/agent/wheel/budget/reset`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.data.success) {
+        toast.success(res.data.message || 'Budget reset successfully');
+        await loadCampaignData();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to reset budget');
+    } finally {
+      setResettingBudget(false);
+      setShowResetConfirm(false);
     }
   };
 
@@ -376,11 +402,47 @@ const WheelManagementPanel = () => {
 
         {activeSection === 'budget' && (
           <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-gray-900">Budget & Distribution Engine</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-900">Budget & Distribution Engine</h2>
+              <button
+                onClick={loadCampaignData}
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-1.5"
+              >
+                <RefreshCcw className="w-4 h-4" /> Refresh
+              </button>
+            </div>
             
             {/* Budget Summary Card */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Budget Summary</h3>
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Budget Summary</h3>
+                {/* Reset Budget Button */}
+                {!showResetConfirm ? (
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    className="px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 border border-red-200 flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-4 h-4" /> Reset Budget
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-red-700 font-medium">Are you sure?</span>
+                    <button
+                      onClick={handleBudgetReset}
+                      disabled={resettingBudget}
+                      className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {resettingBudget ? 'Resetting...' : 'Yes, Reset'}
+                    </button>
+                    <button
+                      onClick={() => setShowResetConfirm(false)}
+                      className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm text-gray-600">Total Budget</p>
@@ -411,12 +473,43 @@ const WheelManagementPanel = () => {
                   <p className="text-xl font-semibold text-gray-900">{budgetStats.uniqueUsers}</p>
                 </div>
               </div>
-              {budgetStats.budgetRemaining < budgetStats.totalBudget * 0.1 && (
+              {/* Budget progress bar */}
+              {budgetStats.totalBudget > 0 && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Spent: {((budgetStats.budgetSpent / budgetStats.totalBudget) * 100).toFixed(1)}%</span>
+                    <span>Remaining: {((budgetStats.budgetRemaining / budgetStats.totalBudget) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className={`h-2.5 rounded-full ${budgetStats.budgetRemaining < budgetStats.totalBudget * 0.1 ? 'bg-red-500' : 'bg-blue-500'}`}
+                      style={{ width: `${Math.min(100, (budgetStats.budgetSpent / budgetStats.totalBudget) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {budgetStats.budgetRemaining < budgetStats.totalBudget * 0.1 && budgetStats.totalBudget > 0 && (
                 <div className="mt-4 p-3 bg-yellow-100 border border-yellow-400 rounded text-yellow-800 text-sm">
-                  ⚠️ Warning: Budget is running low. Consider adding more budget or pausing the campaign.
+                  Warning: Budget is running low. Consider adding more budget, resetting, or pausing the campaign.
                 </div>
               )}
             </div>
+
+            {/* Win Breakdown */}
+            {Object.keys(winBreakdown).length > 0 && (
+              <div className="bg-white rounded-lg p-5 border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Win Distribution</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {Object.entries(winBreakdown).map(([type, data]) => (
+                    <div key={type} className="p-3 bg-gray-50 rounded-lg text-center">
+                      <p className="text-xs text-gray-500 truncate">{data.label}</p>
+                      <p className="text-xl font-bold text-gray-900">{data.count}</p>
+                      <p className="text-xs text-gray-400">${data.totalCost.toFixed(2)} cost</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div>
@@ -428,10 +521,15 @@ const WheelManagementPanel = () => {
                   onChange={(e) => setBudget({ ...budget, mode: e.target.value as any })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-black"
                 >
-                  <option value="auto">Auto (Recommended)</option>
-                  <option value="target_expense">Target Expense Rate</option>
+                  <option value="auto">Auto (Recommended) — paces prizes across target spins</option>
+                  <option value="target_expense">Target Expense Rate — daily/per-N-spins caps</option>
                   <option value="manual">Custom / Manual Control</option>
                 </select>
+                {budget.mode === 'auto' && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Auto mode distributes your budget evenly across the target number of spins. When overspending, expensive prizes become rarer automatically.
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -459,6 +557,9 @@ const WheelManagementPanel = () => {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black"
                       min="1"
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Ideal spend per spin: ${budget.targetSpins > 0 ? (budget.totalBudget / budget.targetSpins).toFixed(2) : '—'}
+                    </p>
                   </div>
                 )}
                 {budget.mode === 'target_expense' && (
@@ -516,7 +617,7 @@ const WheelManagementPanel = () => {
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black"
                       min="-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">How many spins a user gets each day (resets at midnight)</p>
+                    <p className="text-xs text-gray-500 mt-1">How many spins a user gets per 12-hour rolling window (-1 = unlimited)</p>
                   </div>
                 </div>
               </div>

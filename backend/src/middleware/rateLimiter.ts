@@ -111,8 +111,11 @@ export const wheelSpinLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => {
+    // This limiter runs after `authenticate`, so req.user is always set.
+    // We key on user ID (not IP) to rate-limit per user.
+    // Fallback to a static key (never req.ip) to avoid ERR_ERL_KEY_GEN_IPV6.
     const uid = req.user?._id ?? req.user?.id;
-    return uid ? `wheel:${uid}` : req.ip ?? 'anonymous';
+    return uid ? `wheel:${uid}` : 'wheel:anonymous';
   },
 });
 

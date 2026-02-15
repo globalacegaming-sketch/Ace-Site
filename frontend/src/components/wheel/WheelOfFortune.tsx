@@ -43,6 +43,7 @@ interface SpinStatus {
   bonusSpins: number;
   totalAvailable: number;  // normal + bonus (-1 = unlimited)
   spinsPerDay: number;
+  windowSpins: number;     // how many normal spins used in current 12h window
   nextResetTime: string;   // ISO timestamp of next 12h window reset
   wheelEnabled: boolean;
 }
@@ -50,30 +51,33 @@ interface SpinStatus {
 // ── Segments (must match backend/src/config/wheelSegments.ts) ────────────────
 
 const SEGMENTS = [
-  { type: 'bonus_1', label: '$1', color: '#10B981' },
-  { type: 'bonus_5', label: '$5', color: '#3B82F6' },
-  { type: 'try_again', label: 'Free Spin +1', wheelLabel: 'Free Spin +1', color: '#F59E0B' },
-  { type: 'bonus_1', label: '$1', color: '#10B981' },
+  { type: 'bonus_2', label: '$2', color: '#10B981' },
   { type: 'better_luck', label: 'Better Luck', color: '#6B7280' },
+  { type: 'try_again', label: 'Free Spin +1', wheelLabel: 'Free Spin +1', color: '#F59E0B' },
+  { type: 'bonus_5', label: '$5', color: '#3B82F6' },
+  { type: 'better_luck', label: 'Better Luck', color: '#6B7280' },
+  { type: 'bonus_50_percent', label: '50%', color: '#EC4899' },
+  { type: 'bonus_2', label: '$2', color: '#10B981' },
+  { type: 'better_luck', label: 'Better Luck', color: '#6B7280' },
+  { type: 'try_again', label: 'Free Spin +1', wheelLabel: 'Free Spin +1', color: '#F59E0B' },
   { type: 'bonus_10', label: '$10', color: '#8B5CF6' },
   { type: 'better_luck', label: 'Better Luck', color: '#6B7280' },
   { type: 'bonus_5', label: '$5', color: '#3B82F6' },
-  { type: 'bonus_1', label: '$1', color: '#10B981' },
+  { type: 'bonus_2', label: '$2', color: '#10B981' },
+  { type: 'better_luck', label: 'Better Luck', color: '#6B7280' },
   { type: 'try_again', label: 'Free Spin +1', wheelLabel: 'Free Spin +1', color: '#F59E0B' },
+  { type: 'bonus_5', label: '$5', color: '#3B82F6' },
   { type: 'bonus_50_percent', label: '50%', color: '#EC4899' },
   { type: 'better_luck', label: 'Better Luck', color: '#6B7280' },
-  { type: 'bonus_1', label: '$1', color: '#10B981' },
-  { type: 'bonus_5', label: '$5', color: '#3B82F6' },
-  { type: 'better_luck', label: 'Better Luck', color: '#6B7280' }
 ];
 
 // ── Animation constants ─────────────────────────────────────────────────────
 
 const TAU = 2 * Math.PI;
-const CONSTANT_VELOCITY = 14;       // rad/s during constant-spin phase
-const RAMP_DURATION = 0.4;          // seconds to ramp from 0 → full velocity
-const DECEL_DURATION = 4500;         // ms for deceleration to target
-const MIN_EXTRA_ROTATIONS = 4;       // minimum full rotations during deceleration
+const CONSTANT_VELOCITY = 18;       // rad/s during constant-spin phase (faster visual spin)
+const RAMP_DURATION = 0.3;          // seconds to ramp from 0 → full velocity
+const DECEL_DURATION = 3000;         // ms for deceleration to target (was 4500 — snappier)
+const MIN_EXTRA_ROTATIONS = 3;       // minimum full rotations during deceleration (was 4)
 
 /** Quintic ease-out: smooth deceleration, never exceeds 1.0 */
 const easeOutQuint = (t: number): number => 1 - Math.pow(1 - t, 5);
@@ -164,7 +168,6 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   // Countdown timer state
   const [countdown, setCountdown] = useState<{ hours: number; minutes: number; seconds: number } | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const API_BASE_URL = getApiBaseUrl();
 
@@ -223,7 +226,8 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   // Whether spins are exhausted (show timer mode). Use totalAvailable so bonus spins (Free Spin +1) still allow spinning.
   const outOfSpins = spinStatus !== null && spinStatus.totalAvailable === 0 && spinStatus.spinsPerDay !== -1;
   const showingWinResult = Boolean(showResult && lastResult);
-  const showTimerMode = outOfSpins && !showingWinResult;
+  // Never swap to timer while the wheel is spinning/decelerating or showing a result
+  const showTimerMode = outOfSpins && !showingWinResult && !isSpinning;
 
   // ── Countdown timer logic (ticks every second when out of spins) ──
   useEffect(() => {
@@ -256,179 +260,6 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
     countdownRef.current = setInterval(tick, 1000);
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [spinStatus, outOfSpins, fetchSpinStatus]);
-
-  // ── Draw countdown timer on canvas (clock-style) ──
-  const drawTimerWheel = useCallback(() => {
-    const canvas = timerCanvasRef.current;
-    if (!canvas || !countdown) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, size, size);
-    const cx = size / 2;
-    const cy = size / 2;
-    const now = Date.now();
-
-    // Total seconds in 12h and remaining
-    const totalSecs = countdown.hours * 3600 + countdown.minutes * 60 + countdown.seconds;
-    const maxSecs = 12 * 3600;
-    const progress = 1 - totalSecs / maxSecs; // 0 = full time left, 1 = timer done
-
-    // ── LAYER 1: Outer mahogany frame (matches wheel) ──
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, outerR, 0, TAU);
-    ctx.arc(cx, cy, wheelR + 1, 0, TAU, true);
-    const frameGrad = ctx.createRadialGradient(cx, cy, wheelR, cx, cy, outerR);
-    frameGrad.addColorStop(0, '#6B1515');
-    frameGrad.addColorStop(0.3, '#8B2222');
-    frameGrad.addColorStop(0.7, '#7A1A1A');
-    frameGrad.addColorStop(1, '#4A0A0A');
-    ctx.fillStyle = frameGrad;
-    ctx.fill();
-    ctx.restore();
-
-    // Gold trim
-    ctx.beginPath();
-    ctx.arc(cx, cy, outerR, 0, TAU);
-    ctx.strokeStyle = '#DAA520';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, wheelR + 1, 0, TAU);
-    ctx.strokeStyle = '#B8860B';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // ── LAYER 2: Bulbs (pulsing slowly) ──
-    for (let i = 0; i < NUM_BULBS; i++) {
-      const bAngle = (i / NUM_BULBS) * TAU - Math.PI / 2;
-      const bx = cx + Math.cos(bAngle) * bulbRingR;
-      const by = cy + Math.sin(bAngle) * bulbRingR;
-      const pulse = 0.5 + 0.5 * Math.sin(now / 1200 + i * 0.4);
-
-      ctx.beginPath();
-      ctx.arc(bx, by, bulbDotR * 2.2, 0, TAU);
-      const glowG = ctx.createRadialGradient(bx, by, 0, bx, by, bulbDotR * 2.2);
-      glowG.addColorStop(0, `rgba(255,200,50,${0.15 + pulse * 0.2})`);
-      glowG.addColorStop(1, 'rgba(255,165,0,0)');
-      ctx.fillStyle = glowG;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(bx, by, bulbDotR, 0, TAU);
-      const bGrad = ctx.createRadialGradient(bx - bulbDotR * 0.25, by - bulbDotR * 0.25, 0, bx, by, bulbDotR);
-      bGrad.addColorStop(0, `rgba(255,255,230,${0.5 + pulse * 0.35})`);
-      bGrad.addColorStop(0.4, `rgba(255,215,0,${0.5 + pulse * 0.35})`);
-      bGrad.addColorStop(1, `rgba(200,140,0,${0.35 + pulse * 0.2})`);
-      ctx.fillStyle = bGrad;
-      ctx.fill();
-    }
-
-    // ── LAYER 3: Dark clock face ──
-    ctx.beginPath();
-    ctx.arc(cx, cy, wheelR - 1, 0, TAU);
-    const faceGrad = ctx.createRadialGradient(cx, cy - wheelR * 0.2, 0, cx, cy, wheelR);
-    faceGrad.addColorStop(0, '#1A1A2E');
-    faceGrad.addColorStop(0.5, '#0F0F1A');
-    faceGrad.addColorStop(1, '#050510');
-    ctx.fillStyle = faceGrad;
-    ctx.fill();
-
-    // Inner gold rim
-    ctx.beginPath();
-    ctx.arc(cx, cy, wheelR - 1, 0, TAU);
-    ctx.strokeStyle = '#B8860B';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    // ── LAYER 4: Progress arc (golden sweep showing time elapsed) ──
-    const arcR = wheelR * 0.78;
-    const arcWidth = Math.max(8, size * 0.04);
-    const startA = -Math.PI / 2;
-    const endA = startA + progress * TAU;
-
-    // Track (dark ring)
-    ctx.beginPath();
-    ctx.arc(cx, cy, arcR, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,215,0,0.08)';
-    ctx.lineWidth = arcWidth;
-    ctx.stroke();
-
-    // Filled arc
-    if (progress > 0.001) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, arcR, startA, endA);
-      const arcGrad = ctx.createLinearGradient(cx - arcR, cy, cx + arcR, cy);
-      arcGrad.addColorStop(0, '#FFD700');
-      arcGrad.addColorStop(0.5, '#FFA000');
-      arcGrad.addColorStop(1, '#FF6B00');
-      ctx.strokeStyle = arcGrad;
-      ctx.lineWidth = arcWidth;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-
-      // Glow on the arc
-      ctx.beginPath();
-      ctx.arc(cx, cy, arcR, startA, endA);
-      ctx.strokeStyle = 'rgba(255,215,0,0.25)';
-      ctx.lineWidth = arcWidth + 6;
-      ctx.stroke();
-    }
-
-    // ── LAYER 5: 12-hour tick marks ──
-    for (let i = 0; i < 12; i++) {
-      const tickA = (i / 12) * TAU - Math.PI / 2;
-      const tickOuterR = wheelR * 0.90;
-      const tickInnerR = i % 3 === 0 ? wheelR * 0.84 : wheelR * 0.86;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(tickA) * tickInnerR, cy + Math.sin(tickA) * tickInnerR);
-      ctx.lineTo(cx + Math.cos(tickA) * tickOuterR, cy + Math.sin(tickA) * tickOuterR);
-      ctx.strokeStyle = i % 3 === 0 ? 'rgba(255,215,0,0.7)' : 'rgba(255,215,0,0.3)';
-      ctx.lineWidth = i % 3 === 0 ? 2.5 : 1.5;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-    }
-
-    // ── LAYER 6: Countdown text ──
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const timeStr = `${pad(countdown.hours)}:${pad(countdown.minutes)}:${pad(countdown.seconds)}`;
-    const timeFontSize = Math.max(22, Math.round(size / 8));
-
-    // Time digits
-    ctx.fillStyle = '#FFD700';
-    ctx.font = `bold ${timeFontSize}px 'Orbitron', monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(255,215,0,0.6)';
-    ctx.shadowBlur = 15;
-    ctx.fillText(timeStr, cx, cy - size * 0.02);
-    ctx.shadowBlur = 0;
-
-    // "NEXT SPIN IN" label
-    const labelFontSize = Math.max(9, Math.round(size / 28));
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = `600 ${labelFontSize}px 'Orbitron', sans-serif`;
-    ctx.fillText('NEXT SPIN IN', cx, cy - size * 0.17);
-
-    // Hourglass emoji
-    const emojiFontSize = Math.max(16, Math.round(size / 14));
-    ctx.font = `${emojiFontSize}px serif`;
-    ctx.fillText('⏳', cx, cy + size * 0.15);
-
-    // "Earn free spins" hint at bottom
-    const hintFontSize = Math.max(8, Math.round(size / 35));
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = `500 ${hintFontSize}px 'Orbitron', sans-serif`;
-    ctx.fillText('Earn free spins from daily streaks!', cx, cy + size * 0.26);
-  }, [size, countdown, outerR, wheelR, bulbRingR, bulbDotR]);
-
-  // ── Repaint timer canvas every second ──
-  useEffect(() => {
-    if (showTimerMode && countdown && isOpen) {
-      drawTimerWheel();
-    }
-  }, [showTimerMode, countdown, isOpen, drawTimerWheel]);
 
   // ── Sparkle particles (memoized) ──
   const particles = useMemo(() =>
@@ -722,16 +553,16 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
   }, []);
 
   // ── Keep latest callbacks in refs for the animation loop ──
-  const callbacksRef = useRef({ drawWheel, getIndex });
+  const callbacksRef = useRef({ drawWheel, getIndex, fetchSpinStatus });
   useEffect(() => {
-    callbacksRef.current = { drawWheel, getIndex };
+    callbacksRef.current = { drawWheel, getIndex, fetchSpinStatus };
   });
 
   // ── Start the rAF animation loop (stable — reads from refs) ──
   const startAnimLoop = useCallback(() => {
     const loop = () => {
       const anim = animRef.current;
-      const { drawWheel: dw, getIndex: gi } = callbacksRef.current;
+      const { drawWheel: dw, getIndex: gi, fetchSpinStatus: refreshStatus } = callbacksRef.current;
 
       if (anim.phase === 'spinning') {
         // Constant-velocity spin with soft ramp-up
@@ -768,13 +599,18 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
             // Error: just stop, toast was already shown
             setIsSpinning(false);
             dw(angleRef.current, false);
+            // Refresh spin status after error (e.g. out-of-spins) so timer shows correctly
+            refreshStatus();
           } else if (anim.apiResult) {
-            // Success: show result
+            // Success: show result — set isSpinning false BEFORE showResult true
+            // so that showTimerMode stays false while the result card is visible
             const result = anim.apiResult;
             setLastResult(result);
             setIsSpinning(false);
             setShowResult(true);
             dw(angleRef.current, false, result.rewardLabel, result.rewardColor);
+            // Now safe to refresh spin status (result card is visible, prevents timer swap)
+            refreshStatus();
           } else {
             setIsSpinning(false);
             dw(angleRef.current, false);
@@ -841,8 +677,24 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         bonusSpins: data.bonusSpins,
       };
 
-      // Refresh spin status (remaining spins / bonus count)
-      fetchSpinStatus();
+      // Optimistically update local spinStatus so "Spin Again" knows we've used a spin.
+      // This runs while the wheel is still decelerating, but showTimerMode won't flip because
+      // isSpinning is still true (added as a guard in showTimerMode).
+      setSpinStatus(prev => {
+        if (!prev || prev.spinsPerDay === -1) return prev;
+        const newBonusSpins = data.bonusSpins ?? prev.bonusSpins;
+        // If we had 0 normal spins but bonus > 0, this was a bonus spin (normal stays the same)
+        const usedBonus = prev.spinsRemaining === 0 && prev.bonusSpins > 0;
+        const newRemaining = usedBonus ? prev.spinsRemaining : Math.max(0, prev.spinsRemaining - 1);
+        const newTotal = newRemaining + newBonusSpins;
+        return {
+          ...prev,
+          spinsRemaining: newRemaining,
+          bonusSpins: newBonusSpins,
+          totalAvailable: newTotal,
+          windowSpins: (prev.windowSpins ?? 0) + (usedBonus ? 0 : 1),
+        };
+      });
 
       // Switch to deceleration phase
       anim.decelStartTime = Date.now();
@@ -859,23 +711,32 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       anim.phase = 'decelerating';
 
       // Show appropriate error
-      if (error.response?.status === 401) {
+      const status = error.response?.status;
+      const msg = error.response?.data?.message || error.message || '';
+
+      if (status === 401) {
         useAuthStore.getState().logout();
         toast.error('Your session has expired. Please login again.');
-      } else if (error.response?.status === 400) {
-        const msg = error.response.data.message || 'Unable to spin the wheel';
-        if (msg.includes('used all') || msg.includes('spin limit') || msg.includes('Next reset')) {
-          // Refresh spin status — this will trigger the countdown timer UI
-          fetchSpinStatus();
-          toast('⏳ Out of spins! Timer started.', { duration: 3000 });
-        } else {
-          toast.error(msg, { duration: 4000 });
-        }
+      } else if (
+        msg.includes('used all') ||
+        msg.includes('Check back') ||
+        msg.includes('Next reset') ||
+        msg.includes('No bonus spin') ||
+        msg.includes('No eligible segments') ||
+        msg.includes('not eligible')
+      ) {
+        // Out of spins / not eligible — deceleration finishes, then refreshStatus triggers the timer UI silently
+        // No toast needed — the timer canvas itself is the feedback
+      } else if (status === 400) {
+        toast.error(msg || 'Unable to spin the wheel', { duration: 4000 });
+      } else if (status === 429) {
+        toast.error('Too many attempts. Please wait a moment.', { duration: 4000 });
       } else {
-        toast.error('Failed to spin the wheel. Please try again.');
+        // 500 / network / unknown — show the server message if available
+        toast.error(msg || 'Failed to spin the wheel. Please try again.', { duration: 4000 });
       }
     }
-  }, [startAnimLoop, calculateTargetAngle, fetchSpinStatus]);
+  }, [startAnimLoop, calculateTargetAngle]);
 
   // ── Handle canvas click (block double-tap / double-click from sending two spin requests) ──
   const handleSpinClick = useCallback(
@@ -893,35 +754,41 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         return;
       }
 
+      // If we already know the user is out of spins, just refresh status and let the timer show — no spin attempt
+      if (spinStatus && spinStatus.totalAvailable === 0 && spinStatus.spinsPerDay !== -1) {
+        fetchSpinStatus();
+        return;
+      }
+
       spinRequestInFlightRef.current = true;
       doSpin().finally(() => {
         spinRequestInFlightRef.current = false;
       });
     },
-    [isAuthenticated, checkSession, logout, doSpin]
+    [isAuthenticated, checkSession, logout, doSpin, spinStatus, fetchSpinStatus]
   );
 
-  // ── Initial draw when modal opens (waits for font to be ready) ──
+  // ── Draw/redraw wheel whenever modal is open and wheel is idle ──
+  // Triggers on: modal open, size change, timer mode change, spinStatus change, result shown
   useEffect(() => {
     if (!isOpen) return;
     if (animRef.current.phase !== 'idle') return;
 
-    const draw = () => drawWheel(angleRef.current, false);
+    const draw = () => {
+      if (showResult && lastResult) {
+        drawWheel(angleRef.current, false, lastResult.rewardLabel, lastResult.rewardColor);
+      } else {
+        drawWheel(angleRef.current, false);
+      }
+    };
 
+    // Wait for fonts on first paint, then draw immediately on subsequent triggers
     if (document.fonts?.ready) {
       document.fonts.ready.then(draw);
     } else {
       draw();
     }
-  }, [isOpen, drawWheel, size]);
-
-  // ── Redraw when result shown (wheel is idle) ──
-  useEffect(() => {
-    if (!isOpen || animRef.current.phase !== 'idle') return;
-    if (showResult && lastResult) {
-      drawWheel(angleRef.current, false, lastResult.rewardLabel, lastResult.rewardColor);
-    }
-  }, [isOpen, showResult, lastResult, drawWheel]);
+  }, [isOpen, drawWheel, size, showTimerMode, spinStatus, showResult, lastResult]);
 
   // ── Cleanup animation on unmount ──
   useEffect(() => {
@@ -1116,33 +983,65 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                 </svg>
               </div>
 
-              {/* Canvas: wheel or countdown timer (keep wheel visible while showing win result) */}
-              {showTimerMode && countdown ? (
-                <canvas
-                  ref={timerCanvasRef}
-                  width={size}
-                  height={size}
-                  className="relative z-[1] touch-manipulation"
-                  style={{
-                    background: 'transparent',
-                    filter: 'drop-shadow(0 0 15px rgba(255,170,0,0.2))',
-                    transition: 'filter 0.6s ease',
-                  }}
-                />
-              ) : (
-                <canvas
-                  ref={canvasRef}
-                  width={size}
-                  height={size}
-                  className="relative z-[1] cursor-pointer touch-manipulation"
-                  style={{
-                    filter: isSpinning
-                      ? 'drop-shadow(0 0 25px rgba(255,170,0,0.5)) drop-shadow(0 0 50px rgba(180,20,0,0.35))'
+              {/* Wheel canvas — always visible */}
+              <canvas
+                ref={canvasRef}
+                width={size}
+                height={size}
+                className="relative z-[1] cursor-pointer touch-manipulation"
+                style={{
+                  filter: isSpinning
+                    ? 'drop-shadow(0 0 25px rgba(255,170,0,0.5)) drop-shadow(0 0 50px rgba(180,20,0,0.35))'
+                    : showTimerMode
+                      ? 'drop-shadow(0 0 12px rgba(255,170,0,0.15)) brightness(0.55)'
                       : 'drop-shadow(0 0 12px rgba(255,170,0,0.25))',
-                    transition: 'filter 0.6s ease',
-                  }}
-                  onClick={handleSpinClick}
-                />
+                  transition: 'filter 0.6s ease',
+                }}
+                onClick={handleSpinClick}
+              />
+
+              {/* Timer overlay — shown on top of the dimmed wheel when out of spins */}
+              {showTimerMode && countdown && (
+                <div
+                  className="absolute inset-0 z-[2] flex flex-col items-center justify-center pointer-events-none"
+                  style={{ animation: 'resultAppear 0.4s ease-out' }}
+                >
+                  <p
+                    className="font-semibold tracking-widest uppercase"
+                    style={{
+                      fontSize: Math.max(9, Math.round(size / 28)),
+                      color: 'rgba(255,255,255,0.7)',
+                      fontFamily: "'Orbitron', sans-serif",
+                      textShadow: '0 0 10px rgba(0,0,0,0.8)',
+                      marginBottom: size * 0.02,
+                    }}
+                  >
+                    NEXT SPIN IN
+                  </p>
+                  <p
+                    className="font-bold"
+                    style={{
+                      fontSize: Math.max(24, Math.round(size / 7)),
+                      color: '#FFD700',
+                      fontFamily: "'Orbitron', monospace",
+                      textShadow: '0 0 20px rgba(255,215,0,0.6), 0 2px 8px rgba(0,0,0,0.8)',
+                    }}
+                  >
+                    {countdown.hours.toString().padStart(2, '0')}:{countdown.minutes.toString().padStart(2, '0')}:{countdown.seconds.toString().padStart(2, '0')}
+                  </p>
+                  <p
+                    className="font-medium"
+                    style={{
+                      fontSize: Math.max(8, Math.round(size / 35)),
+                      color: 'rgba(255,255,255,0.4)',
+                      fontFamily: "'Orbitron', sans-serif",
+                      textShadow: '0 0 6px rgba(0,0,0,0.6)',
+                      marginTop: size * 0.04,
+                    }}
+                  >
+                    Your spins will reset soon!
+                  </p>
+                </div>
               )}
 
               {/* Login Modal */}
@@ -1245,11 +1144,28 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                     >
                       Close
                     </button>
+                    {/* Spin Again — if out of spins, just dismiss result to show timer; otherwise spin */}
                     <button
                       onClick={() => {
+                        // If out of spins, just close the result card — the timer will show automatically
+                        const noSpins = spinStatus && spinStatus.totalAvailable === 0 && spinStatus.spinsPerDay !== -1;
+                        if (noSpins) {
+                          stopAndReset();
+                          fetchSpinStatus(); // ensure timer data is fresh
+                          return;
+                        }
                         stopAndReset();
-                        // Small delay to let React flush state, then spin again
-                        setTimeout(() => doSpin(), 50);
+                        // Small delay to let React flush state, then spin again through guards
+                        setTimeout(() => {
+                          if (spinRequestInFlightRef.current || animRef.current.phase !== 'idle') return;
+                          if (!checkSession()) {
+                            logout();
+                            toast.error('Your session has expired. Please login again.');
+                            return;
+                          }
+                          spinRequestInFlightRef.current = true;
+                          doSpin().finally(() => { spinRequestInFlightRef.current = false; });
+                        }, 60);
                       }}
                       className="min-h-[40px] sm:min-h-[44px] px-3 py-2 sm:px-5 sm:py-2.5 font-bold text-sm sm:text-base rounded-full border-2 border-[#FFD700] hover:scale-105 active:scale-95 transition-transform touch-manipulation"
                       style={{
@@ -1258,7 +1174,9 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
                         boxShadow: '0 0 15px rgba(255,215,0,0.3)',
                       }}
                     >
-                      Spin Again
+                      {spinStatus && spinStatus.totalAvailable === 0 && spinStatus.spinsPerDay !== -1
+                        ? 'View Timer'
+                        : 'Spin Again'}
                     </button>
                   </div>
                 </div>

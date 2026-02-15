@@ -20,6 +20,7 @@ const REWARD_TYPES: Record<string, { label: string; value: string | null; color:
   better_luck: { label: 'Better Luck Next Time', value: null, color: '#6B7280' },
   try_again: { label: 'Free Spin +1', value: null, color: '#F59E0B' },
   bonus_1: { label: '$1 Bonus', value: '$1', color: '#10B981' },
+  bonus_2: { label: '$2 Bonus', value: '$2', color: '#10B981' },
   bonus_5: { label: '$5 Bonus', value: '$5', color: '#3B82F6' },
   bonus_10: { label: '$10 Bonus', value: '$10', color: '#8B5CF6' },
   bonus_50_percent: { label: '50% Bonus', value: '50%', color: '#EC4899' }
@@ -161,11 +162,12 @@ router.get('/slices', async (req: Request, res: Response) => {
         else if (slice.type === 'cash') {
           const dollarAmount = slice.prizeValue?.replace('$', '').trim();
           if (dollarAmount === '1' || dollarAmount === '1.00') { rewardType = 'bonus_1'; color = '#10B981'; }
+          else if (dollarAmount === '2' || dollarAmount === '2.00') { rewardType = 'bonus_2'; color = '#10B981'; }
           else if (dollarAmount === '5' || dollarAmount === '5.00') { rewardType = 'bonus_5'; color = '#3B82F6'; }
           else if (dollarAmount === '10' || dollarAmount === '10.00') { rewardType = 'bonus_10'; color = '#8B5CF6'; }
-          else { rewardType = 'bonus_1'; color = '#10B981'; }
+          else { rewardType = 'bonus_2'; color = '#10B981'; }
         } else if (slice.type === 'discount') { rewardType = 'bonus_50_percent'; color = '#EC4899'; }
-        else { rewardType = 'bonus_1'; color = '#8B5CF6'; }
+        else { rewardType = 'bonus_2'; color = '#10B981'; }
 
         return { type: rewardType, label: slice.label, value: slice.prizeValue, color: slice.color || color };
       });
@@ -230,8 +232,15 @@ router.post('/spin', authenticate, wheelSpinLimiter, async (req: Request, res: R
     } catch (campaignError: any) {
       const msg = campaignError.message || '';
 
-      // User hit their spin limit — pass the specific message from the service
-      if (msg.includes('already used') || msg.includes('not eligible') || msg.includes('spins for today')) {
+      // User hit their spin limit, not eligible, or no bonus spin — pass the specific message
+      if (
+        msg.includes('used all') ||
+        msg.includes('not eligible') ||
+        msg.includes('Check back') ||
+        msg.includes('No bonus spin') ||
+        msg.includes('Next reset') ||
+        msg.includes('No eligible segments')
+      ) {
         return res.status(400).json({
           success: false,
           message: msg
@@ -329,7 +338,8 @@ router.get('/spin-status', authenticate, async (req: Request, res: Response) => 
       nextReset: nextResetTime,
     });
 
-    const totalAvailable = spinsRemaining + bonusSpins;
+    // -1 means unlimited; don't add bonusSpins to -1
+    const totalAvailable = spinsRemaining === -1 ? -1 : spinsRemaining + bonusSpins;
 
     return res.json({
       success: true,
@@ -361,7 +371,8 @@ router.get('/spins', authenticate, async (req: Request, res: Response) => {
       .lean();
 
     const spinsWithDetails = spins.map((spin: any) => {
-      const rewardInfo = REWARD_TYPES[spin.rewardType as keyof typeof REWARD_TYPES];
+      const rewardInfo = REWARD_TYPES[spin.rewardType as keyof typeof REWARD_TYPES]
+        ?? { label: spin.rewardType || 'Unknown', value: null, color: '#6B7280' };
       return {
         id: spin._id.toString(),
         rewardType: spin.rewardType,

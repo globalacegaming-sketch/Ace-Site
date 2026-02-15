@@ -291,9 +291,9 @@ router.put('/budget', async (req: Request, res: Response) => {
     let budget = await WheelBudget.findOne({ campaignId: campaign._id });
     const budgetData = req.body;
     
-    // Calculate budget remaining if total budget changed
+    // Calculate budget remaining if total budget changed (clamp to 0 if already overspent)
     if (budgetData.totalBudget && budget) {
-      budgetData.budgetRemaining = budgetData.totalBudget - budget.budgetSpent;
+      budgetData.budgetRemaining = Math.max(0, budgetData.totalBudget - budget.budgetSpent);
     } else if (budgetData.totalBudget && !budget) {
       budgetData.budgetRemaining = budgetData.totalBudget;
       budgetData.budgetSpent = 0;
@@ -401,18 +401,22 @@ router.get('/results', async (req: Request, res: Response) => {
       .sort({ createdAt: -1 })
       .limit(1000);
 
-    const results = spins.map((spin: any) => ({
-      id: spin._id.toString(),
-      userId: spin.userId._id.toString(),
-      username: spin.userId.username,
-      email: spin.userId.email,
-      // Use rewardType → label lookup (always correct), fall back to rewardValue
-      prize: REWARD_TYPE_LABELS[spin.rewardType] || spin.rewardValue || spin.rewardType || 'Unknown',
-      cost: spin.cost,
-      timestamp: spin.createdAt,
-      redeemed: spin.redeemed,
-      redeemedAt: spin.redeemedAt
-    }));
+    const results = spins.map((spin: any) => {
+      // Guard against deleted users (populate returns null)
+      const user = spin.userId;
+      return {
+        id: spin._id.toString(),
+        userId: user?._id?.toString() ?? 'deleted',
+        username: user?.username ?? 'Deleted User',
+        email: user?.email ?? '—',
+        // Use rewardType → label lookup (always correct), fall back to rewardValue
+        prize: REWARD_TYPE_LABELS[spin.rewardType] || spin.rewardValue || spin.rewardType || 'Unknown',
+        cost: spin.cost,
+        timestamp: spin.createdAt,
+        redeemed: spin.redeemed,
+        redeemedAt: spin.redeemedAt
+      };
+    });
 
     return res.json({
       success: true,
@@ -458,7 +462,54 @@ router.put('/results/:spinId/redeem', async (req: Request, res: Response) => {
   }
 });
 
-// Get statistics
+// Reset budget — zeroes spent/spins tracking, restores budgetRemaining to totalBudget
+router.post('/budget/reset', async (req: Request, res: Response) => {
+  try {
+    const campaign = await WheelCampaign.findOne();
+    if (!campaign) {
+      return res.status(400).json({ success: false, message: 'Campaign not found' });
+    }
+    const budget = await WheelBudget.findOne({ campaignId: campaign._id });
+    if (!budget) {
+      return res.status(400).json({ success: false, message: 'Budget not found' });
+    }
+
+    // Snapshot current values for audit log
+    const before = {
+      budgetSpent: budget.budgetSpent,
+      budgetRemaining: budget.budgetRemaining,
+      totalSpins: budget.totalSpins,
+      averagePayoutPerSpin: budget.averagePayoutPerSpin,
+    };
+
+    // Reset tracking counters
+    budget.budgetSpent = 0;
+    budget.budgetRemaining = budget.totalBudget;
+    budget.totalSpins = 0;
+    budget.averagePayoutPerSpin = 0;
+    await budget.save();
+
+    // Also reset all slice currentWins to 0 so maxWins caps work fresh
+    await WheelSlice.updateMany(
+      { campaignId: campaign._id },
+      { $set: { currentWins: 0 } }
+    );
+
+    const who = (req as any).agentSession?.username || (req as any).adminSession?.username || 'unknown';
+    logger.info('💰 Budget reset by admin/agent', { who, before, after: { budgetSpent: 0, budgetRemaining: budget.totalBudget } });
+
+    return res.json({
+      success: true,
+      message: 'Budget and slice win counters have been reset',
+      data: budget
+    });
+  } catch (error: any) {
+    logger.error('Error resetting budget:', error);
+    return res.status(500).json({ success: false, message: 'Failed to reset budget', error: error.message });
+  }
+});
+
+// Get statistics (includes win breakdown by reward type)
 router.get('/stats', async (req: Request, res: Response) => {
   try {
     const campaign = await WheelCampaign.findOne();
@@ -470,16 +521,33 @@ router.get('/stats', async (req: Request, res: Response) => {
           uniqueUsers: 0,
           budgetSpent: 0,
           budgetRemaining: 0,
-          averagePayout: 0
+          totalBudget: 0,
+          averagePayout: 0,
+          winBreakdown: {}
         }
       });
     }
 
-    const [budget, totalSpins, uniqueUsers] = await Promise.all([
+    const [budget, totalSpins, uniqueUsers, breakdownAgg] = await Promise.all([
       WheelBudget.findOne({ campaignId: campaign._id }),
       WheelSpin.countDocuments({ campaignId: campaign._id }),
-      WheelSpin.distinct('userId', { campaignId: campaign._id })
+      WheelSpin.distinct('userId', { campaignId: campaign._id }),
+      // Aggregate win counts by rewardType
+      WheelSpin.aggregate([
+        { $match: { campaignId: campaign._id } },
+        { $group: { _id: '$rewardType', count: { $sum: 1 }, totalCost: { $sum: '$cost' } } }
+      ])
     ]);
+
+    // Build a friendly breakdown object: { bonus_1: { count, totalCost, label }, ... }
+    const winBreakdown: Record<string, { count: number; totalCost: number; label: string }> = {};
+    for (const row of breakdownAgg) {
+      winBreakdown[row._id] = {
+        count: row.count,
+        totalCost: row.totalCost,
+        label: REWARD_TYPE_LABELS[row._id] || row._id
+      };
+    }
 
     return res.json({
       success: true,
@@ -489,7 +557,8 @@ router.get('/stats', async (req: Request, res: Response) => {
         budgetSpent: budget?.budgetSpent || 0,
         budgetRemaining: budget?.budgetRemaining || 0,
         totalBudget: budget?.totalBudget || 0,
-        averagePayout: budget?.averagePayoutPerSpin || 0
+        averagePayout: budget?.averagePayoutPerSpin || 0,
+        winBreakdown
       }
     });
   } catch (error: any) {

@@ -15,13 +15,18 @@ async function withUserSpinLock<T>(userId: Types.ObjectId, fn: () => Promise<T>)
   const key = userId.toString();
   const prev = userSpinLocks.get(key) ?? Promise.resolve();
   let resolveLock: () => void;
-  const next = new Promise<void>((r) => { resolveLock = r; });
-  userSpinLocks.set(key, prev.then(() => next));
+  const lock = new Promise<void>((r) => { resolveLock = r; });
+  const chain = prev.then(() => lock);
+  userSpinLocks.set(key, chain);
   await prev;
   try {
     return await fn();
   } finally {
     resolveLock!();
+    // Clean up: if our chain is still the latest for this key, remove it to prevent memory leak
+    if (userSpinLocks.get(key) === chain) {
+      userSpinLocks.delete(key);
+    }
   }
 }
 
@@ -101,170 +106,10 @@ class WheelSpinService {
   }
 
   /**
-   * Filter eligible slices based on budget, max wins, and fairness rules
-   */
-  async filterEligibleSlices(
-    slices: any[],
-    budget: any,
-    userId: Types.ObjectId,
-    campaignId: Types.ObjectId,
-    fairnessRules: any
-  ): Promise<any[]> {
-    const eligibleSlices = [];
-
-    const budgetExhausted = budget.budgetRemaining <= 0;
-    
-    let budgetConstraintActive = false;
-    if (budget.mode === 'auto' && budget.targetSpins) {
-      const averageSpendPerSpin = budget.totalBudget / budget.targetSpins;
-      if (budget.budgetSpent >= averageSpendPerSpin * budget.targetSpins || 
-          budget.budgetSpent + averageSpendPerSpin > budget.totalBudget) {
-        budgetConstraintActive = true;
-      }
-    }
-
-    for (const slice of slices) {
-      if (!slice.enabled) continue;
-
-      if (budgetExhausted || budgetConstraintActive) {
-        if (slice.costToBusiness > 0) continue;
-      } else {
-        if (slice.costToBusiness > budget.budgetRemaining) continue;
-      }
-
-      if (slice.maxWins !== undefined && slice.maxWins !== null) {
-        if (slice.currentWins >= slice.maxWins) continue;
-      }
-
-      // Free spin: max 1 per user per 24h
-      if (slice.type === 'free_spin') {
-        const twentyFourHoursAgo = new Date();
-        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-        
-        const freeSpinSlices = await WheelSlice.find({
-          campaignId,
-          type: 'free_spin',
-          enabled: true
-        }).select('_id').lean();
-        
-        const freeSpinSliceIds = freeSpinSlices.map(s => s._id);
-        
-        const userFreeSpinCount24h = await WheelSpin.countDocuments({
-          userId,
-          campaignId,
-          sliceId: { $in: freeSpinSliceIds },
-          createdAt: { $gte: twentyFourHoursAgo }
-        });
-        
-        if (userFreeSpinCount24h >= 1) continue;
-      }
-
-      eligibleSlices.push(slice);
-    }
-
-    return eligibleSlices;
-  }
-
-  /**
-   * Apply budget engine logic to select slice
-   */
-  async selectSliceWithBudgetEngine(
-    eligibleSlices: any[],
-    budget: any,
-    totalSpins: number
-  ): Promise<any> {
-    if (eligibleSlices.length === 0) {
-      throw new Error('No eligible slices available');
-    }
-
-    if (eligibleSlices.length === 1) {
-      return eligibleSlices[0];
-    }
-
-    // Mode A: Auto - pace prizes across target spins
-    if (budget.mode === 'auto' && budget.targetSpins) {
-      const averageSpendPerSpin = budget.totalBudget / budget.targetSpins;
-      const expectedSpent = totalSpins * averageSpendPerSpin;
-      
-      if (totalSpins >= budget.targetSpins || budget.budgetSpent >= budget.totalBudget) {
-        const freeSlices = eligibleSlices.filter(s => s.costToBusiness === 0);
-        if (freeSlices.length > 0) {
-          return freeSlices[Math.floor(Math.random() * freeSlices.length)];
-        }
-      }
-
-      if (budget.budgetSpent < expectedSpent) {
-        const expensiveSlices = eligibleSlices.filter(s => s.costToBusiness > averageSpendPerSpin);
-        if (expensiveSlices.length > 0 && Math.random() < 0.3) {
-          return expensiveSlices[Math.floor(Math.random() * expensiveSlices.length)];
-        }
-      }
-
-      const cheapSlices = [...eligibleSlices]
-        .sort((a, b) => a.costToBusiness - b.costToBusiness)
-        .filter(s => s.costToBusiness <= averageSpendPerSpin);
-      if (cheapSlices.length > 0) {
-        return cheapSlices[Math.floor(Math.random() * cheapSlices.length)];
-      }
-    }
-
-    // Mode B: Target Expense Rate
-    if (budget.mode === 'target_expense') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (budget.targetExpensePerDay) {
-        const todaySpent = await WheelSpin.aggregate([
-          { $match: { campaignId: budget.campaignId, createdAt: { $gte: today } } },
-          { $group: { _id: null, total: { $sum: '$cost' } } }
-        ]);
-
-        const spentToday = todaySpent[0]?.total || 0;
-        if (spentToday >= budget.targetExpensePerDay) {
-          const freeSlices = eligibleSlices.filter(s => s.costToBusiness === 0);
-          if (freeSlices.length > 0) {
-            return freeSlices[Math.floor(Math.random() * freeSlices.length)];
-          }
-        }
-      }
-
-      if (budget.targetExpensePerSpins && budget.targetExpenseSpinsInterval) {
-        const recentSpins = await WheelSpin.find({ campaignId: budget.campaignId })
-          .sort({ createdAt: -1 })
-          .limit(budget.targetExpenseSpinsInterval)
-          .lean();
-
-        if (recentSpins.length >= budget.targetExpenseSpinsInterval) {
-          const recentSpent = recentSpins.reduce((sum, spin) => sum + (spin.cost || 0), 0);
-          if (recentSpent >= budget.targetExpensePerSpins) {
-            const freeSlices = eligibleSlices.filter(s => s.costToBusiness === 0);
-            if (freeSlices.length > 0) {
-              return freeSlices[Math.floor(Math.random() * freeSlices.length)];
-            }
-          }
-        }
-      }
-    }
-
-    // Default: Weighted random selection (favour cheaper prizes)
-    const sortedSlices = [...eligibleSlices].sort((a, b) => a.costToBusiness - b.costToBusiness);
-    const weights = sortedSlices.map((_, i) => sortedSlices.length - i);
-    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-    let random = Math.random() * totalWeight;
-    
-    for (let i = 0; i < sortedSlices.length; i++) {
-      random -= weights[i];
-      if (random <= 0) return sortedSlices[i];
-    }
-
-    return sortedSlices[0];
-  }
-
-  /**
    * Get reward color by type (uses shared config)
    */
   getRewardColor(rewardType: string): string {
-    return REWARD_COLORS[rewardType] || REWARD_COLORS.bonus_1;
+    return REWARD_COLORS[rewardType] || REWARD_COLORS.bonus_2;
   }
 
   /**
@@ -291,14 +136,16 @@ class WheelSpinService {
 
     if (slice.type === 'cash') {
       const dollarAmount = slice.prizeValue?.replace('$', '').trim();
-      let rewardType = 'bonus_1';
+      let rewardType = 'bonus_2';
       
       if (dollarAmount === '1' || dollarAmount === '1.00') rewardType = 'bonus_1';
+      else if (dollarAmount === '2' || dollarAmount === '2.00') rewardType = 'bonus_2';
       else if (dollarAmount === '5' || dollarAmount === '5.00') rewardType = 'bonus_5';
       else if (dollarAmount === '10' || dollarAmount === '10.00') rewardType = 'bonus_10';
       else {
-        const amount = parseFloat(dollarAmount || '1');
+        const amount = parseFloat(dollarAmount || '2');
         if (amount <= 1) rewardType = 'bonus_1';
+        else if (amount <= 2) rewardType = 'bonus_2';
         else if (amount <= 5) rewardType = 'bonus_5';
         else rewardType = 'bonus_10';
       }
@@ -307,7 +154,7 @@ class WheelSpinService {
         rewardType,
         rewardLabel: slice.label,
         rewardValue: slice.prizeValue,
-        rewardColor: REWARD_COLORS[rewardType] || REWARD_COLORS.bonus_1
+        rewardColor: REWARD_COLORS[rewardType] || REWARD_COLORS.bonus_2
       };
     }
 
@@ -321,10 +168,10 @@ class WheelSpinService {
     }
 
     return {
-      rewardType: 'bonus_1',
+      rewardType: 'bonus_2',
       rewardLabel: slice.label,
       rewardValue: slice.prizeValue,
-      rewardColor: REWARD_COLORS.bonus_1
+      rewardColor: REWARD_COLORS.bonus_2
     };
   }
 
@@ -379,18 +226,46 @@ class WheelSpinService {
       }
     }
 
-    // Step 4: Use shared WHEEL_SEGMENTS for selection (single source of truth)
+    // ── Step 4: Budget-paced segment selection ──────────────────────────────
+    // Computes a "paceRatio" = actual spend rate / ideal spend rate.
+    //   paceRatio < 1  → under-budget   → allow more expensive wins
+    //   paceRatio ~ 1  → on track       → balanced distribution
+    //   paceRatio > 1  → over-budget    → suppress expensive wins
+    //   paceRatio >= 2 → hard stop      → zero-cost only
+    // Segments that exceed budgetRemaining are always excluded.
+    // ───────────────────────────────────────────────────────────────────────
+
     const budgetExhausted = budget.budgetRemaining <= 0;
+
+    // Ideal spend per spin (only meaningful in auto mode with targetSpins)
+    const idealSpendPerSpin = (budget.mode === 'auto' && budget.targetSpins > 0)
+      ? budget.totalBudget / budget.targetSpins
+      : 0;
+
+    // How far ahead/behind schedule are we?  0 = underspending, 1 = on pace, 2 = 2x overspend
+    let paceRatio = 0;
+    if (budget.mode === 'auto' && idealSpendPerSpin > 0 && budget.totalSpins > 0) {
+      // Auto mode: compare actual spend vs expected spend for this many spins
+      const expectedSpent = budget.totalSpins * idealSpendPerSpin;
+      paceRatio = expectedSpent > 0 ? budget.budgetSpent / expectedSpent : 0;
+    } else if (budget.totalBudget > 0 && budget.totalSpins > 0) {
+      // Non-auto modes: use overall budget utilization as a pacing signal
+      paceRatio = budget.budgetSpent / budget.totalBudget;
+    }
+    // Note: paceRatio = 0 on first spin (no data yet) → dampening = 0 → fair random start
+
+    // Hard budget constraint (no money left or past target-spin count AND near total budget)
     let budgetConstraintActive = false;
-    if (budget.mode === 'auto' && budget.targetSpins) {
-      const averageSpendPerSpin = budget.totalBudget / budget.targetSpins;
+    if (budget.mode === 'auto' && budget.targetSpins > 0) {
       const budgetThreshold = budget.totalBudget * 0.95;
-      if ((budget.totalSpins >= budget.targetSpins && budget.budgetSpent >= budgetThreshold) || 
-          (budget.budgetSpent + averageSpendPerSpin) > budget.totalBudget) {
+      if (
+        (budget.totalSpins >= budget.targetSpins && budget.budgetSpent >= budgetThreshold) ||
+        budget.budgetSpent + idealSpendPerSpin > budget.totalBudget
+      ) {
         budgetConstraintActive = true;
       }
     }
-    
+
     logger.info('🎰 Wheel spin budget check:', {
       budgetRemaining: budget.budgetRemaining,
       budgetSpent: budget.budgetSpent,
@@ -398,56 +273,99 @@ class WheelSpinService {
       totalSpins: budget.totalSpins,
       targetSpins: budget.targetSpins,
       mode: budget.mode,
+      paceRatio: paceRatio.toFixed(3),
       budgetExhausted,
       budgetConstraintActive,
       budgetPercentage: ((budget.budgetSpent / budget.totalBudget) * 100).toFixed(2) + '%'
     });
-    
-    // Step 5: Determine eligible segment indices
+
+    // ── Step 5: Filter eligible segments ──
     let eligibleSegmentIndices: number[];
-    
+
     if (budgetExhausted || budgetConstraintActive) {
+      // Only zero-cost segments
       eligibleSegmentIndices = WHEEL_SEGMENTS
         .map((seg, idx) => seg.cost === 0 ? idx : -1)
         .filter(idx => idx >= 0);
-      logger.warn('⚠️ Budget exhausted - only allowing zero-cost segments:', eligibleSegmentIndices);
+      logger.warn('⚠️ Budget exhausted/constraint — only zero-cost segments:', eligibleSegmentIndices);
     } else {
+      // All segments that fit remaining budget
       eligibleSegmentIndices = WHEEL_SEGMENTS
         .map((seg, idx) => seg.cost <= budget.budgetRemaining ? idx : -1)
         .filter(idx => idx >= 0);
-      
+
       if (eligibleSegmentIndices.length === 0) {
         eligibleSegmentIndices = WHEEL_SEGMENTS
           .map((seg, idx) => seg.cost === 0 ? idx : -1)
           .filter(idx => idx >= 0);
-        logger.warn('⚠️ No segments fit budget - falling back to zero-cost segments');
+        logger.warn('⚠️ No segments fit budget — falling back to zero-cost');
       }
-      logger.info('✅ Budget available - eligible segment indices:', eligibleSegmentIndices);
     }
-    
-    // When using a free spin, exclude Free Spin +1 so the outcome cannot be another free spin
-    if (consumingBonusSpin) {
+
+    // When using a free spin, exclude Free Spin +1 so the outcome cannot chain into another
+    // (only when the fairness rule is enabled — admin can toggle this off)
+    if (consumingBonusSpin && fairnessRules.freeSpinCannotTriggerFreeSpin !== false) {
       eligibleSegmentIndices = eligibleSegmentIndices.filter(
         (idx) => WHEEL_SEGMENTS[idx].type !== 'try_again'
       );
-      logger.info('🎁 Free spin used — try_again excluded from outcome', { eligibleSegmentIndices });
+      logger.info('🎁 Free spin used — try_again excluded', { eligibleSegmentIndices });
+    }
+
+    // Per-user expensive-win cap: limit $5+ wins to 2 per 24h and $10+ wins to 1 per 24h
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentUserWins = await WheelSpin.find({
+      userId,
+      campaignId: campaign._id,
+      createdAt: { $gte: twentyFourHoursAgo },
+      cost: { $gt: 0 }
+    }).select('rewardType cost').lean();
+
+    const user5PlusCount = recentUserWins.filter(w => (w as any).cost >= 5).length;
+    const user10PlusCount = recentUserWins.filter(w => (w as any).cost >= 10).length;
+
+    if (user10PlusCount >= 1) {
+      // Already won a $10+ prize in last 24h — exclude $10+ segments
+      eligibleSegmentIndices = eligibleSegmentIndices.filter(
+        (idx) => WHEEL_SEGMENTS[idx].cost < 10
+      );
+      logger.info('🛡️ User hit $10 win cap (1/24h) — excluding $10+ segments');
+    }
+    if (user5PlusCount >= 2) {
+      // Already won two $5+ prizes in last 24h — exclude $5+ segments
+      eligibleSegmentIndices = eligibleSegmentIndices.filter(
+        (idx) => WHEEL_SEGMENTS[idx].cost < 5
+      );
+      logger.info('🛡️ User hit $5+ win cap (2/24h) — excluding $5+ segments');
     }
 
     if (eligibleSegmentIndices.length === 0) {
       throw new Error('No eligible segments available');
     }
-    
-    // Step 6: Weighted random selection (favour cheaper prizes)
+
+    // ── Step 6: Budget-paced weighted selection ──
+    // Weight formula:  w(seg) = baseWeight * e^(-cost * dampening)
+    // dampening increases with paceRatio (the more overspent, the stronger we suppress expensive prizes)
     const eligibleSegments = eligibleSegmentIndices.map(idx => ({
       index: idx,
       segment: WHEEL_SEGMENTS[idx]
     }));
-    eligibleSegments.sort((a, b) => a.segment.cost - b.segment.cost);
-    
-    const weights = eligibleSegments.map((_, i) => eligibleSegments.length - i);
+
+    // Dampening factor: 0 when underspending, ramps up past paceRatio 1.0
+    const dampening = Math.max(0, (paceRatio - 0.7) * 0.6);
+
+    const weights = eligibleSegments.map(({ segment }) => {
+      // Base weight: every segment starts equal at 1.0
+      let w = 1.0;
+      // Apply exponential cost dampening — expensive segments get much lower weight when overspending
+      w *= Math.exp(-segment.cost * dampening);
+      // Zero-cost segments get a small boost so "Better Luck" / "Free Spin" always have reasonable chance
+      if (segment.cost === 0) w = Math.max(w, 0.3);
+      return w;
+    });
+
     const totalWeight = weights.reduce((sum, w) => sum + w, 0);
     let random = Math.random() * totalWeight;
-    
+
     let selectedSegmentIndex = eligibleSegments[0].index;
     for (let i = 0; i < eligibleSegments.length; i++) {
       random -= weights[i];
@@ -456,6 +374,12 @@ class WheelSpinService {
         break;
       }
     }
+
+    logger.info('🎯 Budget-paced selection:', {
+      paceRatio: paceRatio.toFixed(3),
+      dampening: dampening.toFixed(3),
+      segmentWeights: eligibleSegments.map((e, i) => `${e.segment.label}:${weights[i].toFixed(3)}`),
+    });
     
     const selectedSegment = WHEEL_SEGMENTS[selectedSegmentIndex];
     const actualCost = selectedSegment.cost;
@@ -494,6 +418,11 @@ class WheelSpinService {
     };
 
     let spin: any;
+    // Compute bonus spin delta: -1 if consuming, +1 if winning Free Spin +1, 0 otherwise
+    let bonusSpinDelta = 0;
+    if (consumingBonusSpin) bonusSpinDelta -= 1;
+    if (rewardInfo.rewardType === 'try_again') bonusSpinDelta += 1;
+
     try {
       const session = await mongoose.startSession();
       try {
@@ -531,6 +460,11 @@ class WheelSpinService {
 
           selectedSlice.currentWins += 1;
           await selectedSlice.save({ session });
+
+          // Adjust bonus spins inside the transaction so it's atomic with the spin creation
+          if (bonusSpinDelta !== 0) {
+            await User.findByIdAndUpdate(userId, { $inc: { bonusSpins: bonusSpinDelta } }, { session });
+          }
         });
       } finally {
         await session.endSession();
@@ -563,19 +497,19 @@ class WheelSpinService {
         await budget.save();
         selectedSlice.currentWins += 1;
         await selectedSlice.save();
+        // Adjust bonus spins (non-atomic fallback)
+        if (bonusSpinDelta !== 0) {
+          await User.findByIdAndUpdate(userId, { $inc: { bonusSpins: bonusSpinDelta } });
+        }
       } else {
         throw txErr;
       }
     }
 
-    // Consume one bonus spin if this spin used one
-    if (consumingBonusSpin) {
-      await User.findByIdAndUpdate(userId, { $inc: { bonusSpins: -1 } });
+    if (bonusSpinDelta < 0) {
       logger.info('🎁 Consumed 1 bonus spin', { userId: userId.toString() });
     }
-    // Grant one bonus spin when outcome is Free Spin +1 (so they get one extra spin that cannot land on Free Spin +1 again)
     if (rewardInfo.rewardType === 'try_again') {
-      await User.findByIdAndUpdate(userId, { $inc: { bonusSpins: 1 } });
       logger.info('🎁 Granted 1 bonus spin (Free Spin +1)', { userId: userId.toString() });
     }
 

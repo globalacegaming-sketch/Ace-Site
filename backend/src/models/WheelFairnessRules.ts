@@ -37,7 +37,7 @@ const WheelFairnessRulesSchema = new Schema<IWheelFairnessRules>(
   }
 );
 
-WheelFairnessRulesSchema.index({ campaignId: 1 });
+// campaignId index already created by unique: true on field
 WheelFairnessRulesSchema.index({ createdAt: -1 });
 
 export default mongoose.model<IWheelFairnessRules>('WheelFairnessRules', WheelFairnessRulesSchema);

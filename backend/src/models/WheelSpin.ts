@@ -4,7 +4,7 @@ export interface IWheelSpin extends Document {
   campaignId: Types.ObjectId;
   sliceId: Types.ObjectId; // Reference to the wheel slice won
   userId: Types.ObjectId;
-  rewardType: 'better_luck' | 'try_again' | 'bonus_1' | 'bonus_5' | 'bonus_10' | 'bonus_50_percent';
+  rewardType: 'better_luck' | 'try_again' | 'bonus_1' | 'bonus_2' | 'bonus_5' | 'bonus_10' | 'bonus_50_percent';
   rewardValue?: string; // e.g., "$1", "$5", "$10", "50%"
   cost: number; // Cost to business for this spin
   usedBonusSpin?: boolean; // True when this spin used a free spin (doesn't count toward daily limit; outcome was not try_again)
@@ -36,7 +36,7 @@ const WheelSpinSchema = new Schema<IWheelSpin>(
     },
     rewardType: {
       type: String,
-      enum: ['better_luck', 'try_again', 'bonus_1', 'bonus_5', 'bonus_10', 'bonus_50_percent'],
+      enum: ['better_luck', 'try_again', 'bonus_1', 'bonus_2', 'bonus_5', 'bonus_10', 'bonus_50_percent'],
       required: true
     },
     rewardValue: {

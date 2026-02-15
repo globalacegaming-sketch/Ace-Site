@@ -90,7 +90,7 @@ const WheelBudgetSchema = new Schema<IWheelBudget>(
   }
 );
 
-WheelBudgetSchema.index({ campaignId: 1 });
+// campaignId index already created by unique: true on field
 WheelBudgetSchema.index({ createdAt: -1 });
 
 export default mongoose.model<IWheelBudget>('WheelBudget', WheelBudgetSchema);
