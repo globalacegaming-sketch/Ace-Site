@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster, toast } from 'react-hot-toast';
 import { useEffect, lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
+import axios from 'axios';
 import { useAuthStore } from './stores/authStore';
 import { MusicProvider } from './contexts/MusicContext';
 import ClickSoundProvider from './components/ClickSoundProvider';
@@ -11,6 +12,18 @@ import OneSignalAuthSync from './components/OneSignalAuthSync';
 import IOSAddToHomeScreenBanner from './components/IOSAddToHomeScreenBanner';
 import WheelOfFortune from './components/wheel/WheelOfFortune';
 import CookieConsentBanner from './components/CookieConsentBanner';
+
+// Global axios interceptor: auto-logout when the server says the account is banned
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.data?.code === 'ACCOUNT_BANNED') {
+      useAuthStore.getState().logout();
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
 
 // ——— Lazy-loaded pages ———
 // Reduces initial JS bundle by ~40 %. Each page is fetched only when navigated to.

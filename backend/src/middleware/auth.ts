@@ -70,6 +70,19 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    if ((user as any).isBanned) {
+      // Destroy session so the banned user is fully logged out
+      if (req.session) {
+        req.session.destroy(() => {});
+      }
+      res.status(403).json({
+        success: false,
+        message: 'Your account has been suspended.',
+        code: 'ACCOUNT_BANNED'
+      });
+      return;
+    }
+
     // Add user to request object
     req.user = user;
     next();

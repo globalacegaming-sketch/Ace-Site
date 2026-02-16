@@ -522,6 +522,12 @@ io.use(async (socket, next) => {
 
     // Check if session has a logged-in user
     if (session?.user?.id) {
+      // Verify the user isn't banned before allowing the socket connection
+      const sessionUser = await User.findById(session.user.id).select('isBanned isActive').lean();
+      if (!sessionUser || !sessionUser.isActive || (sessionUser as any).isBanned) {
+        return next(new Error('Account suspended'));
+      }
+
       socket.data.role = session.user.role === 'admin' ? 'admin' : 'user';
       socket.data.user = {
         id: session.user.id,
@@ -588,10 +594,10 @@ io.use(async (socket, next) => {
 
     const payload = verifyToken(token);
     const user = await User.findById(payload.userId)
-      .select('username email role isActive')
+      .select('username email role isActive isBanned')
       .lean();
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || (user as any).isBanned) {
       return next(new Error('Unauthorized'));
     }
 

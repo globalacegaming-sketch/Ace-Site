@@ -1176,6 +1176,27 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
       }
     }
 
+    // Force-disconnect the banned user's socket connections in real-time
+    try {
+      const { getSocketServerInstance } = await import('../utils/socketManager');
+      const ioServer = getSocketServerInstance();
+      const userRoom = `user:${user._id.toString()}`;
+
+      // Notify the client to log out before disconnecting
+      ioServer.to(userRoom).emit('account:banned', {
+        reason: user.banReason,
+      });
+
+      // Forcefully disconnect all sockets in the user's room
+      const sockets = await ioServer.in(userRoom).fetchSockets();
+      for (const s of sockets) {
+        s.disconnect(true);
+      }
+      logger.info(`🔌 Disconnected ${sockets.length} socket(s) for banned user ${user._id.toString()}`);
+    } catch (socketErr) {
+      logger.warn('⚠️ Could not disconnect banned user sockets:', socketErr);
+    }
+
     logger.info('🚫 User banned by admin:', {
       userId: user._id.toString(),
       username: user.username,

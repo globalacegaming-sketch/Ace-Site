@@ -231,6 +231,18 @@ const Layout = ({ children }: LayoutProps) => {
       }
     });
 
+    socket.on('account:banned', (data: { reason?: string }) => {
+      // Server says this account was banned — force logout immediately
+      socket.disconnect();
+      useAuthStore.getState().logout();
+      window.alert(
+        data?.reason
+          ? `Your account has been suspended: ${data.reason}`
+          : 'Your account has been suspended. Please contact support if you believe this is an error.'
+      );
+      window.location.href = '/login';
+    });
+
     socket.on('disconnect', () => {
       // Disconnected from notification socket
     });
