@@ -19,7 +19,9 @@ import {
   UserCheck,
   LogOut,
   StickyNote,
-  Banknote
+  Banknote,
+  DollarSign,
+  SlidersHorizontal,
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -31,6 +33,7 @@ import { useMusic } from '../../contexts/MusicContext';
 import LabelBadge, { LabelSelector, LabelFilter, type LabelData } from '../../components/admin/LabelBadge';
 import UserNotesPanel from '../../components/admin/UserNotesPanel';
 import AgentLoanPanel from '../../components/admin/AgentLoanPanel';
+import { agentLoanApi } from '../../services/loanApi';
 
 type AgentPermission = 'chat' | 'users' | 'verification' | 'referrals' | 'loans';
 
@@ -80,6 +83,15 @@ const AceagentDashboard: React.FC = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [modalAction, setModalAction] = useState<'recharge' | 'redeem' | null>(null);
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
+
+  const [loanModalUser, setLoanModalUser] = useState<User | null>(null);
+  const [loanModalType, setLoanModalType] = useState<'limit' | 'issue' | null>(null);
+  const [loanAccount, setLoanAccount] = useState<{ loanLimit: number; activeBalance: number } | null>(null);
+  const [loanLimitInput, setLoanLimitInput] = useState('');
+  const [loanIssueAmount, setLoanIssueAmount] = useState('');
+  const [loanRemarks, setLoanRemarks] = useState('');
+  const [loanModalLoading, setLoanModalLoading] = useState(false);
+  const [loanActionLoading, setLoanActionLoading] = useState(false);
   
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
@@ -547,6 +559,88 @@ const AceagentDashboard: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to unban user');
     }
   };
+
+  const openLoanModal = useCallback(async (user: User, type: 'limit' | 'issue') => {
+    setLoanModalUser(user);
+    setLoanModalType(type);
+    setLoanAccount(null);
+    setLoanLimitInput('');
+    setLoanIssueAmount('');
+    setLoanRemarks('');
+    setLoanModalLoading(true);
+    try {
+      const res = await agentLoanApi.getUserAccount(user._id);
+      if (res.success && res.data) {
+        setLoanAccount({ loanLimit: res.data.loanLimit, activeBalance: res.data.activeBalance });
+        if (type === 'limit') setLoanLimitInput(String(res.data.loanLimit));
+      } else {
+        toast.error('Could not load loan account.');
+        setLoanModalUser(null);
+        setLoanModalType(null);
+      }
+    } catch {
+      toast.error('Failed to load loan account.');
+      setLoanModalUser(null);
+      setLoanModalType(null);
+    } finally {
+      setLoanModalLoading(false);
+    }
+  }, []);
+
+  const closeLoanModal = useCallback(() => {
+    setLoanModalUser(null);
+    setLoanModalType(null);
+    setLoanAccount(null);
+    setLoanLimitInput('');
+    setLoanIssueAmount('');
+    setLoanRemarks('');
+  }, []);
+
+  const handleLoanLimitSubmit = useCallback(async () => {
+    if (!loanModalUser) return;
+    const limit = Number(loanLimitInput);
+    if (!Number.isFinite(limit) || limit < 20 || limit > 500) {
+      toast.error('Limit must be between $20 and $500.');
+      return;
+    }
+    setLoanActionLoading(true);
+    try {
+      const res = await agentLoanApi.adjustLimit(loanModalUser._id, limit);
+      if (res.success) {
+        toast.success(`Loan limit updated to $${limit}.`);
+        closeLoanModal();
+      } else {
+        toast.error(res.message || 'Failed to update limit.');
+      }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Failed to update limit.');
+    } finally {
+      setLoanActionLoading(false);
+    }
+  }, [loanModalUser, loanLimitInput, closeLoanModal]);
+
+  const handleLoanIssueSubmit = useCallback(async () => {
+    if (!loanModalUser) return;
+    const amount = Number(loanIssueAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid loan amount.');
+      return;
+    }
+    setLoanActionLoading(true);
+    try {
+      const res = await agentLoanApi.manualIssueLoan(loanModalUser._id, amount, loanRemarks);
+      if (res.success) {
+        toast.success(`Loan of $${amount.toFixed(2)} issued.`);
+        closeLoanModal();
+      } else {
+        toast.error(res.message || 'Failed to issue loan.');
+      }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Failed to issue loan.');
+    } finally {
+      setLoanActionLoading(false);
+    }
+  }, [loanModalUser, loanIssueAmount, loanRemarks, closeLoanModal]);
 
   const handleResetPassword = async () => {
     if (!selectedUserForVerification) return;
@@ -1107,7 +1201,7 @@ const AceagentDashboard: React.FC = () => {
                                 )}
                               </td>
                               <td className="p-4">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <button
                                     onClick={() => { setNotesUserId(u._id); setNotesUserName(u.username); }}
                                     className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
@@ -1115,6 +1209,24 @@ const AceagentDashboard: React.FC = () => {
                                   >
                                     <StickyNote className="w-3.5 h-3.5" />
                                   </button>
+                                  {hasPermission('loans') && (
+                                    <>
+                                      <button
+                                        onClick={() => openLoanModal(u, 'limit')}
+                                        className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 transition-colors"
+                                        title="Adjust loan limit"
+                                      >
+                                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => openLoanModal(u, 'issue')}
+                                        className="p-1.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 transition-colors"
+                                        title="Issue loan"
+                                      >
+                                        <DollarSign className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
                                   <button
                                     onClick={() => {
                                       setSelectedUser(u);
@@ -1216,7 +1328,7 @@ const AceagentDashboard: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <button
                               onClick={() => { setNotesUserId(u._id); setNotesUserName(u.username); }}
                               className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
@@ -1224,6 +1336,24 @@ const AceagentDashboard: React.FC = () => {
                               <StickyNote className="w-4 h-4" />
                               Notes
                             </button>
+                            {hasPermission('loans') && (
+                              <>
+                                <button
+                                  onClick={() => openLoanModal(u, 'limit')}
+                                  className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
+                                >
+                                  <SlidersHorizontal className="w-4 h-4" />
+                                  Limit
+                                </button>
+                                <button
+                                  onClick={() => openLoanModal(u, 'issue')}
+                                  className="px-3 py-2.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
+                                >
+                                  <DollarSign className="w-4 h-4" />
+                                  Loan
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => {
                                 setSelectedUser(u);
@@ -1574,6 +1704,98 @@ const AceagentDashboard: React.FC = () => {
               <p className="text-sm text-gray-500">Review loan requests, process repayments, and manage user limits.</p>
             </div>
             <AgentLoanPanel onNavigateToChat={navigateToUserChat} />
+          </div>
+        )}
+
+        {/* Loan Limit / Issue Loan Modal (User Management) */}
+        {loanModalUser && loanModalType && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md mx-auto animate-slideUp border border-gray-200 max-h-[95vh] overflow-y-auto">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 py-3 rounded-t-2xl sm:rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
+                <h3 className="text-base font-bold text-white">
+                  {loanModalType === 'limit' ? 'Adjust Loan Limit' : 'Issue Loan'} — {loanModalUser.username}
+                </h3>
+                <button
+                  onClick={closeLoanModal}
+                  disabled={loanActionLoading}
+                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 sm:p-6">
+                {loanModalLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+                  </div>
+                ) : loanAccount ? (
+                  <>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Limit: <strong>${loanAccount.loanLimit.toFixed(2)}</strong>
+                      {' · '}Owed: <strong>${loanAccount.activeBalance.toFixed(2)}</strong>
+                      {' · '}Available: <strong>${(loanAccount.loanLimit - loanAccount.activeBalance).toFixed(2)}</strong>
+                    </p>
+                    {loanModalType === 'limit' ? (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">New limit ($20 – $500)</label>
+                          <input
+                            type="number"
+                            min={20}
+                            max={500}
+                            value={loanLimitInput}
+                            onChange={(e) => setLoanLimitInput(e.target.value)}
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={closeLoanModal} disabled={loanActionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">
+                            Cancel
+                          </button>
+                          <button onClick={handleLoanLimitSubmit} disabled={loanActionLoading} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50">
+                            {loanActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><SlidersHorizontal className="w-4 h-4" /> Update</>}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Loan amount</label>
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={loanIssueAmount}
+                            onChange={(e) => setLoanIssueAmount(e.target.value)}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none placeholder:text-gray-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Remarks (optional)</label>
+                          <textarea
+                            value={loanRemarks}
+                            onChange={(e) => setLoanRemarks(e.target.value)}
+                            placeholder="Reason for manual issuance..."
+                            rows={2}
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none resize-none placeholder:text-gray-400"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={closeLoanModal} disabled={loanActionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">
+                            Cancel
+                          </button>
+                          <button onClick={handleLoanIssueSubmit} disabled={loanActionLoading || !loanIssueAmount} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50">
+                            {loanActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><DollarSign className="w-4 h-4" /> Issue Loan</>}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </div>
           </div>
         )}
 

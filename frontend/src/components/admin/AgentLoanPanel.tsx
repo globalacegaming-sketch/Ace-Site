@@ -53,6 +53,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
   const [activePage, setActivePage] = useState(1);
 
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
+
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [ledgerPage, setLedgerPage] = useState(1);
 
