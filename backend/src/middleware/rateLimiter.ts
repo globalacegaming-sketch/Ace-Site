@@ -3,9 +3,11 @@ import slowDown from 'express-slow-down';
 
 // General API rate limiter - applies to all routes
 // This provides basic DDoS protection by limiting request frequency per IP
+const isProduction = process.env.NODE_ENV === 'production';
+
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: isProduction ? 100 : 1000, // 100 in production, 1000 in dev
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
@@ -97,6 +99,22 @@ export const registerLimiter = rateLimit({
   legacyHeaders: false,
   // Note: We count ALL registration attempts (successful and failed) to prevent abuse
   // This prevents attackers from creating unlimited accounts from a single IP
+});
+
+// Loan request: per-user limit (must run after authenticate so req.user is set)
+export const loanRequestLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  message: {
+    success: false,
+    message: 'Too many loan requests. Please wait a moment and try again.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => {
+    const uid = req.user?._id ?? req.user?.id;
+    return uid ? `loan:${uid}` : 'loan:anonymous';
+  },
 });
 
 // Wheel spin: per-user limit (must run after authenticate so req.user is set)

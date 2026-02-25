@@ -320,7 +320,6 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Games', href: '/games', icon: Gamepad2 },
     { name: 'Platforms', href: '/platforms', icon: Settings },
     { name: 'Bonuses', href: '/bonuses', icon: Gift },
-    ...(isAuthenticated ? [{ name: 'Invite Friends', href: '/referrals', icon: Users }] : []),
     { name: 'About Us', href: '/about-us', icon: User },
     { name: 'Support', href: '/support', icon: Headphones },
   ];

@@ -45,6 +45,9 @@ import webhooksRoutes from './routes/webhooks';
 import walletRoutes from './routes/wallet';
 import labelRoutes from './routes/labels';
 import userNoteRoutes from './routes/userNotes';
+import loanRoutes from './routes/loan';
+import agentLoanRoutes from './routes/agentLoan';
+import loanCronService from './services/loanCronService';
 
 // Import Agent model for seeding
 import Agent from './models/Agent';
@@ -464,6 +467,8 @@ app.use('/api/wheel', wheelRoutes);
 app.use('/api/agent/wheel', agentWheelRoutes);
 app.use('/api/agent/referrals', agentReferralRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/loan', loanRoutes);
+app.use('/api/agent/loan', agentLoanRoutes);
 
 // ── Share session with Socket.io ──
 // Wrap the Express session middleware so it runs on the Socket.io handshake
@@ -728,6 +733,15 @@ const startServer = async () => {
       logger.warn('⚠️ Fortune Panda service initialization failed, but continuing:', error);
     }
 
+    // Initialize Loan Cron service (overdue checks + reminders)
+    logger.init('💰 Initializing Loan Cron service...');
+    try {
+      loanCronService.initialize();
+      logger.success('✅ Loan Cron service initialized');
+    } catch (error) {
+      logger.warn('⚠️ Loan Cron service initialization failed, but continuing:', error);
+    }
+
     // NowPayments (crypto wallet): warn if not configured
     if (!process.env.NOWPAYMENTS_API_KEY || !process.env.NOWPAYMENTS_IPN_SECRET) {
       logger.warn('⚠️ NowPayments not configured: set NOWPAYMENTS_API_KEY and NOWPAYMENTS_IPN_SECRET in .env to enable crypto wallet loading. POST /api/wallet/create-crypto-payment will return 503 until then.');
@@ -748,6 +762,7 @@ process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
   agentLoginService.cleanup();
   fortunePandaService.cleanup();
+  loanCronService.cleanup();
   server.close(() => {
     logger.info('Process terminated');
   });
@@ -757,6 +772,7 @@ process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully');
   agentLoginService.cleanup();
   fortunePandaService.cleanup();
+  loanCronService.cleanup();
   server.close(() => {
     logger.info('Process terminated');
   });

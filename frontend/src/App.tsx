@@ -56,6 +56,7 @@ const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Cookies = lazy(() => import('./pages/Cookies'));
 const Referrals = lazy(() => import('./pages/Referrals'));
+const Loans = lazy(() => import('./pages/Loans'));
 
 /** Lightweight full-screen loader shown while a lazy chunk downloads */
 const PageLoader = () => (
@@ -246,6 +247,12 @@ function App() {
             <Route path="/referrals" element={
               <ProtectedRoute>
                 <Layout><Referrals /></Layout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/loans" element={
+              <ProtectedRoute>
+                <Layout><Loans /></Layout>
               </ProtectedRoute>
             } />
 

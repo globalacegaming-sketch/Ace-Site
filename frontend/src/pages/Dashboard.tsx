@@ -1,23 +1,46 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Gamepad2, Wallet, User, MessageCircle, ArrowRight } from 'lucide-react';
+import { Gamepad2, Wallet, User, MessageCircle, ArrowRight, Banknote, Users } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useBalancePolling } from '../hooks/useBalancePolling';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import WelcomeBonusBanner from '../components/WelcomeBonusBanner';
 import PromoCarousel from '../components/PromoCarousel';
+import axios from 'axios';
+import { getApiBaseUrl } from '../utils/api';
 
 const QUICK_ACTIONS = [
   { to: '/games', icon: Gamepad2, label: 'Games', desc: 'Browse & play your favourite games', grad: 'linear-gradient(135deg, #FFD700, #FFA000)', shadow: 'rgba(255,215,0,0.25)', dark: true },
   { to: '/wallet', icon: Wallet, label: 'Wallet', desc: 'Deposit, withdraw & transactions', grad: 'linear-gradient(135deg, #00C853, #00A844)', shadow: 'rgba(0,200,83,0.25)', dark: false },
   { to: '/profile', icon: User, label: 'Profile', desc: 'Update your account info', grad: 'linear-gradient(135deg, #6A1B9A, #00B0FF)', shadow: 'rgba(106,27,154,0.25)', dark: false },
   { to: '/support', icon: MessageCircle, label: 'Support', desc: 'Get help & contact us', grad: 'linear-gradient(135deg, #00B0FF, #0091EA)', shadow: 'rgba(0,176,255,0.25)', dark: false },
+  { to: '/loans', icon: Banknote, label: 'Loans', desc: 'Request short-term zero-interest loans', grad: 'linear-gradient(135deg, #FF6F00, #FF8F00)', shadow: 'rgba(255,111,0,0.25)', dark: true },
+  { to: '/referrals', icon: Users, label: 'Referrals', desc: 'Invite friends & earn rewards', grad: 'linear-gradient(135deg, #E040FB, #7C4DFF)', shadow: 'rgba(224,64,251,0.25)', dark: false },
 ] as const;
 
 const Dashboard = () => {
-  const { user, lastRechargeStatus } = useAuthStore();
+  const { user, lastRechargeStatus, token } = useAuthStore();
   const { balance, fetchBalance } = useBalancePolling(30000);
+  const [loanBadge, setLoanBadge] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    const check = async () => {
+      try {
+        const { data } = await axios.get(`${getApiBaseUrl()}/notifications?limit=10`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (data.success && data.data?.notifications) {
+          const hasUnread = data.data.notifications.some(
+            (n: any) => !n.isRead && n.link === '/loans'
+          );
+          setLoanBadge(hasUnread);
+        }
+      } catch { /* silent */ }
+    };
+    check();
+  }, [token]);
 
   const handleRefresh = useCallback(async () => {
     await fetchBalance(true);
@@ -96,13 +119,16 @@ const Dashboard = () => {
         <WelcomeBonusBanner />
 
         {/* ── Quick Actions ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4 lg:gap-5 mb-4 sm:mb-5 md:mb-6 lg:mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 md:gap-4 lg:gap-5 mb-4 sm:mb-5 md:mb-6 lg:mb-8">
           {QUICK_ACTIONS.map(({ to, icon: Icon, label, desc, grad, shadow, dark }) => (
             <Link
               key={to}
               to={to}
-              className="flex flex-col items-center py-3 sm:py-4 md:py-5 lg:py-6 px-2 rounded-xl sm:rounded-2xl casino-bg-secondary casino-border active:scale-95 hover:scale-[1.02] transition-all touch-manipulation group"
+              className="relative flex flex-col items-center py-3 sm:py-4 md:py-5 lg:py-6 px-2 rounded-xl sm:rounded-2xl casino-bg-secondary casino-border active:scale-95 hover:scale-[1.02] transition-all touch-manipulation group"
             >
+              {to === '/loans' && loanBadge && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+              )}
               <div
                 className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-full flex items-center justify-center mb-1.5 sm:mb-2 md:mb-2.5 group-hover:scale-110 transition-transform"
                 style={{ background: grad, boxShadow: `0 0 16px ${shadow}` }}

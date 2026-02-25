@@ -18,7 +18,8 @@ import {
   Ban,
   UserCheck,
   LogOut,
-  StickyNote
+  StickyNote,
+  Banknote
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -29,8 +30,9 @@ import AdminSessionManager from '../../components/admin/AdminSessionManager';
 import { useMusic } from '../../contexts/MusicContext';
 import LabelBadge, { LabelSelector, LabelFilter, type LabelData } from '../../components/admin/LabelBadge';
 import UserNotesPanel from '../../components/admin/UserNotesPanel';
+import AgentLoanPanel from '../../components/admin/AgentLoanPanel';
 
-type AgentPermission = 'chat' | 'users' | 'verification' | 'referrals';
+type AgentPermission = 'chat' | 'users' | 'verification' | 'referrals' | 'loans';
 
 interface User {
   _id: string;
@@ -102,7 +104,7 @@ const AceagentDashboard: React.FC = () => {
   );
 
   // Default tab = first allowed permission, or fallback to 'chat'
-  const allTabs: AgentPermission[] = ['users', 'chat', 'verification', 'referrals'];
+  const allTabs: AgentPermission[] = ['users', 'chat', 'verification', 'referrals', 'loans'];
   const allowedTabs = allTabs.filter((t) => permissions.includes(t));
   const [activeTab, setActiveTab] = useState<AgentPermission>(
     allowedTabs[0] || 'chat',
@@ -874,6 +876,18 @@ const AceagentDashboard: React.FC = () => {
                   Referrals
                 </button>
               )}
+              {hasPermission('loans') && (
+                <button
+                  onClick={() => setActiveTab('loans')}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                    activeTab === 'loans'
+                      ? 'bg-white text-indigo-600 shadow-md'
+                      : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
+                  }`}
+                >
+                  Loans
+                </button>
+              )}
             </div>
 
             {/* Right Section: Action Buttons - Icon only on mobile */}
@@ -1523,6 +1537,20 @@ const AceagentDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Loans Tab */}
+        {activeTab === 'loans' && hasPermission('loans') && (
+          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 lg:p-6 border border-gray-100">
+            <div className="mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <Banknote className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />
+                Loan Management
+              </h2>
+              <p className="text-sm text-gray-500">Review loan requests, process repayments, and manage user limits.</p>
+            </div>
+            <AgentLoanPanel />
+          </div>
+        )}
+
         {/* User Update Modal */}
         {activeTab === 'users' && hasPermission('users') && showUserModal && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
@@ -1888,6 +1916,31 @@ const AceagentDashboard: React.FC = () => {
                 activeTab === 'referrals' ? 'text-indigo-600' : 'text-gray-500'
               }`}>
                 Referrals
+              </span>
+            </button>
+          )}
+
+          {hasPermission('loans') && (
+            <button
+              onClick={() => setActiveTab('loans')}
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
+                activeTab === 'loans'
+                  ? 'text-indigo-600'
+                  : 'text-gray-500 active:text-gray-700'
+              }`}
+            >
+              <div className={`relative mb-1 transition-all duration-200 ${
+                activeTab === 'loans' ? 'scale-110' : 'scale-100'
+              }`}>
+                <Banknote className={`w-6 h-6 transition-colors ${activeTab === 'loans' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                {activeTab === 'loans' && (
+                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
+                )}
+              </div>
+              <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
+                activeTab === 'loans' ? 'text-indigo-600' : 'text-gray-500'
+              }`}>
+                Loans
               </span>
             </button>
           )}

@@ -39,6 +39,14 @@ const SLIDES: Slide[] = [
     gradient: 'linear-gradient(135deg, #00B0FF 0%, #0091EA 100%)',
   },
   {
+    id: 'loans',
+    title: 'Need a Quick Loan?',
+    subtitle: 'Get up to $100 in zero-interest short-term loans. Request instantly, repay within 7 days.',
+    cta: 'Request Now',
+    href: '/loans',
+    gradient: 'linear-gradient(135deg, #FF6F00 0%, #FF8F00 50%, #FFD700 100%)',
+  },
+  {
     id: 'telegram',
     title: 'Contact Us on Telegram',
     subtitle: 'Get instant support, updates, and exclusive offers from our team.',
