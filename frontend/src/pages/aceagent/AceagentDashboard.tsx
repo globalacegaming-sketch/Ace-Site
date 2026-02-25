@@ -95,15 +95,6 @@ const AceagentDashboard: React.FC = () => {
 
   const [pendingChatUserId, setPendingChatUserId] = useState<string | null>(null);
 
-  const navigateToUserChat = useCallback((userId: string) => {
-    if (!hasPermission('chat')) {
-      toast.error('You do not have chat permission.');
-      return;
-    }
-    setPendingChatUserId(userId);
-    setActiveTab('chat');
-  }, [hasPermission]);
-
   // ── Permissions ────────────────────────────────────────────────────────────
   const [permissions, setPermissions] = useState<AgentPermission[]>([
     'chat', 'users', 'verification', 'referrals',
@@ -113,6 +104,15 @@ const AceagentDashboard: React.FC = () => {
     (perm: AgentPermission) => permissions.includes(perm),
     [permissions],
   );
+
+  const navigateToUserChat = useCallback((userId: string) => {
+    if (!hasPermission('chat')) {
+      toast.error('You do not have chat permission.');
+      return;
+    }
+    setPendingChatUserId(userId);
+    setActiveTab('chat');
+  }, [hasPermission]);
 
   // Default tab = first allowed permission, or fallback to 'chat'
   const allTabs: AgentPermission[] = ['users', 'chat', 'verification', 'referrals', 'loans'];

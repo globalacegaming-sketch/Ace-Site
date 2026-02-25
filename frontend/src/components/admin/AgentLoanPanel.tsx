@@ -18,7 +18,7 @@ import {
 import toast from 'react-hot-toast';
 import { agentLoanApi } from '../../services/loanApi';
 
-type SubTab = 'pending' | 'active' | 'ledger' | 'search' | 'logs';
+type SubTab = 'pending' | 'active' | 'ledger' | 'logs';
 
 interface LoanStats {
   totalLoansIssued: number;
@@ -59,23 +59,17 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [ledgerPage, setLedgerPage] = useState(1);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-
   const [agentLogs, setAgentLogs] = useState<any[]>([]);
   const [agentLogsTotal, setAgentLogsTotal] = useState(0);
   const [agentLogsPage, setAgentLogsPage] = useState(1);
 
   const [actionModal, setActionModal] = useState<{
-    type: 'approve' | 'reject' | 'repay' | 'limit' | 'issue';
+    type: 'approve' | 'reject' | 'repay';
     data: any;
   } | null>(null);
   const [modalRemarks, setModalRemarks] = useState('');
   const [repayAmount, setRepayAmount] = useState('');
   const [repayMethod, setRepayMethod] = useState('CASH');
-  const [newLimit, setNewLimit] = useState('');
-  const [issueAmount, setIssueAmount] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
   const loadStats = useCallback(async () => {
@@ -135,31 +129,12 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
     finally { setLoading(false); }
   }, [agentLogsPage]);
 
-  const loadAllAccounts = useCallback(async () => {
-    setSearchLoading(true);
-    try {
-      const res = await agentLoanApi.searchAccounts('');
-      if (res.success) setSearchResults(res.data.accounts);
-    } catch { /* silent */ }
-    finally { setSearchLoading(false); }
-  }, []);
-
   useEffect(() => {
     if (subTab === 'pending') loadPending();
     else if (subTab === 'active') loadActiveLoans();
     else if (subTab === 'ledger') loadLedger();
-    else if (subTab === 'search') loadAllAccounts();
     else if (subTab === 'logs') loadAgentLogs();
-  }, [subTab, loadPending, loadActiveLoans, loadLedger, loadAllAccounts, loadAgentLogs]);
-
-  const handleSearch = async () => {
-    setSearchLoading(true);
-    try {
-      const res = await agentLoanApi.searchAccounts(searchQuery);
-      if (res.success) setSearchResults(res.data.accounts);
-    } catch { toast.error('Search failed.'); }
-    finally { setSearchLoading(false); }
-  };
+  }, [subTab, loadPending, loadActiveLoans, loadLedger, loadAgentLogs]);
 
   const handleApprove = async () => {
     if (!actionModal) return;
@@ -221,53 +196,6 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
     } finally { setActionLoading(false); }
   };
 
-  const handleLimitAdjust = async () => {
-    if (!actionModal) return;
-    const limit = parseInt(newLimit);
-    if (!limit || limit < 20 || limit > 500) {
-      toast.error('Limit must be between $20 and $500.');
-      return;
-    }
-    setActionLoading(true);
-    try {
-      const userId = actionModal.data.userId?._id || actionModal.data.userId;
-      const res = await agentLoanApi.adjustLimit(userId, limit);
-      if (res.success) {
-        toast.success(`Limit updated to $${limit}.`);
-        setActionModal(null);
-        setNewLimit('');
-        if (searchQuery) handleSearch();
-        loadStats();
-      } else toast.error(res.message);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Limit adjustment failed.');
-    } finally { setActionLoading(false); }
-  };
-
-  const handleIssueLoan = async () => {
-    if (!actionModal) return;
-    const amount = parseFloat(issueAmount);
-    if (!amount || amount <= 0) {
-      toast.error('Enter a valid amount.');
-      return;
-    }
-    setActionLoading(true);
-    try {
-      const userId = actionModal.data.userId?._id || actionModal.data.userId;
-      const res = await agentLoanApi.manualIssueLoan(userId, amount, modalRemarks);
-      if (res.success) {
-        toast.success(`Loan of $${amount.toFixed(2)} issued!`);
-        setActionModal(null);
-        setIssueAmount('');
-        setModalRemarks('');
-        if (searchQuery) handleSearch();
-        loadStats();
-      } else toast.error(res.message);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Failed to issue loan.');
-    } finally { setActionLoading(false); }
-  };
-
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -312,7 +240,6 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
           { key: 'pending', label: 'Pending', icon: <Clock className="w-3.5 h-3.5" />, count: pendingTotal },
           { key: 'active', label: 'Active Loans', icon: <CreditCard className="w-3.5 h-3.5" /> },
           { key: 'ledger', label: 'Ledger', icon: <FileText className="w-3.5 h-3.5" /> },
-          { key: 'search', label: 'Users', icon: <Users className="w-3.5 h-3.5" /> },
           { key: 'logs', label: 'Activity', icon: <ClipboardList className="w-3.5 h-3.5" /> },
         ] as const).map((t) => (
           <button
