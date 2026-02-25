@@ -131,7 +131,7 @@ export default function LoansPage() {
     );
   }
 
-  const canRequest = data && !data.pendingRequest && !data.activeLoan && data.availableToBorrow >= 10;
+  const canRequest = data && !data.pendingRequest && data.availableToBorrow >= 10;
   const hasOverdue = data?.activeLoan?.status === 'OVERDUE';
 
   return (

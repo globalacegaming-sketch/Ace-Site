@@ -93,6 +93,17 @@ const AceagentDashboard: React.FC = () => {
   const [notesUserName, setNotesUserName] = useState('');
   const sessionCheckedRef = useRef(false);
 
+  const [pendingChatUserId, setPendingChatUserId] = useState<string | null>(null);
+
+  const navigateToUserChat = useCallback((userId: string) => {
+    if (!hasPermission('chat')) {
+      toast.error('You do not have chat permission.');
+      return;
+    }
+    setPendingChatUserId(userId);
+    setActiveTab('chat');
+  }, [hasPermission]);
+
   // ── Permissions ────────────────────────────────────────────────────────────
   const [permissions, setPermissions] = useState<AgentPermission[]>([
     'chat', 'users', 'verification', 'referrals',
@@ -1038,7 +1049,9 @@ const AceagentDashboard: React.FC = () => {
                             >
                               <td className="p-4 text-sm font-mono font-semibold text-gray-700">{u._id.slice(-6).toUpperCase()}</td>
                               <td className="p-4 text-sm font-medium text-gray-800">{getFPAccountName(u.fortunePandaUsername)}</td>
-                              <td className="p-4 text-sm font-semibold text-gray-900">{u.username}</td>
+                              <td className="p-4 text-sm font-semibold text-gray-900">
+                                <button onClick={() => navigateToUserChat(u._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">{u.username}</button>
+                              </td>
                               <td className="p-4">
                                 <span className="text-sm font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full">
                                   ${u.fortunePandaBalance?.toFixed(2) || '0.00'}
@@ -1128,7 +1141,9 @@ const AceagentDashboard: React.FC = () => {
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3 pb-3 border-b border-gray-200">
                             <div className="flex-1">
-                              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1">{u.username}</h3>
+                              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1">
+                                <button onClick={() => navigateToUserChat(u._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">{u.username}</button>
+                              </h3>
                               <p className="text-xs sm:text-sm text-gray-600 font-mono">{getFPAccountName(u.fortunePandaUsername)}</p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1288,9 +1303,11 @@ const AceagentDashboard: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                            {user.firstName && user.lastName
-                              ? `${user.firstName} ${user.lastName}`
-                              : user.username}
+                            <button onClick={() => navigateToUserChat(user._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                              {user.firstName && user.lastName
+                                ? `${user.firstName} ${user.lastName}`
+                                : user.username}
+                            </button>
                           </h3>
                           {user.isEmailVerified ? (
                             <div title="Email Verified">
@@ -1405,6 +1422,7 @@ const AceagentDashboard: React.FC = () => {
                 adminToken={adminToken}
                 apiBaseUrl={API_BASE_URL}
                 wsBaseUrl={wsBaseUrl}
+                initialUserId={pendingChatUserId}
               />
             </div>
           ) : (
@@ -1481,14 +1499,22 @@ const AceagentDashboard: React.FC = () => {
                       <tr key={ref._id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-3 sm:px-4 py-3">
                           <div className="font-medium text-sm text-gray-900">
-                            {ref.referredUser ? `${ref.referredUser.firstName || ''} ${ref.referredUser.lastName || ''}`.trim() || ref.referredUser.username : '—'}
+                            {ref.referredUser ? (
+                              <button onClick={() => navigateToUserChat(ref.referredUser!._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                                {`${ref.referredUser.firstName || ''} ${ref.referredUser.lastName || ''}`.trim() || ref.referredUser.username}
+                              </button>
+                            ) : '—'}
                           </div>
                           <div className="text-xs text-gray-400">@{ref.referredUser?.username || '—'}</div>
                         </td>
                         <td className="px-3 sm:px-4 py-3 text-sm text-gray-600">{ref.referredUser?.email || '—'}</td>
                         <td className="px-3 sm:px-4 py-3">
                           <div className="text-sm text-gray-900 font-medium">
-                            {ref.referredBy ? `@${ref.referredBy.username}` : '—'}
+                            {ref.referredBy ? (
+                              <button onClick={() => navigateToUserChat(ref.referredBy!._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                                @{ref.referredBy.username}
+                              </button>
+                            ) : '—'}
                           </div>
                           <div className="text-xs text-orange-600 font-mono">{ref.referralCode}</div>
                         </td>
@@ -1547,7 +1573,7 @@ const AceagentDashboard: React.FC = () => {
               </h2>
               <p className="text-sm text-gray-500">Review loan requests, process repayments, and manage user limits.</p>
             </div>
-            <AgentLoanPanel />
+            <AgentLoanPanel onNavigateToChat={navigateToUserChat} />
           </div>
         )}
 

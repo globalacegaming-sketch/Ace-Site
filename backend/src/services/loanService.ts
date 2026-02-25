@@ -179,11 +179,6 @@ class LoanService {
       throw new Error('You already have a pending loan request.');
     }
 
-    const activeLoan = await Loan.findOne({ userId, status: 'ACTIVE' });
-    if (activeLoan) {
-      throw new Error('Cannot request a new loan while you have an active loan.');
-    }
-
     const request = await LoanRequest.create({
       userId,
       requestedAmount: amount,
@@ -300,9 +295,9 @@ class LoanService {
         [account] = await LoanAccount.create([{ userId, loanLimit: 20, activeBalance: 0 }], { session });
       }
 
-      const existingActive = await Loan.findOne({ userId, status: { $in: ['ACTIVE', 'OVERDUE'] } }).session(session);
-      if (existingActive) {
-        throw new Error('User already has an active or overdue loan. Repay the existing loan first.');
+      const existingOverdue = await Loan.findOne({ userId, status: 'OVERDUE' }).session(session);
+      if (existingOverdue) {
+        throw new Error('User has an overdue loan. It must be repaid before issuing a new one.');
       }
 
       const available = account.loanLimit - account.activeBalance;

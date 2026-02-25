@@ -38,7 +38,11 @@ const PAYMENT_METHODS = [
   { value: 'MANUAL_ADJUSTMENT', label: 'Manual Adjustment' },
 ];
 
-const AgentLoanPanel: React.FC = () => {
+interface AgentLoanPanelProps {
+  onNavigateToChat?: (userId: string) => void;
+}
+
+const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => {
   const [subTab, setSubTab] = useState<SubTab>('pending');
   const [stats, setStats] = useState<LoanStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -345,7 +349,11 @@ const AgentLoanPanel: React.FC = () => {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="font-semibold text-gray-900">
-                      {req.userId?.username || 'Unknown User'}
+                      {onNavigateToChat && req.userId?._id ? (
+                        <button onClick={() => onNavigateToChat(req.userId._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                          {req.userId?.username || 'Unknown User'}
+                        </button>
+                      ) : (req.userId?.username || 'Unknown User')}
                     </p>
                     <p className="text-xs text-gray-500">{req.userId?.email}</p>
                   </div>
@@ -389,7 +397,13 @@ const AgentLoanPanel: React.FC = () => {
               <div key={loan._id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <p className="font-semibold text-gray-900">{loan.userId?.username || 'Unknown'}</p>
+                    <p className="font-semibold text-gray-900">
+                      {onNavigateToChat && loan.userId?._id ? (
+                        <button onClick={() => onNavigateToChat(loan.userId._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                          {loan.userId?.username || 'Unknown'}
+                        </button>
+                      ) : (loan.userId?.username || 'Unknown')}
+                    </p>
                     <p className="text-xs text-gray-500">{loan.userId?.email}</p>
                   </div>
                   <div className="text-right">
@@ -480,7 +494,13 @@ const AgentLoanPanel: React.FC = () => {
                     {ledgerEntries.map((e) => (
                       <tr key={e._id} className="border-b border-gray-100">
                         <td className="py-2 pr-2 text-gray-600 text-xs whitespace-nowrap">{formatDate(e.createdAt)}</td>
-                        <td className="py-2 pr-2 font-medium text-gray-900">{(e.userId as any)?.username || '—'}</td>
+                        <td className="py-2 pr-2 font-medium text-gray-900">
+                          {onNavigateToChat && (e.userId as any)?._id ? (
+                            <button onClick={() => onNavigateToChat((e.userId as any)._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                              {(e.userId as any)?.username || '—'}
+                            </button>
+                          ) : ((e.userId as any)?.username || '—')}
+                        </td>
                         <td className="py-2 pr-2">
                           <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
                             e.type === 'ISSUE' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
@@ -539,7 +559,13 @@ const AgentLoanPanel: React.FC = () => {
             <div key={acc._id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="font-semibold text-gray-900">{(acc.userId as any)?.username || 'Unknown'}</p>
+                  <p className="font-semibold text-gray-900">
+                    {onNavigateToChat && (acc.userId as any)?._id ? (
+                      <button onClick={() => onNavigateToChat((acc.userId as any)._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                        {(acc.userId as any)?.username || 'Unknown'}
+                      </button>
+                    ) : ((acc.userId as any)?.username || 'Unknown')}
+                  </p>
                   <p className="text-xs text-gray-500">{(acc.userId as any)?.email}</p>
                 </div>
               </div>
@@ -617,7 +643,13 @@ const AgentLoanPanel: React.FC = () => {
                             {log.action.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="py-2 pr-2 text-gray-900 text-xs">{(log.targetUserId as any)?.username || '—'}</td>
+                        <td className="py-2 pr-2 text-gray-900 text-xs">
+                          {onNavigateToChat && (log.targetUserId as any)?._id ? (
+                            <button onClick={() => onNavigateToChat((log.targetUserId as any)._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
+                              {(log.targetUserId as any)?.username || '—'}
+                            </button>
+                          ) : ((log.targetUserId as any)?.username || '—')}
+                        </td>
                         <td className="py-2 text-xs text-gray-500 hidden sm:table-cell truncate max-w-[200px]">
                           {log.details?.amount ? `$${log.details.amount.toFixed(2)}` : ''}
                           {log.details?.remarks ? ` — ${log.details.remarks}` : ''}

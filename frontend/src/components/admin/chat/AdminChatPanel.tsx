@@ -89,13 +89,14 @@ interface AdminChatPanelProps {
   adminToken: string;
   apiBaseUrl: string;
   wsBaseUrl: string;
+  initialUserId?: string | null;
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const INITIAL_MESSAGE_LIMIT = 50; // Increased initial load for better UX
 const LOAD_MORE_LIMIT = 50; // Load more messages at once
 
-const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelProps) => {
+const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId }: AdminChatPanelProps) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1097,6 +1098,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl }: AdminChatPanelPro
       )
     );
   };
+
+  const initialUserHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (initialUserId && initialUserId !== initialUserHandledRef.current) {
+      initialUserHandledRef.current = initialUserId;
+      handleSelectConversation(initialUserId);
+    }
+  }, [initialUserId]);
 
   const handleSendMessage = async () => {
     if (!selectedUserId || sending) return;
