@@ -9,7 +9,6 @@ import {
   Headphones,
   Bell,
   User,
-  Users,
   X,
   LogOut,
   Coins,
