@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Loader2,
-  Search,
   CheckCircle,
   XCircle,
   Clock,
@@ -9,9 +8,7 @@ import {
   DollarSign,
   TrendingUp,
   FileText,
-  Users,
   CreditCard,
-  SlidersHorizontal,
   Download,
   ClipboardList,
 } from 'lucide-react';
@@ -456,86 +453,6 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
         </div>
       )}
 
-      {/* Search Users */}
-      {subTab === 'search' && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (!e.target.value.trim()) loadAllAccounts();
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search by username or email..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-gray-900 placeholder:text-gray-400"
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={searchLoading}
-              className="px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-sm font-medium flex items-center gap-1 transition disabled:opacity-50"
-            >
-              {searchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            </button>
-          </div>
-
-          {searchResults.map((acc) => (
-            <div key={acc._id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {onNavigateToChat && (acc.userId as any)?._id ? (
-                      <button onClick={() => onNavigateToChat((acc.userId as any)._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                        {(acc.userId as any)?.username || 'Unknown'}
-                      </button>
-                    ) : ((acc.userId as any)?.username || 'Unknown')}
-                  </p>
-                  <p className="text-xs text-gray-500">{(acc.userId as any)?.email}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase">Limit</p>
-                  <p className="font-bold text-gray-900">${acc.loanLimit.toFixed(2)}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase">Owed</p>
-                  <p className={`font-bold ${acc.activeBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>${acc.activeBalance.toFixed(2)}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase">Available</p>
-                  <p className="font-bold text-green-600">${(acc.loanLimit - acc.activeBalance).toFixed(2)}</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setActionModal({ type: 'issue', data: acc });
-                    setIssueAmount('');
-                    setModalRemarks('');
-                  }}
-                  className="flex-1 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-medium flex items-center justify-center gap-1 transition"
-                >
-                  <DollarSign className="w-4 h-4" /> Issue Loan
-                </button>
-                <button
-                  onClick={() => {
-                    setActionModal({ type: 'limit', data: acc });
-                    setNewLimit(acc.loanLimit.toString());
-                  }}
-                  className="flex-1 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium flex items-center justify-center gap-1 transition"
-                >
-                  <SlidersHorizontal className="w-4 h-4" /> Adjust Limit
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Agent Activity Logs */}
       {subTab === 'logs' && !loading && (
         <div className="space-y-2">
@@ -701,92 +618,6 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
               </>
             )}
 
-            {/* Limit Adjust Modal */}
-            {actionModal.type === 'limit' && (
-              <>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Adjust Loan Limit</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  User: <strong>{(actionModal.data.userId as any)?.username || 'Unknown'}</strong>
-                  {' '}| Current: <strong>${actionModal.data.loanLimit.toFixed(2)}</strong>
-                  {' '}| Owed: <strong>${actionModal.data.activeBalance.toFixed(2)}</strong>
-                </p>
-                <div className="mb-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">New Limit ($20 – $500)</label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="number"
-                      value={newLimit}
-                      onChange={(e) => setNewLimit(e.target.value)}
-                      min="20"
-                      max="500"
-                      step="10"
-                      className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 placeholder:text-gray-400"
-                    />
-                  </div>
-                  <input
-                    type="range"
-                    min="20"
-                    max="500"
-                    step="10"
-                    value={newLimit || 20}
-                    onChange={(e) => setNewLimit(e.target.value)}
-                    className="w-full mt-2 accent-indigo-500"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setActionModal(null)} disabled={actionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">Cancel</button>
-                  <button onClick={handleLimitAdjust} disabled={actionLoading} className="flex-1 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50">
-                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><SlidersHorizontal className="w-4 h-4" /> Update</>}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Issue Loan Modal */}
-            {actionModal.type === 'issue' && (
-              <>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Issue Loan</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  User: <strong>{(actionModal.data.userId as any)?.username || 'Unknown'}</strong>
-                  {' '}| Limit: <strong>${actionModal.data.loanLimit.toFixed(2)}</strong>
-                  {' '}| Available: <strong>${(actionModal.data.loanLimit - actionModal.data.activeBalance).toFixed(2)}</strong>
-                </p>
-                <div className="space-y-3 mb-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Loan Amount</label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="number"
-                        value={issueAmount}
-                        onChange={(e) => setIssueAmount(e.target.value)}
-                        min="1"
-                        step="1"
-                        placeholder="0.00"
-                        className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-500 outline-none text-gray-900 placeholder:text-gray-400"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Remarks (optional)</label>
-                    <textarea
-                      value={modalRemarks}
-                      onChange={(e) => setModalRemarks(e.target.value)}
-                      placeholder="Reason for manual issuance..."
-                      rows={2}
-                      className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none text-gray-900 placeholder:text-gray-400"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setActionModal(null)} disabled={actionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">Cancel</button>
-                  <button onClick={handleIssueLoan} disabled={actionLoading || !issueAmount} className="flex-1 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50">
-                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><DollarSign className="w-4 h-4" /> Issue Loan</>}
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
