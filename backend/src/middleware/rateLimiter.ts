@@ -7,16 +7,26 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isProduction ? 100 : 1000, // 100 in production, 1000 in dev
+  max: isProduction ? 300 : 1000, // 300 in production, 1000 in dev
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
   },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for health checks and static files
+  standardHeaders: true,
+  legacyHeaders: false,
   skip: (req) => {
-    return req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads');
+    if (req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads')) return true;
+    // Authenticated API calls (chat, loan, admin) have their own per-user limiters;
+    // skip the per-IP general limiter for them to prevent shared-IP exhaustion.
+    const hasAuth = !!req.headers.authorization;
+    if (hasAuth && (
+      req.path.startsWith('/api/chat') ||
+      req.path.startsWith('/api/loan') ||
+      req.path.startsWith('/api/agent/loan') ||
+      req.path.startsWith('/api/admin/messages') ||
+      req.path.startsWith('/api/notifications')
+    )) return true;
+    return false;
   },
 });
 
@@ -31,7 +41,16 @@ export const speedLimiter = slowDown({
   delayAfter: DELAY_AFTER,
   delayMs: (used) => Math.min(MAX_DELAY_MS, Math.max(0, (used - DELAY_AFTER) * DELAY_MS_PER_HIT)),
   skip: (req) => {
-    return req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads');
+    if (req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads')) return true;
+    const hasAuth = !!req.headers.authorization;
+    if (hasAuth && (
+      req.path.startsWith('/api/chat') ||
+      req.path.startsWith('/api/loan') ||
+      req.path.startsWith('/api/agent/loan') ||
+      req.path.startsWith('/api/admin/messages') ||
+      req.path.startsWith('/api/notifications')
+    )) return true;
+    return false;
   },
 });
 

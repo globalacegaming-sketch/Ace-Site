@@ -122,8 +122,13 @@ const AceagentDashboard: React.FC = () => {
       toast.error('You do not have chat permission.');
       return;
     }
-    setPendingChatUserId(userId);
-    setActiveTab('chat');
+    // Clear first so the same userId can be re-navigated to
+    setPendingChatUserId(null);
+    // Use microtask to ensure React processes the null before the new value
+    queueMicrotask(() => {
+      setPendingChatUserId(userId);
+      setActiveTab('chat');
+    });
   }, [hasPermission]);
 
   // Default tab = first allowed permission, or fallback to 'chat'
@@ -1553,6 +1558,7 @@ const AceagentDashboard: React.FC = () => {
                 apiBaseUrl={API_BASE_URL}
                 wsBaseUrl={wsBaseUrl}
                 initialUserId={pendingChatUserId}
+                onInitialUserConsumed={() => setPendingChatUserId(null)}
               />
             </div>
           ) : (

@@ -64,6 +64,7 @@ class LoanService {
         metadata: {
           ...metadata,
           isSystemMessage: true,
+          adminAgentName: 'Loan System',
           timestamp: new Date().toISOString(),
         },
       });

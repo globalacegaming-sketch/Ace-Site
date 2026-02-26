@@ -42,6 +42,7 @@ interface ChatMessage {
     isSystemMessage?: boolean;
     adminAgentName?: string;
     recipientName?: string;
+    source?: string;
   };
 }
 
@@ -516,6 +517,7 @@ const Chat = () => {
             <>
               {messages.map((message, index) => {
                 const isUser = message.senderType === 'user';
+                const isSystem = message.senderType === 'system';
                 const displayName = isUser 
                   ? (user?.firstName || user?.username || 'You') 
                   : (message.name || 'Support');
@@ -531,6 +533,46 @@ const Chat = () => {
                 const isLastInGroup = !next || next.senderType !== message.senderType ||
                   (new Date(next.createdAt).getTime() - msgDate.getTime()) > 120000 ||
                   msgDate.toDateString() !== new Date(next.createdAt).toDateString();
+
+                if (isSystem) {
+                  const metaType = message.metadata?.type || '';
+                  const isLoan = metaType.startsWith('loan_');
+                  return (
+                    <div key={message.id}>
+                      {showDateDivider && (
+                        <div className="flex items-center justify-center my-4">
+                          <div className="flex-1 border-t casino-border" />
+                          <span className="px-3 text-[11px] font-medium casino-text-secondary">{formatDateDivider(msgDate)}</span>
+                          <div className="flex-1 border-t casino-border" />
+                        </div>
+                      )}
+                      <div ref={(el) => { messageRefs.current[message.id] = el; }} className="flex justify-center my-3">
+                        <div className="max-w-[90%] sm:max-w-[80%] px-4 py-3 rounded-xl"
+                          style={{
+                            background: isLoan
+                              ? 'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,160,0,0.10) 100%)'
+                              : 'rgba(255,255,255,0.05)',
+                            border: isLoan ? '1px solid rgba(255,215,0,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                          }}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-semibold" style={{ color: isLoan ? '#FFD700' : '#00B0FF' }}>
+                              {message.metadata?.source || 'System'}
+                            </span>
+                            <span className="text-[10px] casino-text-secondary">
+                              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          {message.message && (
+                            <p className="text-sm casino-text-primary whitespace-pre-wrap break-words leading-relaxed">
+                              {decodeHtmlEntities(message.message)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
                 
                 return (
                   <div key={message.id}>

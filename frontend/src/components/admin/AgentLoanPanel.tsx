@@ -47,19 +47,23 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [pendingTotal, setPendingTotal] = useState(0);
   const [pendingPage, setPendingPage] = useState(1);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
 
   const [activeLoans, setActiveLoans] = useState<any[]>([]);
   const [activeTotal, setActiveTotal] = useState(0);
   const [activePage, setActivePage] = useState(1);
+  const [activeLoaded, setActiveLoaded] = useState(false);
 
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
 
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerLoaded, setLedgerLoaded] = useState(false);
 
   const [agentLogs, setAgentLogs] = useState<any[]>([]);
   const [agentLogsTotal, setAgentLogsTotal] = useState(0);
   const [agentLogsPage, setAgentLogsPage] = useState(1);
+  const [logsLoaded, setLogsLoaded] = useState(false);
 
   const [actionModal, setActionModal] = useState<{
     type: 'approve' | 'reject' | 'repay';
@@ -84,6 +88,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
       if (res.success) {
         setPendingRequests(res.data.requests);
         setPendingTotal(res.data.total);
+        setPendingLoaded(true);
       }
     } catch { toast.error('Failed to load pending requests.'); }
     finally { setLoading(false); }
@@ -96,6 +101,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
       if (res.success) {
         setActiveLoans(res.data.loans);
         setActiveTotal(res.data.total);
+        setActiveLoaded(true);
       }
     } catch { toast.error('Failed to load active loans.'); }
     finally { setLoading(false); }
@@ -108,6 +114,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
       if (res.success) {
         setLedgerEntries(res.data.entries);
         setLedgerTotal(res.data.total);
+        setLedgerLoaded(true);
       }
     } catch { toast.error('Failed to load ledger.'); }
     finally { setLoading(false); }
@@ -122,17 +129,31 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
       if (res.success) {
         setAgentLogs(res.data.logs);
         setAgentLogsTotal(res.data.total);
+        setLogsLoaded(true);
       }
     } catch { toast.error('Failed to load agent logs.'); }
     finally { setLoading(false); }
   }, [agentLogsPage]);
 
   useEffect(() => {
-    if (subTab === 'pending') loadPending();
-    else if (subTab === 'active') loadActiveLoans();
-    else if (subTab === 'ledger') loadLedger();
-    else if (subTab === 'logs') loadAgentLogs();
-  }, [subTab, loadPending, loadActiveLoans, loadLedger, loadAgentLogs]);
+    if (subTab === 'pending' && !pendingLoaded) loadPending();
+    else if (subTab === 'active' && !activeLoaded) loadActiveLoans();
+    else if (subTab === 'ledger' && !ledgerLoaded) loadLedger();
+    else if (subTab === 'logs' && !logsLoaded) loadAgentLogs();
+  }, [subTab, pendingLoaded, activeLoaded, ledgerLoaded, logsLoaded, loadPending, loadActiveLoans, loadLedger, loadAgentLogs]);
+
+  // Page changes always require a re-fetch
+  useEffect(() => { loadPending(); }, [pendingPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadActiveLoans(); }, [activePage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadLedger(); }, [ledgerPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadAgentLogs(); }, [agentLogsPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const invalidateAll = useCallback(() => {
+    setPendingLoaded(false);
+    setActiveLoaded(false);
+    setLedgerLoaded(false);
+    setLogsLoaded(false);
+  }, []);
 
   const handleApprove = async () => {
     if (!actionModal) return;
@@ -143,6 +164,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
         toast.success('Loan approved!');
         setActionModal(null);
         setModalRemarks('');
+        invalidateAll();
         loadPending();
         loadStats();
       } else toast.error(res.message);
@@ -163,6 +185,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
         toast.success('Loan rejected.');
         setActionModal(null);
         setModalRemarks('');
+        invalidateAll();
         loadPending();
         loadStats();
       } else toast.error(res.message);
@@ -186,6 +209,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
         setActionModal(null);
         setRepayAmount('');
         setModalRemarks('');
+        invalidateAll();
         loadActiveLoans();
         loadStats();
       } else toast.error(res.message);

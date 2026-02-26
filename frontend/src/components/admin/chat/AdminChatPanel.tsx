@@ -60,6 +60,7 @@ interface ChatMessage {
     isSystemMessage?: boolean;
     adminAgentName?: string;
     recipientName?: string;
+    source?: string;
   };
 }
 
@@ -90,13 +91,14 @@ interface AdminChatPanelProps {
   apiBaseUrl: string;
   wsBaseUrl: string;
   initialUserId?: string | null;
+  onInitialUserConsumed?: () => void;
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const INITIAL_MESSAGE_LIMIT = 50; // Increased initial load for better UX
 const LOAD_MORE_LIMIT = 50; // Load more messages at once
 
-const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId }: AdminChatPanelProps) => {
+const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onInitialUserConsumed }: AdminChatPanelProps) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1099,13 +1101,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId }: Ad
     );
   };
 
-  const initialUserHandledRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialUserId && initialUserId !== initialUserHandledRef.current) {
-      initialUserHandledRef.current = initialUserId;
+    if (initialUserId) {
       handleSelectConversation(initialUserId);
+      onInitialUserConsumed?.();
     }
-  }, [initialUserId]);
+  }, [initialUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSendMessage = async () => {
     if (!selectedUserId || sending) return;
@@ -1657,6 +1658,9 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId }: Ad
                     
                     // Special rendering for system messages (bonus claims, etc.)
                     if (isSystem) {
+                      const metaType = msg.metadata?.type || '';
+                      const isLoanMsg = metaType.startsWith('loan_');
+                      const systemLabel = msg.metadata?.source || (isLoanMsg ? 'Loan System' : 'System');
                       return (
                         <div key={msg.id}>
                           {showDateDivider && (
@@ -1667,23 +1671,31 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId }: Ad
                             </div>
                           )}
                           <div ref={(el) => { messageRefs.current[msg.id] = el; }} className="flex justify-center my-4">
-                            <div className="max-w-[90%] px-4 py-3 rounded-xl shadow-md bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400">
+                            <div className={`max-w-[90%] px-4 py-3 rounded-xl shadow-md ${
+                              isLoanMsg
+                                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400'
+                                : 'bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400'
+                            }`}>
                               <div className="flex items-center gap-2 mb-2">
-                                <Gift className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                                <span className="text-xs font-semibold text-yellow-800">{msg.name || 'User'}</span>
-                                <span className="text-[10px] text-yellow-600">•</span>
-                                <span className="text-[10px] text-yellow-600" title={formatFullTime(msg.createdAt)}>
+                                <Gift className={`w-4 h-4 flex-shrink-0 ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`} />
+                                <span className={`text-xs font-semibold ${isLoanMsg ? 'text-green-800' : 'text-yellow-800'}`}>{systemLabel}</span>
+                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>•</span>
+                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>
+                                  {msg.name || 'User'}
+                                </span>
+                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>•</span>
+                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`} title={formatFullTime(msg.createdAt)}>
                                   {formatTime(msg.createdAt)}
                                 </span>
                               </div>
                               {msg.message && (
-                                <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">
+                                <p className={`text-sm font-medium whitespace-pre-wrap break-words ${isLoanMsg ? 'text-green-900' : 'text-yellow-900'}`}>
                                   {decodeHtmlEntities(msg.message)}
                                 </p>
                               )}
                               {msg.metadata?.bonusTitle && (
-                                <div className="mt-2 pt-2 border-t border-yellow-300">
-                                  <p className="text-xs text-yellow-700">
+                                <div className={`mt-2 pt-2 border-t ${isLoanMsg ? 'border-green-300' : 'border-yellow-300'}`}>
+                                  <p className={`text-xs ${isLoanMsg ? 'text-green-700' : 'text-yellow-700'}`}>
                                     <span className="font-semibold">Bonus:</span> {msg.metadata.bonusTitle}
                                     {msg.metadata.bonusValue && (
                                       <span className="ml-2">({msg.metadata.bonusValue})</span>
