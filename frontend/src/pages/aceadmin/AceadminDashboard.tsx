@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Plus, Trash2, X, Save, Loader2, LogOut, Gamepad2, Gift,
-  Settings, Users, Mail, HelpCircle, Bell, Menu, Search, User,
-  ChevronDown, CheckCircle, Ticket, FileText,
+  Plus, Trash2, X, Save, Loader2, LogOut, Gift,
+  Users, Mail, HelpCircle, Bell, Menu, User,
+  ChevronDown, FileText,
   Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2,
-  ToggleLeft, ToggleRight, Tag} from 'lucide-react';
+  ToggleLeft, ToggleRight, Tag, LayoutDashboard,
+  LifeBuoy, Disc3, MonitorPlay, Banknote} from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +13,7 @@ import { getApiBaseUrl } from '../../utils/api';
 import { useMusic } from '../../contexts/MusicContext';
 import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
 import SupportTicketSection from '../../components/support/SupportTicketSection';
+import AgentLoanPanel from '../../components/admin/AgentLoanPanel';
 import type { LabelData } from '../../components/admin/LabelBadge';
 
 // Types
@@ -86,7 +88,22 @@ interface AgentItem {
 
 const ALL_PERMISSIONS = ['chat', 'users', 'referrals', 'loans'] as const;
 
-type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents' | 'labels';
+type ActiveSection = 'dashboard' | 'platforms' | 'users' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents' | 'labels' | 'loans';
+
+const SECTION_TITLES: Record<ActiveSection, string> = {
+  dashboard: 'Dashboard',
+  platforms: 'Platforms',
+  users: 'Users',
+  'email-promotions': 'Email Promotions',
+  faqs: 'FAQs',
+  bonuses: 'Bonuses',
+  notifications: 'Notices',
+  'support-tickets': 'Support Tickets',
+  wheel: 'Wheel of Fortune',
+  agents: 'Agent Management',
+  labels: 'Label Management',
+  loans: 'Loan Management',
+};
 
 const AceadminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -97,6 +114,7 @@ const AceadminDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   
   // Data states
   const [platforms, setPlatforms] = useState<Platform[]>([]);
@@ -104,7 +122,6 @@ const AceadminDashboard: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [recentActions, setRecentActions] = useState<any[]>([]);
   const [activeTickets, setActiveTickets] = useState<any[]>([]);
   const [completedTickets, setCompletedTickets] = useState<any[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
@@ -112,7 +129,9 @@ const AceadminDashboard: React.FC = () => {
   const [showClosedTickets, setShowClosedTickets] = useState<boolean>(false);
   const [ticketSearchQuery, setTicketSearchQuery] = useState<string>('');
   const [ticketSortOrder, setTicketSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [loanStats, setLoanStats] = useState<{ activeLoans: number; repaymentRate: string } | null>(null);
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
 
   // Agent management states
   const [agents, setAgents] = useState<AgentItem[]>([]);
@@ -244,6 +263,18 @@ const AceadminDashboard: React.FC = () => {
   useEffect(() => {
     stopMusic();
   }, [stopMusic]);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Handle mobile/desktop responsiveness
   useEffect(() => {
@@ -378,6 +409,33 @@ const AceadminDashboard: React.FC = () => {
     }
   };
 
+  const loadTicketCounts = async () => {
+    try {
+      const token = getAgentToken();
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await axios.get(`${API_BASE_URL}/support-tickets`, {
+        headers,
+        params: { statusIn: 'pending,in_progress', limit: 100 }
+      });
+      if (res.data.success) {
+        setActiveTickets(res.data.data || []);
+      }
+    } catch { /* silent */ }
+  };
+
+  const loadLoanStats = async () => {
+    try {
+      const { agentLoanApi } = await import('../../services/loanApi');
+      const res = await agentLoanApi.getStats();
+      if (res.success && res.data) {
+        setLoanStats({
+          activeLoans: res.data.totalLoansIssued - res.data.totalPaidLoans,
+          repaymentRate: res.data.repaymentRate || '0%',
+        });
+      }
+    } catch { /* silent */ }
+  };
+
   const loadAllData = async () => {
     await Promise.all([
       loadPlatforms(),
@@ -385,7 +443,9 @@ const AceadminDashboard: React.FC = () => {
       loadContacts(),
       loadFAQs(),
       loadNotices(),
-      loadLabels()
+      loadLabels(),
+      loadTicketCounts(),
+      loadLoanStats()
     ]);
   };
 
@@ -636,174 +696,94 @@ const AceadminDashboard: React.FC = () => {
     }));
   };
 
-  // Render Dashboard Section
+  const statCards = [
+    { label: 'Total Users', value: contacts.length, icon: Users, color: 'bg-blue-500', section: 'users' as ActiveSection },
+    { label: 'Platforms', value: platforms.filter(p => p.isActive).length, icon: MonitorPlay, color: 'bg-indigo-500', section: 'platforms' as ActiveSection, sub: `${platforms.length} total` },
+    { label: 'Active Bonuses', value: bonuses.filter(b => b.isActive).length, icon: Gift, color: 'bg-green-500', section: 'bonuses' as ActiveSection, sub: `${bonuses.length} total` },
+    { label: 'Open Tickets', value: activeTickets.length, icon: LifeBuoy, color: 'bg-orange-500', section: 'support-tickets' as ActiveSection },
+    { label: 'Active Loans', value: loanStats?.activeLoans ?? 0, icon: Banknote, color: 'bg-rose-500', section: 'loans' as ActiveSection, sub: `${loanStats?.repaymentRate ?? '—'}% repaid` },
+    { label: 'Notices', value: notices.filter(n => n.isActive).length, icon: Bell, color: 'bg-purple-500', section: 'notifications' as ActiveSection, sub: `${notices.length} total` },
+    { label: 'FAQs', value: faqs.filter(f => f.isActive).length, icon: HelpCircle, color: 'bg-teal-500', section: 'faqs' as ActiveSection, sub: `${faqs.length} total` },
+  ];
+
   const renderDashboard = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Game Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">Game</h3>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Gamepad2 className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Game cards</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setActiveSection('gamecards');
-                    setShowPlatformModal(true);
-                    setEditingPlatform(null);
-                    setPlatformForm({ name: '', description: '', image: '', gameLink: '', order: 0, isActive: true });
-                  }}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => setActiveSection('gamecards')}
-                  className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-8">
+      <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
 
-        {/* User Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">User</h3>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Users</span>
-              </div>
-              <button
-                onClick={() => setActiveSection('contacts')}
-                className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-              >
-                Change
-              </button>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {statCards.map((card) => (
+          <button
+            key={card.label}
+            onClick={() => setActiveSection(card.section)}
+            className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow text-left group"
+          >
+            <div className={`w-10 h-10 ${card.color} rounded-lg flex items-center justify-center mb-3`}>
+              <card.icon className="w-5 h-5 text-white" />
             </div>
-          </div>
-        </div>
+            <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+            <p className="text-sm text-gray-500 group-hover:text-gray-700">{card.label}</p>
+            {card.sub && <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>}
+          </button>
+        ))}
+      </div>
 
-        {/* Home Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">Home</h3>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <HelpCircle className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Faqs</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setActiveSection('faqs');
-                    setShowFAQModal(true);
-                    setEditingFAQ(null);
-                    setFaqForm({ question: '', answer: '', category: 'general', order: 0, isActive: true });
-                  }}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => setActiveSection('faqs')}
-                  className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Bell className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Notifications</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setActiveSection('notifications');
-                    setShowNoticeModal(true);
-                    setEditingNotice(null);
-                    setNoticeForm({ title: '', message: '', type: 'info', isActive: true, priority: 1, expiresAt: '' });
-                  }}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => setActiveSection('notifications')}
-                  className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Mail className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Email promotions</span>
-              </div>
-              <button
-                onClick={() => setActiveSection('email-promotions')}
-                className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-              >
-                Change
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Bonus Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">Bonus</h3>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Gift className="w-5 h-5 text-gray-600" />
-                <span className="text-gray-700">Bonuses</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setActiveSection('bonuses');
-                    setShowBonusModal(true);
-                    setEditingBonus(null);
-                    setBonusForm({
-                      title: '', description: '', image: '', bonusType: 'other',
-                  bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
-                      validFrom: '', validUntil: ''
-                    });
-                  }}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => setActiveSection('bonuses')}
-                  className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-          </div>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">Quick Actions</h3>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setActiveSection('platforms');
+              setShowPlatformModal(true);
+              setEditingPlatform(null);
+              setPlatformForm({ name: '', description: '', image: '', gameLink: '', order: 0, isActive: true });
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add Platform
+          </button>
+          <button
+            onClick={() => {
+              setActiveSection('faqs');
+              setShowFAQModal(true);
+              setEditingFAQ(null);
+              setFaqForm({ question: '', answer: '', category: 'general', order: 0, isActive: true });
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add FAQ
+          </button>
+          <button
+            onClick={() => {
+              setActiveSection('notifications');
+              setShowNoticeModal(true);
+              setEditingNotice(null);
+              setNoticeForm({ title: '', message: '', type: 'info', isActive: true, priority: 1, expiresAt: '' });
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add Notice
+          </button>
+          <button
+            onClick={() => {
+              setActiveSection('bonuses');
+              setShowBonusModal(true);
+              setEditingBonus(null);
+              setBonusForm({
+                title: '', description: '', image: '', bonusType: 'other',
+                bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
+                validFrom: '', validUntil: ''
+              });
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add Bonus
+          </button>
+          <button
+            onClick={() => setActiveSection('email-promotions')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <Mail className="w-4 h-4" /> Email Promotions
+          </button>
         </div>
       </div>
     </div>
@@ -813,7 +793,7 @@ const AceadminDashboard: React.FC = () => {
   const renderGamecards = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Gamecards</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Platforms</h2>
         <button
           onClick={() => {
             setShowPlatformModal(true);
@@ -827,9 +807,28 @@ const AceadminDashboard: React.FC = () => {
         </button>
       </div>
 
+      {platforms.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <MonitorPlay className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 mb-4">No platforms yet</p>
+          <button
+            onClick={() => {
+              setShowPlatformModal(true);
+              setEditingPlatform(null);
+              setPlatformForm({ name: '', description: '', image: '', gameLink: '', order: 0, isActive: true });
+            }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Add Platform
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {platforms.map((platform) => (
-          <div key={platform._id} className="bg-white rounded-lg border border-gray-200 p-4">
+          <div key={platform._id} className="bg-white rounded-lg border border-gray-200 p-4 relative">
+            <span className={`absolute top-3 right-3 px-2 py-0.5 text-xs font-medium rounded-full ${platform.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              {platform.isActive ? 'Active' : 'Inactive'}
+            </span>
             <img src={platform.image} alt={platform.name} className="w-full h-48 object-cover rounded-lg mb-4" />
             <h3 className="font-semibold text-gray-900 mb-2">{platform.name}</h3>
             <p className="text-sm text-gray-600 mb-4 line-clamp-2">{platform.description}</p>
@@ -876,15 +875,40 @@ const AceadminDashboard: React.FC = () => {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 
   // Render Contacts Section
-  const renderContacts = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Contacts</h2>
-      
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  const renderContacts = () => {
+    const q = userSearchQuery.toLowerCase();
+    const filtered = q
+      ? contacts.filter(c =>
+          c.username.toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          (c.fpName && c.fpName.toLowerCase().includes(q)) ||
+          (c.phone && c.phone.includes(q))
+        )
+      : contacts;
+
+    return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 className="text-2xl font-bold text-gray-900">Users</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500 whitespace-nowrap">{filtered.length} of {contacts.length}</span>
+          <input
+            type="text"
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+            placeholder="Search users..."
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 text-black"
+          />
+        </div>
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden lg:block bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
@@ -899,9 +923,9 @@ const AceadminDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {contacts.map((contact) => (
+              {filtered.map((contact) => (
                 <tr key={contact._id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900">{contact.username}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{contact.username}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.fpName}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.email}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.phone}</td>
@@ -933,8 +957,40 @@ const AceadminDashboard: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Mobile cards */}
+      <div className="lg:hidden space-y-3">
+        {filtered.map((contact) => (
+          <div key={contact._id} className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-medium text-gray-900">{contact.username}</p>
+              <button
+                onClick={() => fixFortunePandaAccount(contact._id)}
+                disabled={fixingFpAccount === contact._id}
+                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {fixingFpAccount === contact._id ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" /> Fixing...</>
+                ) : (
+                  <><Wrench className="w-3 h-3" /> Fix FP</>
+                )}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs text-gray-500">
+              <span>FP: {contact.fpName}</span>
+              <span>{contact.email}</span>
+              <span>{contact.phone}</span>
+              <span>Ref: {contact.referralCode}</span>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <p className="text-center text-sm text-gray-500 py-8">No users found</p>
+        )}
+      </div>
     </div>
-  );
+    );
+  };
 
   // Render Email Promotions Section
   const renderEmailPromotions = () => {
@@ -1006,12 +1062,6 @@ const AceadminDashboard: React.FC = () => {
           const fileInput = document.getElementById('email-attachment') as HTMLInputElement;
           if (fileInput) fileInput.value = '';
           
-          // Add to recent actions
-          setRecentActions(prev => [{
-            title: `Sent ${response.data.data?.successful || 0} promotional emails`,
-            description: `Subject: ${emailForm.subject}`,
-            timestamp: 'Just now'
-          }, ...prev.slice(0, 9)]);
         } else {
           toast.error(response.data.message || 'Failed to send emails');
         }
@@ -1452,9 +1502,28 @@ const AceadminDashboard: React.FC = () => {
         </button>
       </div>
 
+      {bonuses.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <Gift className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 mb-4">No bonuses yet</p>
+          <button
+            onClick={() => {
+              setShowBonusModal(true);
+              setEditingBonus(null);
+              setBonusForm({ title: '', description: '', image: '', bonusType: 'other', bonusValue: '', termsAndConditions: '', order: 0, isActive: true, validFrom: '', validUntil: '' });
+            }}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 inline-flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Add Bonus
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {bonuses.map((bonus) => (
-          <div key={bonus._id} className="bg-white rounded-lg border border-gray-200 p-4">
+          <div key={bonus._id} className="bg-white rounded-lg border border-gray-200 p-4 relative">
+            <span className={`absolute top-3 right-3 px-2 py-0.5 text-xs font-medium rounded-full ${bonus.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              {bonus.isActive ? 'Active' : 'Inactive'}
+            </span>
             <img src={bonus.image} alt={bonus.title} className="w-full h-48 object-cover rounded-lg mb-4" />
             <h3 className="font-semibold text-gray-900 mb-2">{bonus.title}</h3>
             <p className="text-sm text-gray-600 mb-2">{bonus.description}</p>
@@ -1513,6 +1582,7 @@ const AceadminDashboard: React.FC = () => {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 
@@ -1557,7 +1627,7 @@ const AceadminDashboard: React.FC = () => {
   const renderNotifications = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Notifications</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Notices</h2>
         <button
           onClick={() => {
             setShowNoticeModal(true);
@@ -1955,7 +2025,7 @@ const AceadminDashboard: React.FC = () => {
 
       {/* Label modal */}
       {showLabelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">
@@ -2043,9 +2113,9 @@ const AceadminDashboard: React.FC = () => {
     switch (activeSection) {
       case 'dashboard':
         return renderDashboard();
-      case 'gamecards':
+      case 'platforms':
         return renderGamecards();
-      case 'contacts':
+      case 'users':
         return renderContacts();
       case 'email-promotions':
         return renderEmailPromotions();
@@ -2063,6 +2133,8 @@ const AceadminDashboard: React.FC = () => {
         return renderAgents();
       case 'labels':
         return renderLabels();
+      case 'loans':
+        return <AgentLoanPanel />;
       default:
         return renderDashboard();
     }
@@ -2096,7 +2168,16 @@ const AceadminDashboard: React.FC = () => {
       <div className={`${sidebarOpen ? 'w-64' : 'w-0 lg:w-20'} bg-gray-800 text-white transition-all duration-300 flex flex-col fixed h-screen z-50 overflow-hidden`}>
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center justify-between">
-            <h2 className={`${sidebarOpen ? 'block' : 'hidden'} font-bold text-lg whitespace-nowrap`}>Zenith Rise G.</h2>
+            <h2 className={`${sidebarOpen ? 'block' : 'hidden'} font-bold text-lg whitespace-nowrap`}>GAG Admin</h2>
+            {sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden p-1 hover:bg-gray-700 rounded transition-colors"
+                aria-label="Close sidebar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -2109,8 +2190,9 @@ const AceadminDashboard: React.FC = () => {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-hide">
           <button
+            title="Dashboard"
             onClick={() => {
               setActiveSection('dashboard');
               if (isMobile) setSidebarOpen(false);
@@ -2119,33 +2201,29 @@ const AceadminDashboard: React.FC = () => {
               activeSection === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-700'
             }`}
           >
-            <Settings className="w-5 h-5 flex-shrink-0" />
+            <LayoutDashboard className="w-5 h-5 flex-shrink-0" />
             <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Dashboard</span>
           </button>
 
-          <div className="space-y-1">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase px-3 py-2`}>
-              Game
+          <div className="pt-3 space-y-1">
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase tracking-wider px-3 py-1`}>
+              Content
             </div>
             <button
+              title="Platforms"
               onClick={() => {
-                setActiveSection('gamecards');
+                setActiveSection('platforms');
                 if (isMobile) setSidebarOpen(false);
               }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeSection === 'gamecards' ? 'bg-blue-600' : 'hover:bg-gray-700'
+                activeSection === 'platforms' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Gamepad2 className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Game cards</span>
+              <MonitorPlay className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Platforms</span>
             </button>
-          </div>
-
-          <div className="space-y-1">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase px-3 py-2`}>
-              Home
-            </div>
             <button
+              title="FAQs"
               onClick={() => {
                 setActiveSection('faqs');
                 if (isMobile) setSidebarOpen(false);
@@ -2155,9 +2233,10 @@ const AceadminDashboard: React.FC = () => {
               }`}
             >
               <HelpCircle className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Faqs</span>
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>FAQs</span>
             </button>
             <button
+              title="Notices"
               onClick={() => {
                 setActiveSection('notifications');
                 if (isMobile) setSidebarOpen(false);
@@ -2167,21 +2246,61 @@ const AceadminDashboard: React.FC = () => {
               }`}
             >
               <Bell className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Notifications</span>
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Notices</span>
             </button>
+          </div>
+
+          <div className="pt-3 space-y-1">
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase tracking-wider px-3 py-1`}>
+              Users
+            </div>
             <button
+              title="All Users"
               onClick={() => {
-                setActiveSection('support-tickets');
+                setActiveSection('users');
                 if (isMobile) setSidebarOpen(false);
               }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeSection === 'support-tickets' ? 'bg-blue-600' : 'hover:bg-gray-700'
+                activeSection === 'users' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Ticket className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Support Tickets</span>
+              <Users className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>All Users</span>
             </button>
             <button
+              title="Labels"
+              onClick={() => {
+                setActiveSection('labels');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'labels' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <Tag className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Labels</span>
+            </button>
+            <button
+              title="Loans"
+              onClick={() => {
+                setActiveSection('loans');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'loans' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <Banknote className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Loans</span>
+            </button>
+          </div>
+
+          <div className="pt-3 space-y-1">
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase tracking-wider px-3 py-1`}>
+              Marketing
+            </div>
+            <button
+              title="Email Promotions"
               onClick={() => {
                 setActiveSection('email-promotions');
                 if (isMobile) setSidebarOpen(false);
@@ -2191,33 +2310,10 @@ const AceadminDashboard: React.FC = () => {
               }`}
             >
               <Mail className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Email promotions</span>
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Email Promotions</span>
             </button>
-          </div>
-
-          <div className="space-y-1">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase px-3 py-2`}>
-              User
-            </div>
             <button
-              onClick={() => {
-                setActiveSection('contacts');
-                if (isMobile) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeSection === 'contacts' ? 'bg-blue-600' : 'hover:bg-gray-700'
-              }`}
-            >
-              <Users className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Users</span>
-            </button>
-          </div>
-
-          <div className="space-y-1">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase px-3 py-2`}>
-              Bonus
-            </div>
-            <button
+              title="Bonuses"
               onClick={() => {
                 setActiveSection('bonuses');
                 if (isMobile) setSidebarOpen(false);
@@ -2230,6 +2326,7 @@ const AceadminDashboard: React.FC = () => {
               <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Bonuses</span>
             </button>
             <button
+              title="Wheel of Fortune"
               onClick={() => {
                 setActiveSection('wheel');
                 if (isMobile) setSidebarOpen(false);
@@ -2238,16 +2335,36 @@ const AceadminDashboard: React.FC = () => {
                 activeSection === 'wheel' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
-              <Gift className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Wheel Management</span>
+              <Disc3 className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Wheel of Fortune</span>
             </button>
           </div>
 
-          <div className="space-y-1">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase px-3 py-2`}>
+          <div className="pt-3 space-y-1">
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase tracking-wider px-3 py-1`}>
+              Support
+            </div>
+            <button
+              title="Support Tickets"
+              onClick={() => {
+                setActiveSection('support-tickets');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'support-tickets' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <LifeBuoy className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Tickets</span>
+            </button>
+          </div>
+
+          <div className="pt-3 space-y-1">
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} text-xs text-gray-400 uppercase tracking-wider px-3 py-1`}>
               Admin
             </div>
             <button
+              title="Agent Management"
               onClick={() => {
                 setActiveSection('agents');
                 if (isMobile) setSidebarOpen(false);
@@ -2258,18 +2375,6 @@ const AceadminDashboard: React.FC = () => {
             >
               <Shield className="w-5 h-5 flex-shrink-0" />
               <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Agents</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveSection('labels');
-                if (isMobile) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeSection === 'labels' ? 'bg-blue-600' : 'hover:bg-gray-700'
-              }`}
-            >
-              <Tag className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Labels</span>
             </button>
           </div>
         </nav>
@@ -2286,9 +2391,9 @@ const AceadminDashboard: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col ml-0 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} transition-all duration-300`}>
+      <div className={`flex-1 flex flex-col transition-[margin] duration-300 ease-in-out ml-0 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 pb-4 sticky top-0 z-50" style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}>
+        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sticky top-0 z-30" style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 sm:gap-4">
               <button
@@ -2298,21 +2403,34 @@ const AceadminDashboard: React.FC = () => {
               >
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
-              <span className="text-gray-700 font-medium hidden sm:block">Home</span>
+              <span className="text-gray-700 font-medium text-sm sm:text-base">{SECTION_TITLES[activeSection]}</span>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-              <div className="relative hidden sm:block">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search Contact Details..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 lg:w-64 text-black"
-                />
-              </div>
-              <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors">
-                <User className="w-5 h-5 text-gray-600" />
-                <ChevronDown className="w-4 h-4 text-gray-600 hidden sm:block" />
-              </div>
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setShowUserDropdown(prev => !prev)}
+                className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
+              >
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <User className="w-4 h-4 text-blue-600" />
+                </div>
+                <span className="text-sm font-medium text-gray-700 hidden sm:block">{getAgentUsername()}</span>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </button>
+              {showUserDropdown && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-[60]">
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <p className="text-sm font-medium text-gray-900">{getAgentUsername()}</p>
+                    <p className="text-xs text-gray-500">Admin</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -2320,53 +2438,19 @@ const AceadminDashboard: React.FC = () => {
         {/* Content Area */}
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
           <div className="max-w-7xl mx-auto">
-            <div className={`grid grid-cols-1 gap-4 sm:gap-6 ${activeSection === 'dashboard' ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
-              {/* Main Content */}
-              <div className={activeSection === 'dashboard' ? 'lg:col-span-2' : 'lg:col-span-1'}>
-                {loading && (
-                  <div className="flex justify-center items-center py-20">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                  </div>
-                )}
-                {!loading && renderContent()}
+            {loading && (
+              <div className="flex justify-center items-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>
-
-              {/* Recent Actions Sidebar - Only show on dashboard */}
-              {activeSection === 'dashboard' && (
-              <div className="lg:col-span-1">
-                <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent actions</h3>
-                  <div className="space-y-4">
-                    {recentActions.length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-8">No recent actions</p>
-                    ) : (
-                      recentActions.map((action, index) => (
-                        <div key={index} className="flex gap-3">
-                          <div className="flex-shrink-0">
-                            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                              <CheckCircle className="w-4 h-4 text-green-600" />
-                            </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-blue-600 truncate">{action.title}</p>
-                            <p className="text-xs text-gray-500 mt-1">{action.description}</p>
-                            <p className="text-xs text-gray-400 mt-1">{action.timestamp}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-              )}
-            </div>
+            )}
+            {!loading && renderContent()}
           </div>
         </main>
       </div>
 
       {/* Platform Modal - Similar structure to before but simplified */}
       {showPlatformModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
               <h3 className="text-xl font-bold">
@@ -2391,12 +2475,6 @@ const AceadminDashboard: React.FC = () => {
                     headers: { 'Authorization': `Bearer ${token}` }
                   });
                   toast.success('Platform created');
-                  // Add to recent actions
-                  setRecentActions(prev => [{
-                    title: `Added "${platformForm.name}"`,
-                    description: `Platform "${platformForm.name}" was added`,
-                    timestamp: 'Just now'
-                  }, ...prev.slice(0, 9)]);
                 }
                 setShowPlatformModal(false);
                 setEditingPlatform(null);
@@ -2448,7 +2526,7 @@ const AceadminDashboard: React.FC = () => {
 
       {/* Bonus Modal */}
       {showBonusModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
               <h3 className="text-xl font-bold">{editingBonus ? 'Edit Bonus' : 'Add New Bonus'}</h3>
@@ -2469,11 +2547,6 @@ const AceadminDashboard: React.FC = () => {
                     headers: { 'Authorization': `Bearer ${token}` }
                   });
                   toast.success('Bonus created');
-                  setRecentActions(prev => [{
-                    title: `Added "${bonusForm.title}"`,
-                    description: `Bonus "${bonusForm.title}" was added`,
-                    timestamp: 'Just now'
-                  }, ...prev.slice(0, 9)]);
                 }
                 setShowBonusModal(false);
                 setEditingBonus(null);
@@ -2540,7 +2613,7 @@ const AceadminDashboard: React.FC = () => {
 
       {/* FAQ Modal */}
       {showFAQModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
               <h3 className="text-xl font-bold">{editingFAQ ? 'Edit FAQ' : 'Add New FAQ'}</h3>
@@ -2561,11 +2634,6 @@ const AceadminDashboard: React.FC = () => {
                     headers: { 'Authorization': `Bearer ${token}` }
                   });
                   toast.success('FAQ created');
-                  setRecentActions(prev => [{
-                    title: `Added "${faqForm.question}"`,
-                    description: `FAQ "${faqForm.question}" was added`,
-                    timestamp: 'Just now'
-                  }, ...prev.slice(0, 9)]);
                 }
                 setShowFAQModal(false);
                 setEditingFAQ(null);
@@ -2609,7 +2677,7 @@ const AceadminDashboard: React.FC = () => {
 
       {/* Notice Modal */}
       {showNoticeModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
               <h3 className="text-xl font-bold">{editingNotice ? 'Edit Notice' : 'Add New Notice'}</h3>
@@ -2630,11 +2698,6 @@ const AceadminDashboard: React.FC = () => {
                     headers: { 'Authorization': `Bearer ${token}` }
                   });
                   toast.success('Notice created');
-                  setRecentActions(prev => [{
-                    title: `Added "${noticeForm.title}"`,
-                    description: `Notice "${noticeForm.title}" was added`,
-                    timestamp: 'Just now'
-                  }, ...prev.slice(0, 9)]);
                 }
                 setShowNoticeModal(false);
                 setEditingNotice(null);

@@ -13,18 +13,21 @@ function getUserHeaders() {
 }
 
 function getAgentHeaders() {
-  const session = localStorage.getItem('admin_session');
-  let token = null;
-  if (session) {
+  const keys = ['agent_session', 'admin_session'];
+  let token: string | null = null;
+  for (const key of keys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
     try {
-      const parsed = JSON.parse(session);
-      if (!parsed.expiresAt || Date.now() <= parsed.expiresAt) {
+      const parsed = JSON.parse(raw);
+      if (parsed.token && (!parsed.expiresAt || Date.now() <= parsed.expiresAt)) {
         token = parsed.token;
+        break;
       }
-    } catch { /* invalid session */ }
+    } catch { /* skip invalid */ }
   }
   return {
-    Authorization: `Bearer ${token}`,
+    Authorization: token ? `Bearer ${token}` : '',
     'Content-Type': 'application/json',
   };
 }

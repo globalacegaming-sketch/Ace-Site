@@ -8,7 +8,7 @@ const router = Router();
 
 const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader === 'Bearer ' || authHeader === 'Bearer null') {
     res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
     return;
   }

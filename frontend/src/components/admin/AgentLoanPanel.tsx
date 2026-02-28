@@ -23,9 +23,15 @@ import { getApiBaseUrl } from '../../utils/api';
 
 const API_BASE_URL = getApiBaseUrl();
 const getAdminToken = () => {
-  const session = localStorage.getItem('admin_session');
-  if (session) {
-    try { return JSON.parse(session).token; } catch { return null; }
+  for (const key of ['agent_session', 'admin_session']) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.token && (!parsed.expiresAt || Date.now() <= parsed.expiresAt)) {
+        return parsed.token;
+      }
+    } catch { /* skip */ }
   }
   return null;
 };
@@ -774,11 +780,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition"
               onClick={(e) => {
                 e.preventDefault();
-                const session = localStorage.getItem('admin_session');
-                let token = '';
-                if (session) {
-                  try { token = JSON.parse(session).token; } catch { /* */ }
-                }
+                const token = getAdminToken() || '';
                 fetch(agentLoanApi.exportLedgerCsvUrl(), {
                   headers: { Authorization: `Bearer ${token}` },
                 })
