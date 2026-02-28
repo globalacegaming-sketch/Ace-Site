@@ -435,12 +435,12 @@ class LoanService {
       const account = await LoanAccount.findOne({ userId: loan.userId }).session(session);
       if (!account) throw new Error('Loan account not found.');
 
-      if (amount > account.activeBalance) {
-        throw new Error(`Payment amount ($${amount.toFixed(2)}) exceeds active balance ($${account.activeBalance.toFixed(2)}).`);
+      const loanRemaining = loan.remainingBalance ?? loan.principalAmount;
+      if (amount > loanRemaining) {
+        throw new Error(`Payment amount ($${amount.toFixed(2)}) exceeds loan remaining balance ($${loanRemaining.toFixed(2)}).`);
       }
 
-      const cappedLoanAmount = Math.min(amount, loan.remainingBalance ?? loan.principalAmount);
-
+      const cappedLoanAmount = Math.min(amount, loanRemaining);
       const ledgerType = PAYMENT_METHOD_TO_LEDGER_TYPE[paymentMethod];
 
       await LoanLedger.create(
@@ -458,14 +458,15 @@ class LoanService {
         { session }
       );
 
-      account.activeBalance -= amount;
-      await account.save({ session });
-
-      loan.remainingBalance = Math.max(0, (loan.remainingBalance ?? loan.principalAmount) - cappedLoanAmount);
+      loan.remainingBalance = Math.max(0, loanRemaining - cappedLoanAmount);
       if (loan.remainingBalance === 0) {
         loan.status = 'PAID';
       }
       await loan.save({ session });
+
+      const activeLoans = await Loan.find({ userId: loan.userId, status: { $in: ['ACTIVE', 'OVERDUE'] } }).session(session);
+      account.activeBalance = activeLoans.reduce((sum, l) => sum + (l.remainingBalance ?? l.principalAmount ?? 0), 0);
+      await account.save({ session });
 
       await session.commitTransaction();
 

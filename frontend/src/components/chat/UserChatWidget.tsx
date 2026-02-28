@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../../utils/api';
+import { linkify } from '../../utils/linkify';
 import { oneSignalRequestPermission } from '../../services/oneSignal';
 
 interface ChatMessage {
@@ -655,7 +656,7 @@ const UserChatWidget = () => {
                               <span className="text-[10px] text-yellow-600">{timestamp}</span>
                             </div>
                             {msg.message && (
-                              <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{decodeHtmlEntities(msg.message)}</p>
+                              <p className="text-sm font-medium text-yellow-900 whitespace-pre-wrap break-words">{linkify(decodeHtmlEntities(msg.message), { linkClassName: 'underline text-yellow-800 hover:text-yellow-900 break-all' })}</p>
                             )}
                             {msg.metadata?.bonusTitle && (
                               <div className="mt-2 pt-2 border-t border-yellow-300">
@@ -751,7 +752,7 @@ const UserChatWidget = () => {
                                 {msg.replyTo.senderName || (msg.replyTo.senderType === 'user' ? 'You' : 'Support')}
                               </p>
                               <p className={`text-[11px] line-clamp-2 ${isUser ? 'text-indigo-100' : 'text-gray-500'}`}>
-                                {msg.replyTo.message ? decodeHtmlEntities(msg.replyTo.message) : '(Attachment)'}
+                                {msg.replyTo.message ? linkify(decodeHtmlEntities(msg.replyTo.message), { linkClassName: `underline break-all ${isUser ? 'text-indigo-200 hover:text-white' : 'text-indigo-600 hover:text-indigo-800'}` }) : '(Attachment)'}
                               </p>
                             </div>
                           )}
@@ -762,7 +763,7 @@ const UserChatWidget = () => {
                           )}
                           {msg.message && (
                             <p className="text-sm whitespace-pre-wrap break-words">
-                              {decodeHtmlEntities(msg.message)}
+                              {linkify(decodeHtmlEntities(msg.message), { linkClassName: `underline break-all ${isUser ? 'text-indigo-200 hover:text-white' : 'text-indigo-600 hover:text-indigo-800'}` })}
                             </p>
                           )}
                           {msg.attachmentUrl && (

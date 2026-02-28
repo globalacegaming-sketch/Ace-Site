@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
@@ -34,33 +35,13 @@ const Login = () => {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
     mode: 'onSubmit',
   });
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     setError(null);
-
-    // Validate form data
-    if (!data.email || !data.password) {
-      setError('Please fill in all fields');
-      setIsLoading(false);
-      return;
-    }
-    
-    // Check email format manually
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(data.email.trim())) {
-      setError('Please enter a valid email address');
-      setIsLoading(false);
-      return;
-    }
-    
-    if (data.password.length < 6) {
-      setError('Password must be at least 6 characters');
-      setIsLoading(false);
-      return;
-    }
 
     try {
       // Call the backend API for authentication
@@ -121,10 +102,10 @@ const Login = () => {
             updatedAt: result.data.user.updatedAt || new Date().toISOString(),
           },
           token: result.data.accessToken,
-          expires_at: result.data.expiresAt,
         };
 
-        login(userSession);
+        const expiresAt = result.data.expiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        login({ ...userSession, expires_at: expiresAt });
         
         // Set last recharge status
         setLastRechargeStatus('success');
@@ -156,9 +137,9 @@ const Login = () => {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
 
       {/* Full screen layout - NO WRAPPERS */}
-      <div className="flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden">
+      <div className="flex min-h-[calc(100vh-4rem)] lg:min-h-screen overflow-hidden">
           {/* Left Side - Form */}
-          <div className="w-full lg:w-1/2 casino-feature-card py-3 px-4 sm:py-4 sm:px-6 lg:p-12 flex flex-col justify-center relative overflow-hidden">
+          <div className="w-full lg:w-1/2 casino-feature-card py-3 px-4 sm:py-4 sm:px-6 lg:p-12 flex flex-col justify-center relative overflow-y-auto overflow-x-hidden">
             {/* Casino decorative elements */}
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full -translate-y-20 translate-x-20"></div>
             <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full translate-y-16 -translate-x-16"></div>
@@ -184,9 +165,10 @@ const Login = () => {
               </label>
                   <div className="relative">
               <input
-                      {...register('email', { required: 'Email is required' })}
+                      {...register('email')}
                 type="email"
                 id="email"
+                autoComplete="email"
                       className={`px-3 py-2.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 text-sm sm:text-base ${
                         errors.email ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                       }`}
@@ -211,9 +193,10 @@ const Login = () => {
               </label>
               <div className="relative">
                 <input
-                      {...register('password', { required: 'Password is required' })}
+                      {...register('password')}
                   type={showPassword ? 'text' : 'password'}
                   id="password"
+                  autoComplete="current-password"
                       className={`px-3 py-2.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 pr-9 sm:pr-10 lg:pr-12 w-full rounded-lg border transition-all duration-300 text-sm sm:text-base ${
                         errors.password ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                   }`}

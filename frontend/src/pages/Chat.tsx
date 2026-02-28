@@ -5,6 +5,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../utils/api';
+import { linkify } from '../utils/linkify';
 import { oneSignalRequestPermission } from '../services/oneSignal';
 
 interface ChatMessage {
@@ -565,7 +566,7 @@ const Chat = () => {
                           </div>
                           {message.message && (
                             <p className="text-sm casino-text-primary whitespace-pre-wrap break-words leading-relaxed">
-                              {decodeHtmlEntities(message.message)}
+                              {linkify(decodeHtmlEntities(message.message), { linkClassName: 'underline text-yellow-600 hover:text-yellow-500 break-all' })}
                             </p>
                           )}
                         </div>
@@ -681,7 +682,7 @@ const Chat = () => {
                               {message.replyTo.senderName || (message.replyTo.senderType === 'user' ? 'You' : 'Support')}
                             </p>
                             <p className={`text-xs line-clamp-2 ${isUser ? 'text-[#0A0A0F]/70' : 'casino-text-secondary'}`}>
-                              {message.replyTo.message ? decodeHtmlEntities(message.replyTo.message) : '(Attachment)'}
+                              {message.replyTo.message ? linkify(decodeHtmlEntities(message.replyTo.message), { linkClassName: `underline break-all ${isUser ? 'text-indigo-700 hover:text-indigo-900' : 'text-yellow-400 hover:text-yellow-300'}` }) : '(Attachment)'}
                             </p>
                           </div>
                         )}
@@ -692,7 +693,7 @@ const Chat = () => {
                         )}
                         {message.message && (
                           <p className={`text-sm whitespace-pre-wrap break-words ${isUser ? 'text-[#0A0A0F]' : 'casino-text-primary'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-                            {decodeHtmlEntities(message.message)}
+                            {linkify(decodeHtmlEntities(message.message), { linkClassName: `underline break-all ${isUser ? 'text-indigo-700 hover:text-indigo-900' : 'text-yellow-400 hover:text-yellow-300'}` })}
                           </p>
                         )}
                         {message.attachmentUrl && (
@@ -834,7 +835,7 @@ const Chat = () => {
                 {replyingTo.senderType === 'user' ? (user?.firstName || user?.username || 'You') : (replyingTo.name || 'Support')}
               </p>
               <p className="text-xs casino-text-secondary truncate">
-                {replyingTo.message ? decodeHtmlEntities(replyingTo.message) : '(Attachment)'}
+                {replyingTo.message ? linkify(decodeHtmlEntities(replyingTo.message), { linkClassName: 'underline text-indigo-500 hover:text-indigo-400 break-all' }) : '(Attachment)'}
               </p>
             </div>
             <button

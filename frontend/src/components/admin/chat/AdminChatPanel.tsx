@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAttachmentUrl, isImageAttachment } from '../../../utils/api';
+import { linkify } from '../../../utils/linkify';
 import LabelBadge, { LabelSelector, LabelFilter, type LabelData } from '../LabelBadge';
 import UserNotesPanel from '../UserNotesPanel';
 
@@ -1524,7 +1525,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                           )}
                           <p className="text-[11px] sm:text-xs text-gray-600 leading-relaxed line-clamp-2">
                             {conversation.lastMessage?.message 
-                              ? decodeHtmlEntities(conversation.lastMessage.message)
+                              ? linkify(decodeHtmlEntities(conversation.lastMessage.message), { linkClassName: 'underline text-indigo-600 hover:text-indigo-800 break-all' })
                               : conversation.lastMessage?.attachmentName 
                               ? conversation.lastMessage.attachmentName
                               : '(Attachment)'}
@@ -1713,7 +1714,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                               </div>
                               {msg.message && (
                                 <p className={`text-sm font-medium whitespace-pre-wrap break-words ${isLoanMsg ? 'text-green-900' : 'text-yellow-900'}`}>
-                                  {decodeHtmlEntities(msg.message)}
+                                  {linkify(decodeHtmlEntities(msg.message), { linkClassName: `underline break-all ${isLoanMsg ? 'text-green-800 hover:text-green-900' : 'text-yellow-800 hover:text-yellow-900'}` })}
                                 </p>
                               )}
                               {msg.metadata?.bonusTitle && (
@@ -1810,7 +1811,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                                   {msg.replyTo.senderName || (msg.replyTo.senderType === 'admin' ? 'Support Team' : 'User')}
                                 </p>
                                 <p className={`text-xs line-clamp-2 ${isAdmin ? 'text-indigo-100' : 'text-gray-500'}`}>
-                                  {msg.replyTo.message ? decodeHtmlEntities(msg.replyTo.message) : '(Attachment)'}
+                                  {msg.replyTo.message ? linkify(decodeHtmlEntities(msg.replyTo.message), { linkClassName: `underline break-all ${isAdmin ? 'text-indigo-200 hover:text-white' : 'text-indigo-600 hover:text-indigo-800'}` }) : '(Attachment)'}
                                 </p>
                               </div>
                             )}
@@ -1826,7 +1827,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                               <p className={`text-sm whitespace-pre-wrap break-words leading-relaxed ${
                                 isAdmin ? 'text-white' : 'text-gray-900'
                               }`}>
-                                {decodeHtmlEntities(msg.message)}
+                                {linkify(decodeHtmlEntities(msg.message), { linkClassName: `underline break-all ${isAdmin ? 'text-indigo-200 hover:text-white' : 'text-indigo-600 hover:text-indigo-800'}` })}
                               </p>
                             )}
                             {msg.attachmentUrl && (
@@ -1945,7 +1946,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                       Replying to {replyingTo.senderType === 'admin' ? (replyingTo.name || 'Support Team') : (replyingTo.name || 'User')}
                     </p>
                     <p className="text-xs text-indigo-500 truncate">
-                      {replyingTo.message ? decodeHtmlEntities(replyingTo.message) : '(Attachment)'}
+                      {replyingTo.message ? linkify(decodeHtmlEntities(replyingTo.message), { linkClassName: 'underline text-indigo-600 hover:text-indigo-700 break-all' }) : '(Attachment)'}
                     </p>
                   </div>
                   <button

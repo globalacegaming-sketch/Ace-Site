@@ -539,7 +539,10 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                     <p className="text-xs text-gray-500">{loan.userId?.email}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold text-gray-900">${loan.principalAmount.toFixed(2)}</p>
+                    <p className="text-lg font-bold text-gray-900">${(loan.remainingBalance ?? loan.principalAmount).toFixed(2)}</p>
+                    {loan.remainingBalance != null && loan.remainingBalance !== loan.principalAmount && (
+                      <p className="text-[10px] text-gray-500">of ${loan.principalAmount.toFixed(2)}</p>
+                    )}
                     {statusBadge(loan.status)}
                   </div>
                 </div>
@@ -551,8 +554,9 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                 </div>
                 <button
                   onClick={() => {
+                    const remaining = loan.remainingBalance ?? loan.principalAmount;
                     setActionModal({ type: 'repay', data: loan });
-                    setRepayAmount('');
+                    setRepayAmount(remaining > 0 ? remaining.toFixed(2) : '');
                     setRepayMethod('CASH');
                     setModalRemarks('');
                   }}
@@ -971,7 +975,11 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
               <>
                 <h3 className="text-lg font-bold text-gray-900 mb-1">Process Repayment</h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  Loan: <strong>${actionModal.data.principalAmount.toFixed(2)}</strong> — {actionModal.data.userId?.username}
+                  Remaining: <strong>${actionModal.data.remainingBalance != null ? actionModal.data.remainingBalance.toFixed(2) : actionModal.data.principalAmount.toFixed(2)}</strong>
+                  {actionModal.data.remainingBalance != null && actionModal.data.remainingBalance !== actionModal.data.principalAmount && (
+                    <span> (of ${actionModal.data.principalAmount.toFixed(2)} principal)</span>
+                  )}
+                  {' — '}{actionModal.data.userId?.username}
                 </p>
                 <div className="space-y-3 mb-4">
                   <div>
@@ -984,7 +992,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                         onChange={(e) => setRepayAmount(e.target.value)}
                         min="0.01"
                         step="0.01"
-                        placeholder="0.00"
+                        placeholder={(actionModal.data.remainingBalance ?? actionModal.data.principalAmount).toFixed(2)}
                         className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 placeholder:text-gray-400"
                       />
                     </div>

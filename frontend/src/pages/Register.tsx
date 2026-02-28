@@ -11,12 +11,12 @@ import { useMusic } from '../contexts/MusicContext';
 import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter';
 
 const registerSchema = z.object({
-  firstName: z.string().min(2),
-  lastName: z.string().min(2),
-  username: z.string().min(3).max(30),
-  email: z.string().email(),
-  phoneNumber: z.string().min(10),
-  password: z.string().min(6),
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
+  username: z.string().min(3, 'Username must be at least 3 characters').max(30).regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
+  email: z.string().email('Please enter a valid email address'),
+  phoneNumber: z.string().optional().refine(val => !val || val.length >= 10, 'Phone must be at least 10 characters if provided'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
   referralCode: z.string().optional()
 }).refine((data) => data.password === data.confirmPassword, {
@@ -62,12 +62,12 @@ const Register = () => {
         throw new Error('API base URL is not configured');
       }
       
-      // credentials: 'include' stores the session cookie from registration
+      const { confirmPassword, ...payload } = data;
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
 
       // Try to parse response as JSON
@@ -134,15 +134,15 @@ const Register = () => {
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
 
       {/* Full screen layout - NO WRAPPERS */}
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen overflow-hidden">
           {/* Left Side - Form */}
-          <div className="w-full lg:w-1/2 casino-feature-card p-4 sm:p-6 lg:p-12 flex flex-col justify-center relative">
+          <div className="w-full lg:w-1/2 casino-feature-card p-4 sm:p-6 lg:p-12 flex flex-col justify-center relative overflow-y-auto overflow-x-hidden min-h-0">
             {/* Casino decorative elements */}
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full -translate-y-20 translate-x-20"></div>
             <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full translate-y-16 -translate-x-16"></div>
             <div className="absolute top-1/2 right-0 w-24 h-24 bg-gradient-to-br from-yellow-400/20 to-orange-500/20 rounded-full -translate-y-1/2 translate-x-12"></div>
 
-            <div className="relative z-10">
+            <div className="relative z-10 py-4 lg:py-0">
               <div className="text-center mb-4 sm:mb-5 lg:mb-8">
                 <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 lg:w-16 lg:h-16 mb-2 sm:mb-3 lg:mb-4">
                   <img 
@@ -166,6 +166,7 @@ const Register = () => {
                   {...register('firstName')}
                   type="text"
                   id="firstName"
+                  autoComplete="given-name"
                       className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
                         errors.firstName ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                       }`}
@@ -190,6 +191,7 @@ const Register = () => {
                   {...register('lastName')}
                   type="text"
                   id="lastName"
+                  autoComplete="family-name"
                       className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
                         errors.lastName ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                       }`}
@@ -217,6 +219,7 @@ const Register = () => {
                 {...register('username')}
                 type="text"
                 id="username"
+                autoComplete="username"
                     className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
                       errors.username ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                     }`}
@@ -237,7 +240,7 @@ const Register = () => {
                 {/* Phone */}
                 <div>
                   <label htmlFor="phoneNumber" className="block text-sm font-medium casino-text-primary mb-2">
-                    Phone Number
+                    Phone Number <span className="text-gray-400 font-normal">(optional)</span>
                   </label>
                   <input
                     {...register('phoneNumber')}
@@ -250,12 +253,12 @@ const Register = () => {
                       backgroundColor: '#FFFFFF',
                       color: '#000000',
                     }}
-                    placeholder="Enter your phone number"
+                    placeholder="Phone (optional)"
                   />
                    {errors.phoneNumber && (
                      <p className="mt-2 text-sm text-red-300 flex items-center">
                        <AlertCircle className="w-4 h-4 mr-2" />
-                       {errors.phoneNumber?.message || 'Invalid phone number'}
+                       {errors.phoneNumber?.message || 'Phone must be at least 10 characters if provided'}
                      </p>
                    )}
                 </div>
@@ -269,6 +272,7 @@ const Register = () => {
                 {...register('email')}
                 type="email"
                 id="email"
+                autoComplete="email"
                     className={`px-3 py-3 lg:px-4 lg:py-4 w-full rounded-lg border transition-all duration-300 ${
                       errors.email ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                     }`}
@@ -297,6 +301,7 @@ const Register = () => {
                   {...register('password')}
                   type={showPassword ? 'text' : 'password'}
                   id="password"
+                  autoComplete="new-password"
                         className={`px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 w-full rounded-lg border transition-all duration-300 ${
                           errors.password ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                         }`}
@@ -335,6 +340,7 @@ const Register = () => {
                   {...register('confirmPassword')}
                   type={showConfirmPassword ? 'text' : 'password'}
                   id="confirmPassword"
+                  autoComplete="new-password"
                         className={`px-3 py-3 lg:px-4 lg:py-4 pr-10 lg:pr-12 w-full rounded-lg border transition-all duration-300 ${
                           errors.confirmPassword ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-yellow-400 focus:ring-yellow-400'
                         }`}
