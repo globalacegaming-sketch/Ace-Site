@@ -84,7 +84,7 @@ interface AgentItem {
   updatedAt?: string;
 }
 
-const ALL_PERMISSIONS = ['chat', 'users', 'verification', 'referrals', 'loans'] as const;
+const ALL_PERMISSIONS = ['chat', 'users', 'referrals', 'loans'] as const;
 
 type ActiveSection = 'dashboard' | 'gamecards' | 'contacts' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents' | 'labels';
 

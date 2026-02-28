@@ -40,9 +40,9 @@ const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction
 
 const getAgentId = (req: Request): string => {
   const admin = (req as any).adminSession;
-  if (admin) return admin.adminId || admin.agentName;
+  if (admin) return admin.agentName || admin.adminId;
   const agent = (req as any).agentSession;
-  if (agent) return agent.userId || agent.username;
+  if (agent) return agent.username || agent.userId;
   return 'unknown';
 };
 

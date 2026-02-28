@@ -481,12 +481,53 @@ io.engine.use(sessionMiddleware);
 // to token-based auth for backward compatibility (e.g. mobile clients).
 io.use(async (socket, next) => {
   try {
-    // ── 1. Try session cookie (preferred – shared with Express) ──
+    const auth = (socket.handshake.auth || {}) as {
+      token?: string;
+      adminToken?: string;
+    };
     const session = (socket.request as any).session;
 
-    // Check if session has a logged-in user
+    // ── 1. Admin token from auth payload (agent dashboard sends this) ──
+    const queryAdminToken = socket.handshake.query.adminToken;
+    const adminToken =
+      typeof auth.adminToken === 'string'
+        ? auth.adminToken
+        : typeof queryAdminToken === 'string'
+          ? queryAdminToken
+          : undefined;
+
+    if (typeof adminToken === 'string') {
+      const adminSession = validateAdminSession(adminToken);
+      if (adminSession) {
+        logger.info(`🔌 Socket auth: admin token OK (agent: ${adminSession.agentName})`);
+        socket.data.role = 'admin';
+        socket.data.adminSession = adminSession;
+        return next();
+      }
+      // Admin token was explicitly provided but is invalid/expired.
+      // Try the admin session cookie before giving up, but NEVER fall
+      // through to user-session auth — that would connect an agent
+      // dashboard as a regular user and break real-time chat.
+      if (session?.adminSession && session.adminSession.expiresAt > Date.now()) {
+        logger.info(`🔌 Socket auth: admin token stale, but admin session cookie OK (agent: ${session.adminSession.agentName})`);
+        socket.data.role = 'admin';
+        socket.data.adminSession = session.adminSession;
+        return next();
+      }
+      logger.warn('🔌 Socket auth: admin token invalid and no admin session cookie — rejecting');
+      return next(new Error('Admin session expired'));
+    }
+
+    // ── 2. Admin session from cookie (no adminToken sent) ──
+    if (session?.adminSession && session.adminSession.expiresAt > Date.now()) {
+      logger.info(`🔌 Socket auth: admin session cookie OK (agent: ${session.adminSession.agentName})`);
+      socket.data.role = 'admin';
+      socket.data.adminSession = session.adminSession;
+      return next();
+    }
+
+    // ── 3. User session from cookie ──
     if (session?.user?.id) {
-      // Verify the user isn't banned before allowing the socket connection
       const sessionUser = await User.findById(session.user.id).select('isBanned isActive').lean();
       if (!sessionUser || !sessionUser.isActive || (sessionUser as any).isBanned) {
         return next(new Error('Account suspended'));
@@ -502,45 +543,13 @@ io.use(async (socket, next) => {
       return next();
     }
 
-    // Check if session has an admin login
-    if (session?.adminSession && session.adminSession.expiresAt > Date.now()) {
-      socket.data.role = 'admin';
-      socket.data.adminSession = session.adminSession;
-      return next();
-    }
-
-    // ── 2. Fall back to token-based auth (backward compatibility) ──
-    const auth = (socket.handshake.auth || {}) as {
-      token?: string;
-      adminToken?: string;
-    };
-
+    // ── 4. Bearer / query token (user JWT) ──
     const headerAuth = typeof socket.handshake.headers.authorization === 'string'
       ? socket.handshake.headers.authorization
       : undefined;
-
     const bearerToken = headerAuth?.startsWith('Bearer ')
       ? headerAuth.substring(7)
       : undefined;
-
-    const queryAdminToken = socket.handshake.query.adminToken;
-    const adminToken =
-      typeof auth.adminToken === 'string'
-        ? auth.adminToken
-        : typeof queryAdminToken === 'string'
-          ? queryAdminToken
-          : undefined;
-
-    if (typeof adminToken === 'string') {
-      const adminSession = validateAdminSession(adminToken);
-      if (!adminSession) {
-        return next(new Error('Unauthorized'));
-      }
-
-      socket.data.role = 'admin';
-      socket.data.adminSession = adminSession;
-      return next();
-    }
 
     const queryToken = socket.handshake.query.token;
     const tokenCandidate =
@@ -579,20 +588,39 @@ io.use(async (socket, next) => {
   }
 });
 
+async function broadcastActiveAgents() {
+  try {
+    const sockets = await io.in('admins').fetchSockets();
+    const names = [...new Set(
+      sockets
+        .map(s => s.data.adminSession?.agentName as string | undefined)
+        .filter((n): n is string => !!n)
+    )];
+    io.to('admins').emit('chat:agents:online', names);
+  } catch {
+    // non-critical
+  }
+}
+
 io.on('connection', (socket) => {
   if (socket.data.role === 'admin') {
     socket.join('admins');
+    logger.info(`🔌 Socket connected: admin (agent: ${socket.data.adminSession?.agentName || 'unknown'}, sid: ${socket.id})`);
     socket.emit('chat:connected', {
       role: 'admin',
       agentName: socket.data.adminSession?.agentName
     });
+    broadcastActiveAgents();
   } else if (socket.data.user?.id) {
     const room = `user:${socket.data.user.id}`;
     socket.join(room);
+    logger.info(`🔌 Socket connected: user (${socket.data.user.username}, room: ${room}, sid: ${socket.id})`);
     socket.emit('chat:connected', {
       role: 'user',
       userId: socket.data.user.id
     });
+  } else {
+    logger.warn(`🔌 Socket connected with unknown role (sid: ${socket.id})`);
   }
 
   // Typing indicator events
@@ -626,9 +654,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
-    // Client disconnected — also stop any typing indicators
-    if (socket.data.user?.id) {
+  socket.on('disconnect', (reason) => {
+    if (socket.data.role === 'admin') {
+      logger.info(`🔌 Socket disconnected: admin (agent: ${socket.data.adminSession?.agentName || 'unknown'}, reason: ${reason})`);
+      broadcastActiveAgents();
+    } else if (socket.data.user?.id) {
       io.to('admins').emit('chat:typing:stop', {
         senderType: 'user',
         userId: socket.data.user.id
@@ -693,7 +723,7 @@ const startServer = async () => {
           agentName: process.env.AGENT_USERNAME,
           passwordHash: process.env.AGENT_PASSWORD, // pre-save hook will bcrypt this
           role: 'super_admin',
-          permissions: ['chat', 'users', 'verification', 'referrals'],
+          permissions: ['chat', 'users', 'referrals'],
           isActive: true,
         });
         logger.success('✅ Seeded super_admin agent from AGENT_USERNAME env var');

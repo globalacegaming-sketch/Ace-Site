@@ -69,6 +69,10 @@ router.post('/login', adminAuthLimiter, async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
+    // Strip deprecated permissions before saving
+    const validPerms = new Set(AGENT_PERMISSIONS as readonly string[]);
+    agent.permissions = agent.permissions.filter((p: string) => validPerms.has(p));
+
     // Update lastLogin
     agent.lastLogin = new Date();
     await agent.save();
@@ -268,6 +272,10 @@ router.put('/agents/:id', requireSuperAdmin, async (req: Request, res: Response)
       agent.permissions = permissions.filter((p: string) =>
         (AGENT_PERMISSIONS as readonly string[]).includes(p),
       );
+    } else {
+      agent.permissions = agent.permissions.filter((p: string) =>
+        (AGENT_PERMISSIONS as readonly string[]).includes(p),
+      );
     }
     if (isActive !== undefined) agent.isActive = isActive;
     if (password) {
@@ -323,6 +331,9 @@ router.delete('/agents/:id', requireSuperAdmin, async (req: Request, res: Respon
     }
 
     agent.isActive = false;
+    agent.permissions = agent.permissions.filter((p: string) =>
+      (AGENT_PERMISSIONS as readonly string[]).includes(p),
+    );
     await agent.save();
 
     logger.info('✅ Agent deactivated:', { agentName: agent.agentName });

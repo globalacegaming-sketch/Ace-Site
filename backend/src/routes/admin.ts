@@ -3,7 +3,7 @@ import fortunePandaService from '../services/fortunePandaService';
 import agentLoginService from '../services/agentLoginService';
 import User from '../models/User';
 import Wallet from '../models/Wallet';
-import Agent from '../models/Agent';
+import Agent, { AGENT_PERMISSIONS } from '../models/Agent';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { createAdminSession, revokeAdminSession } from '../services/adminSessionService';
@@ -42,6 +42,10 @@ router.post('/login', adminAuthLimiter, async (req: Request, res: Response) => {
       logger.warn('❌ Admin login failed: Invalid credentials');
       return sendError(res, 'Invalid agent password', 401);
     }
+
+    // Strip deprecated permissions before saving
+    const validPerms = new Set(AGENT_PERMISSIONS as readonly string[]);
+    agent.permissions = agent.permissions.filter((p: string) => validPerms.has(p));
 
     // Update lastLogin
     agent.lastLogin = new Date();
@@ -368,6 +372,44 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.error('❌ Sync users from FortunePanda error:', error);
+    return sendError(res, 'Internal server error', 500);
+  }
+});
+
+// Sync a single user's balance from FortunePanda
+router.post('/users/:userId/sync-balance', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) return sendError(res, 'User not found', 404);
+
+    if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
+      return sendError(res, 'User has no FortunePanda account linked', 400);
+    }
+
+    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+
+    if (result.success && result.data) {
+      const userbalance = result.data.userbalance || result.data.userBalance || '0.00';
+      user.fortunePandaBalance = parseFloat(userbalance);
+      user.fortunePandaLastSync = new Date();
+      await user.save();
+
+      return res.json({
+        success: true,
+        message: 'Balance synced',
+        data: {
+          userId: user._id,
+          balance: user.fortunePandaBalance,
+          agentBalance: result.data.agentBalance || result.data.agentbalance || '0.00',
+        }
+      });
+    }
+
+    return sendError(res, result.message || 'Failed to query FortunePanda', 400);
+  } catch (error) {
+    logger.error('Sync single user balance error:', error);
     return sendError(res, 'Internal server error', 500);
   }
 });

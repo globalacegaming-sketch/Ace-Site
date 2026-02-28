@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 // The AceAgent dashboard tabs
-export const AGENT_PERMISSIONS = ['chat', 'users', 'verification', 'referrals', 'loans'] as const;
+export const AGENT_PERMISSIONS = ['chat', 'users', 'referrals', 'loans'] as const;
 export type AgentPermission = (typeof AGENT_PERMISSIONS)[number];
 export type AgentRole = 'super_admin' | 'admin' | 'agent';
 

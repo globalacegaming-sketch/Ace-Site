@@ -220,6 +220,10 @@ router.post(
       const io = getSocketServerInstance();
       const payload = serializeMessage(chatMessage);
 
+      io.in('admins').fetchSockets().then(sockets => {
+        logger.info(`📨 Emitting chat:message:new to admins room (${sockets.length} admin socket(s): ${sockets.map(s => s.data.adminSession?.agentName || s.id).join(', ')})`);
+      }).catch(() => {});
+
       io.to('admins').emit('chat:message:new', payload);
       if (req.user) {
         io.to(`user:${req.user._id}`).emit('chat:message:new', payload);

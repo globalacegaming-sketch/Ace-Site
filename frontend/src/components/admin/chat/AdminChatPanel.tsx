@@ -92,13 +92,15 @@ interface AdminChatPanelProps {
   wsBaseUrl: string;
   initialUserId?: string | null;
   onInitialUserConsumed?: () => void;
+  onUnreadChange?: (count: number) => void;
+  onSessionExpired?: () => void;
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const INITIAL_MESSAGE_LIMIT = 50; // Increased initial load for better UX
 const LOAD_MORE_LIMIT = 50; // Load more messages at once
 
-const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onInitialUserConsumed }: AdminChatPanelProps) => {
+const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onInitialUserConsumed, onUnreadChange, onSessionExpired }: AdminChatPanelProps) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -123,6 +125,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [newMsgCount, setNewMsgCount] = useState(0);
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); // userId -> name
+  const [onlineAgents, setOnlineAgents] = useState<string[]>([]);
   // Labels & Notes state
   const [allLabels, setAllLabels] = useState<LabelData[]>([]);
   const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
@@ -147,6 +150,15 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const reconnectAttemptsRef = useRef(0);
 
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const onUnreadChangeRef = useRef(onUnreadChange);
+  onUnreadChangeRef.current = onUnreadChange;
+  const onSessionExpiredRef = useRef(onSessionExpired);
+  onSessionExpiredRef.current = onSessionExpired;
+
+  useEffect(() => {
+    const total = conversationSummaries.reduce((sum, s) => sum + s.unreadCount, 0);
+    onUnreadChangeRef.current?.(total);
+  }, [conversationSummaries]);
 
   // Initialize notification audio on mount
   useEffect(() => {
@@ -811,14 +823,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     // withCredentials sends session cookie for shared session auth;
     // auth.adminToken kept as fallback for backward compatibility.
     const socket = io(wsBaseUrl, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       auth: { adminToken },
       withCredentials: true,
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 10,
       timeout: 20000
     });
 
@@ -851,10 +863,17 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     });
 
     socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      console.error('Socket connection error:', error.message);
       setSocketConnected(false);
-      setSocketReconnecting(true);
       reconnectAttemptsRef.current++;
+
+      if (error.message === 'Admin session expired') {
+        socket.disconnect();
+        setSocketReconnecting(false);
+        onSessionExpiredRef.current?.();
+        return;
+      }
+      setSocketReconnecting(true);
     });
 
     socket.on('reconnect', (attemptNumber) => {
@@ -884,6 +903,10 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     socket.on('chat:connected', (data) => {
       console.log('Chat connection confirmed:', data);
       setSocketConnected(true);
+    });
+
+    socket.on('chat:agents:online', (names: string[]) => {
+      setOnlineAgents(names);
     });
 
     socket.on('chat:message:new', (message: ChatMessage) => {
@@ -1344,25 +1367,25 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
         showConversations ? 'flex' : 'hidden'
       } lg:flex lg:w-1/3`}>
         <div className="p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
-          {/* Socket Connection Status Indicator */}
+          {/* Socket Connection Status + Online Agents */}
           <div className="mb-2 sm:mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                 socketConnected 
                   ? 'bg-green-500 animate-pulse' 
                   : socketReconnecting 
                     ? 'bg-yellow-500 animate-pulse' 
                     : 'bg-red-500'
               }`} title={socketConnected ? 'Connected' : socketReconnecting ? 'Reconnecting...' : 'Disconnected'} />
-              <span className={`text-xs font-medium ${
-                socketConnected 
-                  ? 'text-green-700' 
-                  : socketReconnecting 
-                    ? 'text-yellow-700' 
-                    : 'text-red-700'
-              }`}>
-                {socketConnected ? 'Live' : socketReconnecting ? 'Reconnecting...' : 'Offline'}
-              </span>
+              {socketConnected ? (
+                <span className="text-xs font-medium text-green-700 truncate" title={onlineAgents.length > 0 ? `Online: ${onlineAgents.join(', ')}` : 'Live'}>
+                  {onlineAgents.length > 0 ? onlineAgents.join(', ') : 'Live'}
+                </span>
+              ) : (
+                <span className={`text-xs font-medium ${socketReconnecting ? 'text-yellow-700' : 'text-red-700'}`}>
+                  {socketReconnecting ? 'Reconnecting...' : 'Offline'}
+                </span>
+              )}
             </div>
             {!socketConnected && !socketReconnecting && (
               <button
@@ -1371,7 +1394,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                     socketRef.current.connect();
                   }
                 }}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex-shrink-0"
               >
                 Reconnect
               </button>

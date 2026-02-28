@@ -18,10 +18,7 @@ import {
   Ban,
   UserCheck,
   LogOut,
-  StickyNote,
   Banknote,
-  DollarSign,
-  SlidersHorizontal,
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -30,12 +27,9 @@ import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 import AdminChatPanel from '../../components/admin/chat/AdminChatPanel';
 import AdminSessionManager from '../../components/admin/AdminSessionManager';
 import { useMusic } from '../../contexts/MusicContext';
-import LabelBadge, { LabelSelector, LabelFilter, type LabelData } from '../../components/admin/LabelBadge';
-import UserNotesPanel from '../../components/admin/UserNotesPanel';
 import AgentLoanPanel from '../../components/admin/AgentLoanPanel';
-import { agentLoanApi } from '../../services/loanApi';
 
-type AgentPermission = 'chat' | 'users' | 'verification' | 'referrals' | 'loans';
+type AgentPermission = 'chat' | 'users' | 'referrals' | 'loans';
 
 interface User {
   _id: string;
@@ -53,7 +47,6 @@ interface User {
   bannedAt?: string;
   banReason?: string;
   lastLoginIP?: string;
-  labels?: LabelData[];
   createdAt: string;
   lastLogin?: string;
 }
@@ -73,43 +66,32 @@ const AceagentDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [verificationSearchQuery, setVerificationSearchQuery] = useState('');
   const [selectedUserForVerification, setSelectedUserForVerification] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [agentBalance, setAgentBalance] = useState<string>('0.00');
+  const [agentName, setAgentName] = useState<string>('');
   const [showUserModal, setShowUserModal] = useState(false);
   const [modalAction, setModalAction] = useState<'recharge' | 'redeem' | null>(null);
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
+  const [refreshingUserId, setRefreshingUserId] = useState<string | null>(null);
 
-  const [loanModalUser, setLoanModalUser] = useState<User | null>(null);
-  const [loanModalType, setLoanModalType] = useState<'limit' | 'issue' | null>(null);
-  const [loanAccount, setLoanAccount] = useState<{ loanLimit: number; activeBalance: number } | null>(null);
-  const [loanLimitInput, setLoanLimitInput] = useState('');
-  const [loanIssueAmount, setLoanIssueAmount] = useState('');
-  const [loanRemarks, setLoanRemarks] = useState('');
-  const [loanModalLoading, setLoanModalLoading] = useState(false);
-  const [loanActionLoading, setLoanActionLoading] = useState(false);
   
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
   const [redeemAmount, setRedeemAmount] = useState('');
   const wsBaseUrl = useMemo(() => getWsBaseUrl(), []);
 
-  // Labels & Notes state
-  const [allLabels, setAllLabels] = useState<LabelData[]>([]);
-  const [labelFilterIds, setLabelFilterIds] = useState<string[]>([]);
-  const [notesUserId, setNotesUserId] = useState<string | null>(null);
-  const [notesUserName, setNotesUserName] = useState('');
   const sessionCheckedRef = useRef(false);
 
   const [pendingChatUserId, setPendingChatUserId] = useState<string | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   // ── Permissions ────────────────────────────────────────────────────────────
   const [permissions, setPermissions] = useState<AgentPermission[]>([
-    'chat', 'users', 'verification', 'referrals',
+    'chat', 'users', 'referrals',
   ]);
 
   const hasPermission = useCallback(
@@ -132,7 +114,7 @@ const AceagentDashboard: React.FC = () => {
   }, [hasPermission]);
 
   // Default tab = first allowed permission, or fallback to 'chat'
-  const allTabs: AgentPermission[] = ['users', 'chat', 'verification', 'referrals', 'loans'];
+  const allTabs: AgentPermission[] = ['chat', 'users', 'referrals', 'loans'];
   const allowedTabs = allTabs.filter((t) => permissions.includes(t));
   const [activeTab, setActiveTab] = useState<AgentPermission>(
     allowedTabs[0] || 'chat',
@@ -300,7 +282,9 @@ const AceagentDashboard: React.FC = () => {
         navigate('/aceagent/login', { replace: true });
         return;
       }
-      // Set agent balance from session if available
+      if (parsedSession.agentName) {
+        setAgentName(parsedSession.agentName);
+      }
       if (parsedSession.agentBalance) {
         setAgentBalance(parsedSession.agentBalance);
       }
@@ -310,17 +294,6 @@ const AceagentDashboard: React.FC = () => {
       }
       loadUsers();
       loadAgentBalance();
-      fetchLabels();
-
-      // Sync balances from FortunePanda in the background, then refresh
-      const token = getAdminToken();
-      if (token) {
-        axios.post(
-          `${API_BASE_URL}/admin/users/sync-fortune-panda`,
-          {},
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        ).then(() => loadUsers()).catch(() => {});
-      }
       
       // Mark session as checked
       sessionCheckedRef.current = true;
@@ -371,6 +344,36 @@ const AceagentDashboard: React.FC = () => {
     }
   };
 
+  const refreshUserBalance = async (userId: string) => {
+    try {
+      setRefreshingUserId(userId);
+      const token = getAdminToken();
+      if (!token) return;
+
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/users/${userId}/sync-balance`,
+        {},
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        const newBalance = response.data.data.balance;
+        setUsers(prev => prev.map(u =>
+          u._id === userId ? { ...u, fortunePandaBalance: newBalance } : u
+        ));
+        toast.success(`Balance updated: $${parseFloat(newBalance).toFixed(2)}`);
+        if (response.data.data.agentBalance) {
+          setAgentBalance(response.data.data.agentBalance);
+        }
+      } else {
+        toast.error(response.data.message || 'Failed to refresh balance');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to refresh balance');
+    } finally {
+      setRefreshingUserId(null);
+    }
+  };
 
   const syncAllUsersFromFortunePanda = async () => {
     try {
@@ -436,41 +439,6 @@ const AceagentDashboard: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to load users');
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch all labels
-  const fetchLabels = async () => {
-    try {
-      const token = getAdminToken();
-      if (!token) return;
-      const res = await axios.get(`${API_BASE_URL}/admin/labels`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.data.success) setAllLabels(res.data.data || []);
-    } catch { /* Labels are optional */ }
-  };
-
-  // Assign labels to a user
-  const handleAssignLabels = async (userId: string, labelIds: string[]) => {
-    try {
-      const token = getAdminToken();
-      if (!token) return;
-      await axios.post(
-        `${API_BASE_URL}/admin/labels/assign`,
-        { userId, labelIds },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      // Update local state
-      setUsers(prev =>
-        prev.map(u => u._id === userId
-          ? { ...u, labels: allLabels.filter(l => labelIds.includes(l._id)) }
-          : u
-        )
-      );
-      toast.success('Labels updated');
-    } catch {
-      toast.error('Failed to update labels');
     }
   };
 
@@ -574,88 +542,6 @@ const AceagentDashboard: React.FC = () => {
       toast.error(error.response?.data?.message || 'Failed to unban user');
     }
   };
-
-  const openLoanModal = useCallback(async (user: User, type: 'limit' | 'issue') => {
-    setLoanModalUser(user);
-    setLoanModalType(type);
-    setLoanAccount(null);
-    setLoanLimitInput('');
-    setLoanIssueAmount('');
-    setLoanRemarks('');
-    setLoanModalLoading(true);
-    try {
-      const res = await agentLoanApi.getUserAccount(user._id);
-      if (res.success && res.data) {
-        setLoanAccount({ loanLimit: res.data.loanLimit, activeBalance: res.data.activeBalance });
-        if (type === 'limit') setLoanLimitInput(String(res.data.loanLimit));
-      } else {
-        toast.error('Could not load loan account.');
-        setLoanModalUser(null);
-        setLoanModalType(null);
-      }
-    } catch {
-      toast.error('Failed to load loan account.');
-      setLoanModalUser(null);
-      setLoanModalType(null);
-    } finally {
-      setLoanModalLoading(false);
-    }
-  }, []);
-
-  const closeLoanModal = useCallback(() => {
-    setLoanModalUser(null);
-    setLoanModalType(null);
-    setLoanAccount(null);
-    setLoanLimitInput('');
-    setLoanIssueAmount('');
-    setLoanRemarks('');
-  }, []);
-
-  const handleLoanLimitSubmit = useCallback(async () => {
-    if (!loanModalUser) return;
-    const limit = Number(loanLimitInput);
-    if (!Number.isFinite(limit) || limit < 20 || limit > 500) {
-      toast.error('Limit must be between $20 and $500.');
-      return;
-    }
-    setLoanActionLoading(true);
-    try {
-      const res = await agentLoanApi.adjustLimit(loanModalUser._id, limit);
-      if (res.success) {
-        toast.success(`Loan limit updated to $${limit}.`);
-        closeLoanModal();
-      } else {
-        toast.error(res.message || 'Failed to update limit.');
-      }
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Failed to update limit.');
-    } finally {
-      setLoanActionLoading(false);
-    }
-  }, [loanModalUser, loanLimitInput, closeLoanModal]);
-
-  const handleLoanIssueSubmit = useCallback(async () => {
-    if (!loanModalUser) return;
-    const amount = Number(loanIssueAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Enter a valid loan amount.');
-      return;
-    }
-    setLoanActionLoading(true);
-    try {
-      const res = await agentLoanApi.manualIssueLoan(loanModalUser._id, amount, loanRemarks);
-      if (res.success) {
-        toast.success(`Loan of $${amount.toFixed(2)} issued.`);
-        closeLoanModal();
-      } else {
-        toast.error(res.message || 'Failed to issue loan.');
-      }
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Failed to issue loan.');
-    } finally {
-      setLoanActionLoading(false);
-    }
-  }, [loanModalUser, loanIssueAmount, loanRemarks, closeLoanModal]);
 
   const handleResetPassword = async () => {
     if (!selectedUserForVerification) return;
@@ -882,14 +768,7 @@ const AceagentDashboard: React.FC = () => {
       u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.fortunePandaUsername?.toLowerCase().includes(searchQuery.toLowerCase());
-    if (!matchesSearch) return false;
-
-    // Label filter
-    if (labelFilterIds.length > 0) {
-      const userLabelIds = (u.labels || []).map(l => l._id);
-      return labelFilterIds.some(id => userLabelIds.includes(id));
-    }
-    return true;
+    return matchesSearch;
   });
 
 
@@ -942,7 +821,7 @@ const AceagentDashboard: React.FC = () => {
             {/* Left Section: Title */}
             <div className="flex items-center gap-1.5 sm:gap-3 lg:gap-4 flex-shrink-0 min-w-0">
               <h1 className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-white drop-shadow-md whitespace-nowrap">
-                Admin Dashboard
+                Welcome{agentName ? `, ${agentName}` : ''}
               </h1>
             </div>
 
@@ -963,25 +842,18 @@ const AceagentDashboard: React.FC = () => {
               {hasPermission('chat') && (
                 <button
                   onClick={() => setActiveTab('chat')}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
+                  className={`relative px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
                     activeTab === 'chat'
                       ? 'bg-white text-indigo-600 shadow-md'
                       : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
                   }`}
                 >
                   Support Chat
-                </button>
-              )}
-              {hasPermission('verification') && (
-                <button
-                  onClick={() => setActiveTab('verification')}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap ${
-                    activeTab === 'verification'
-                      ? 'bg-white text-indigo-600 shadow-md'
-                      : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'
-                  }`}
-                >
-                  User Verification
+                  {unreadChatCount > 0 && activeTab !== 'chat' && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full shadow-lg animate-pulse">
+                      {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                    </span>
+                  )}
                 </button>
               )}
               {hasPermission('referrals') && (
@@ -1087,12 +959,6 @@ const AceagentDashboard: React.FC = () => {
                     />
                   </div>
                 </div>
-                {/* Label filter */}
-                {allLabels.length > 0 && (
-                  <div className="w-full">
-                    <LabelFilter allLabels={allLabels} selectedIds={labelFilterIds} onChange={setLabelFilterIds} />
-                  </div>
-                )}
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={syncAllUsersFromFortunePanda}
@@ -1133,124 +999,109 @@ const AceagentDashboard: React.FC = () => {
                   <>
                     {/* Desktop Table View */}
                     <div className="hidden lg:block overflow-x-auto">
-                      <table className="w-full">
+                      <table className="w-full table-fixed">
                         <thead>
                           <tr className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b-2 border-indigo-200">
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">ID</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Account</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">NickName</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Balance</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Register Date</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Last Login</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Manager</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Labels</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Status</th>
-                            <th className="text-left p-4 text-xs sm:text-sm font-bold text-indigo-900 uppercase tracking-wider">Action</th>
+                            <th className="text-left px-4 py-3 text-xs font-bold text-indigo-900 uppercase tracking-wider w-[22%]">User</th>
+                            <th className="text-center px-4 py-3 text-xs font-bold text-indigo-900 uppercase tracking-wider w-[12%]">Balance</th>
+                            <th className="text-center px-4 py-3 text-xs font-bold text-indigo-900 uppercase tracking-wider w-[10%]">Status</th>
+                            <th className="text-right px-4 py-3 text-xs font-bold text-indigo-900 uppercase tracking-wider">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {filteredUsers.map((u, index) => (
-                            <tr 
-                              key={u._id} 
-                              className={`hover:bg-gradient-to-r hover:from-indigo-50 hover:to-blue-50 transition-all duration-200 ${
-                                index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                              }`}
+                            <tr
+                              key={u._id}
+                              className={`hover:bg-indigo-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
                             >
-                              <td className="p-4 text-sm font-mono font-semibold text-gray-700">{u._id.slice(-6).toUpperCase()}</td>
-                              <td className="p-4 text-sm font-medium text-gray-800">{getFPAccountName(u.fortunePandaUsername)}</td>
-                              <td className="p-4 text-sm font-semibold text-gray-900">
-                                <button onClick={() => navigateToUserChat(u._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">{u.username}</button>
-                              </td>
-                              <td className="p-4">
-                                <span className="text-sm font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                                  ${u.fortunePandaBalance?.toFixed(2) || '0.00'}
-                                </span>
-                              </td>
-                              <td className="p-4 text-xs text-gray-600">
-                                {new Date(u.createdAt).toLocaleString('en-US', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit'
-                                })}
-                              </td>
-                              <td className="p-4 text-xs text-gray-600">
-                                {u.lastLogin 
-                                  ? new Date(u.lastLogin).toLocaleString('en-US', {
-                                      year: 'numeric',
-                                      month: '2-digit',
-                                      day: '2-digit',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      second: '2-digit'
-                                    })
-                                  : <span className="text-gray-400 italic">Never</span>}
-                              </td>
-                              <td className="p-4 text-sm font-medium text-gray-700">GAGame</td>
-                              <td className="p-4">
-                                <div className="flex flex-wrap gap-0.5 items-center">
-                                  {(u.labels || []).slice(0, 2).map(label => (
-                                    <LabelBadge key={label._id} label={label} size="sm" />
-                                  ))}
-                                  {(u.labels || []).length > 2 && (
-                                    <span className="text-[9px] text-gray-400">+{(u.labels || []).length - 2}</span>
-                                  )}
-                                  <LabelSelector
-                                    allLabels={allLabels}
-                                    selectedIds={(u.labels || []).map(l => l._id)}
-                                    onChange={(ids) => handleAssignLabels(u._id, ids)}
-                                  />
+                              <td className="px-4 py-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <button onClick={() => navigateToUserChat(u._id)} className="text-sm font-semibold text-gray-900 hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left truncate">{u.username}</button>
+                                    {u.isEmailVerified ? (
+                                      <div title="Email Verified"><CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /></div>
+                                    ) : (
+                                      <div title="Email Not Verified"><Mail className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /></div>
+                                    )}
+                                    {u.isBanned && <div title="Banned"><Ban className="w-3.5 h-3.5 text-red-600 flex-shrink-0" /></div>}
+                                  </div>
+                                  <p className="text-xs text-gray-500 truncate mt-0.5">{u.email}</p>
+                                  <p className="text-[11px] text-gray-400 font-mono mt-0.5">{getFPAccountName(u.fortunePandaUsername)} · {u._id.slice(-8).toUpperCase()}</p>
                                 </div>
                               </td>
-                              <td className="p-4">
-                                {u.isActive ? (
-                                  <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
-                                    Active
-                                  </span>
+                              <td className="px-4 py-3 text-center">
+                                <div className="inline-flex items-center gap-1.5 justify-center">
+                                  <span className="text-sm font-bold text-green-600">${u.fortunePandaBalance?.toFixed(2) || '0.00'}</span>
+                                  <button
+                                    onClick={() => refreshUserBalance(u._id)}
+                                    disabled={refreshingUserId === u._id}
+                                    className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+                                    title="Refresh balance"
+                                  >
+                                    {refreshingUserId === u._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {u.isBanned ? (
+                                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">Banned</span>
+                                ) : u.isActive ? (
+                                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">Active</span>
                                 ) : (
-                                  <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200">
-                                    Inactive
-                                  </span>
+                                  <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">Inactive</span>
                                 )}
                               </td>
-                              <td className="p-4">
-                                <div className="flex items-center gap-1.5 flex-wrap">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2 flex-wrap justify-end">
                                   <button
-                                    onClick={() => { setNotesUserId(u._id); setNotesUserName(u.username); }}
-                                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
-                                    title="View notes"
+                                    onClick={() => { setSelectedUser(u); setShowUserModal(true); }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors shadow-sm"
                                   >
-                                    <StickyNote className="w-3.5 h-3.5" />
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                    Deposit
                                   </button>
-                                  {hasPermission('loans') && (
-                                    <>
-                                      <button
-                                        onClick={() => openLoanModal(u, 'limit')}
-                                        className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 transition-colors"
-                                        title="Adjust loan limit"
-                                      >
-                                        <SlidersHorizontal className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => openLoanModal(u, 'issue')}
-                                        className="p-1.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 transition-colors"
-                                        title="Issue loan"
-                                      >
-                                        <DollarSign className="w-3.5 h-3.5" />
-                                      </button>
-                                    </>
+                                  {!u.isEmailVerified && (
+                                    <button
+                                      onClick={() => handleVerifyEmail(u._id)}
+                                      disabled={verifying}
+                                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-sm font-medium transition-colors disabled:opacity-50"
+                                    >
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      Verify
+                                    </button>
                                   )}
                                   <button
-                                    onClick={() => {
-                                      setSelectedUser(u);
-                                      setShowUserModal(true);
-                                    }}
-                                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
+                                    onClick={() => { setSelectedUserForVerification(u); setShowPasswordModal(true); setNewPassword(''); }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-sm font-medium transition-colors"
                                   >
-                                    Update
+                                    <Key className="w-3.5 h-3.5" />
+                                    Password
                                   </button>
+                                  <button
+                                    onClick={() => handleFixFortunePandaAccount(u._id)}
+                                    disabled={fixingFpAccount === u._id}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-sm font-medium transition-colors disabled:opacity-50"
+                                  >
+                                    {fixingFpAccount === u._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
+                                    Fix FP
+                                  </button>
+                                  {u.isBanned ? (
+                                    <button
+                                      onClick={() => handleUnbanUser(u._id)}
+                                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-sm font-medium transition-colors"
+                                    >
+                                      <UserCheck className="w-3.5 h-3.5" />
+                                      Unban
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleBanUser(u._id)}
+                                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-sm font-medium transition-colors"
+                                    >
+                                      <Ban className="w-3.5 h-3.5" />
+                                      Ban
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1260,124 +1111,86 @@ const AceagentDashboard: React.FC = () => {
                     </div>
 
                     {/* Mobile/Tablet Card View */}
-                    <div className="lg:hidden space-y-4">
+                    <div className="lg:hidden space-y-2">
                       {filteredUsers.map((u) => (
-                        <div 
-                          key={u._id} 
-                          className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-4 sm:p-5 border border-gray-200 shadow-md hover:shadow-lg transition-all duration-200"
+                        <div
+                          key={u._id}
+                          className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm"
                         >
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3 pb-3 border-b border-gray-200">
-                            <div className="flex-1">
-                              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1">
-                                <button onClick={() => navigateToUserChat(u._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">{u.username}</button>
-                              </h3>
-                              <p className="text-xs sm:text-sm text-gray-600 font-mono">{getFPAccountName(u.fortunePandaUsername)}</p>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <button onClick={() => navigateToUserChat(u._id)} className="text-sm font-bold text-gray-900 hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left truncate">{u.username}</button>
+                                {u.isEmailVerified ? (
+                                  <span title="Email Verified"><CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" /></span>
+                                ) : (
+                                  <span title="Not Verified"><Mail className="w-3 h-3 text-red-500 flex-shrink-0" /></span>
+                                )}
+                                {u.isBanned && <span title="Banned"><Ban className="w-3 h-3 text-red-600 flex-shrink-0" /></span>}
+                              </div>
+                              <p className="text-[11px] text-gray-400 font-mono truncate">{getFPAccountName(u.fortunePandaUsername)}</p>
                             </div>
-                            <div className="flex items-center gap-2">
-                              {u.isActive ? (
-                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
-                                  Active
-                                </span>
-                              ) : (
-                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200">
-                                  Inactive
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {/* Labels */}
-                          {((u.labels || []).length > 0 || allLabels.length > 0) && (
-                            <div className="flex flex-wrap items-center gap-1 mb-3">
-                              {(u.labels || []).map(label => (
-                                <LabelBadge key={label._id} label={label} size="sm" />
-                              ))}
-                              <LabelSelector
-                                allLabels={allLabels}
-                                selectedIds={(u.labels || []).map(l => l._id)}
-                                onChange={(ids) => handleAssignLabels(u._id, ids)}
-                              />
-                            </div>
-                          )}
-                          
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">ID</p>
-                              <p className="text-sm font-mono font-semibold text-gray-700">{u._id.slice(-6).toUpperCase()}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Balance</p>
-                              <p className="text-sm font-bold text-green-600">${u.fortunePandaBalance?.toFixed(2) || '0.00'}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Manager</p>
-                              <p className="text-sm font-medium text-gray-700">GAGame</p>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className="text-sm font-bold text-green-600">${u.fortunePandaBalance?.toFixed(2) || '0.00'}</span>
+                              <button
+                                onClick={() => refreshUserBalance(u._id)}
+                                disabled={refreshingUserId === u._id}
+                                className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+                              >
+                                {refreshingUserId === u._id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                              </button>
                             </div>
                           </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs sm:text-sm">
-                            <div>
-                              <p className="text-gray-500 mb-1">Register Date</p>
-                              <p className="text-gray-700 font-medium">
-                                {new Date(u.createdAt).toLocaleString('en-US', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-1">Last Login</p>
-                              <p className="text-gray-700 font-medium">
-                                {u.lastLogin 
-                                  ? new Date(u.lastLogin).toLocaleString('en-US', {
-                                      year: 'numeric',
-                                      month: '2-digit',
-                                      day: '2-digit',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })
-                                  : <span className="text-gray-400 italic">Never</span>}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1.5">
                             <button
-                              onClick={() => { setNotesUserId(u._id); setNotesUserName(u.username); }}
-                              className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
+                              onClick={() => { setSelectedUser(u); setShowUserModal(true); }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 text-white rounded-md text-xs font-medium active:bg-indigo-700"
                             >
-                              <StickyNote className="w-4 h-4" />
-                              Notes
+                              <ArrowUp className="w-3 h-3" />
+                              Deposit
                             </button>
-                            {hasPermission('loans') && (
-                              <>
-                                <button
-                                  onClick={() => openLoanModal(u, 'limit')}
-                                  className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
-                                >
-                                  <SlidersHorizontal className="w-4 h-4" />
-                                  Limit
-                                </button>
-                                <button
-                                  onClick={() => openLoanModal(u, 'issue')}
-                                  className="px-3 py-2.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg transition-colors text-sm font-semibold flex items-center gap-1.5"
-                                >
-                                  <DollarSign className="w-4 h-4" />
-                                  Loan
-                                </button>
-                              </>
+                            {!u.isEmailVerified && (
+                              <button
+                                onClick={() => handleVerifyEmail(u._id)}
+                                disabled={verifying}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-md text-xs font-medium active:bg-green-100 disabled:opacity-50"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Verify
+                              </button>
                             )}
                             <button
-                              onClick={() => {
-                                setSelectedUser(u);
-                                setShowUserModal(true);
-                              }}
-                              className="flex-1 sm:flex-none px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 text-sm font-semibold shadow-md hover:shadow-lg"
+                              onClick={() => { setSelectedUserForVerification(u); setShowPasswordModal(true); setNewPassword(''); }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-xs font-medium active:bg-blue-100"
                             >
-                              Update User
+                              <Key className="w-3 h-3" />
+                              Password
                             </button>
+                            <button
+                              onClick={() => handleFixFortunePandaAccount(u._id)}
+                              disabled={fixingFpAccount === u._id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md text-xs font-medium active:bg-purple-100 disabled:opacity-50"
+                            >
+                              {fixingFpAccount === u._id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                              Fix FP
+                            </button>
+                            {u.isBanned ? (
+                              <button
+                                onClick={() => handleUnbanUser(u._id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-xs font-medium active:bg-emerald-100"
+                              >
+                                <UserCheck className="w-3 h-3" />
+                                Unban
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleBanUser(u._id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-md text-xs font-medium active:bg-red-100"
+                              >
+                                <Ban className="w-3 h-3" />
+                                Ban
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1397,188 +1210,32 @@ const AceagentDashboard: React.FC = () => {
               </div>
             </div>
           </>
-        ) : activeTab === 'verification' && hasPermission('verification') ? (
-          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 lg:p-6 border border-gray-100">
-            <div className="mb-4 sm:mb-6">
-              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 flex-shrink-0" />
-                <span className="text-sm sm:text-base lg:text-xl">User Verification & Password Reset</span>
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-600">Manually verify user emails and reset passwords</p>
-            </div>
+        ) : null}
 
-            {/* Search Bar */}
-            <div className="mb-4 sm:mb-6">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by username, email, or user ID"
-                  value={verificationSearchQuery}
-                  onChange={(e) => setVerificationSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm text-gray-700 placeholder-gray-400"
-                />
-              </div>
-            </div>
-
-            {/* User List */}
-            <div className="space-y-2 sm:space-y-3 max-h-[calc(100vh-20rem)] sm:max-h-[600px] overflow-y-auto">
-              {users
-                .filter((user) => {
-                  if (!verificationSearchQuery) return true;
-                  const query = verificationSearchQuery.toLowerCase();
-                  return (
-                    user.username.toLowerCase().includes(query) ||
-                    user.email.toLowerCase().includes(query) ||
-                    user._id.toLowerCase().includes(query) ||
-                    (user.firstName && user.firstName.toLowerCase().includes(query)) ||
-                    (user.lastName && user.lastName.toLowerCase().includes(query))
-                  );
-                })
-                .map((user) => (
-                  <div
-                    key={user._id}
-                    className={`p-3 sm:p-4 border rounded-lg transition-all ${
-                      selectedUserForVerification?._id === user._id
-                        ? 'border-indigo-500 bg-indigo-50'
-                        : 'border-gray-200 hover:border-gray-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                            <button onClick={() => navigateToUserChat(user._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                              {user.firstName && user.lastName
-                                ? `${user.firstName} ${user.lastName}`
-                                : user.username}
-                            </button>
-                          </h3>
-                          {user.isEmailVerified ? (
-                            <div title="Email Verified">
-                              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                            </div>
-                          ) : (
-                            <div title="Email Not Verified">
-                              <Mail className="w-4 h-4 text-red-500 flex-shrink-0" />
-                            </div>
-                          )}
-                          {user.isBanned && (
-                            <div title="User is Banned">
-                              <Ban className="w-4 h-4 text-red-600 flex-shrink-0" />
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-600 truncate">{user.email}</p>
-                        <p className="text-xs text-gray-500 truncate">@{user.username} • ID: {user._id.substring(0, 8)}...</p>
-                        {user.fortunePandaUsername && (
-                          <p className="text-xs text-gray-500 truncate">FP: {user.fortunePandaUsername}</p>
-                        )}
-                        {user.isBanned && user.banReason && (
-                          <p className="text-xs text-red-600 mt-1">Banned: {user.banReason}</p>
-                        )}
-                      </div>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:ml-4">
-                        {!user.isEmailVerified && (
-                          <button
-                            onClick={() => handleVerifyEmail(user._id)}
-                            disabled={verifying}
-                            className="px-3 py-2.5 sm:py-1.5 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 active:bg-green-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            <span className="hidden sm:inline">{verifying ? 'Verifying...' : 'Verify Email'}</span>
-                            <span className="sm:hidden">{verifying ? 'Verifying...' : 'Verify'}</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleFixFortunePandaAccount(user._id)}
-                          disabled={fixingFpAccount === user._id}
-                          className="px-3 py-2.5 sm:py-1.5 bg-purple-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-purple-700 active:bg-purple-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
-                          title="Assign new unique Fortune Panda username and create account"
-                        >
-                          {fixingFpAccount === user._id ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span className="hidden sm:inline">Fixing...</span>
-                              <span className="sm:hidden">Fixing...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Shield className="w-4 h-4" />
-                              <span className="hidden sm:inline">Fix FP Account</span>
-                              <span className="sm:hidden">Fix FP</span>
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedUserForVerification(user);
-                            setShowPasswordModal(true);
-                            setNewPassword('');
-                          }}
-                          className="px-3 py-2.5 sm:py-1.5 bg-indigo-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-indigo-700 active:bg-indigo-800 transition flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
-                        >
-                          <Key className="w-4 h-4" />
-                          <span className="hidden sm:inline">Reset Password</span>
-                          <span className="sm:hidden">Reset</span>
-                        </button>
-                        {user.isBanned ? (
-                          <button
-                            onClick={() => handleUnbanUser(user._id)}
-                            className="px-3 py-2.5 sm:py-1.5 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 active:bg-green-800 transition flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
-                          >
-                            <UserCheck className="w-4 h-4" />
-                            <span className="hidden sm:inline">Unban User</span>
-                            <span className="sm:hidden">Unban</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleBanUser(user._id)}
-                            className="px-3 py-2.5 sm:py-1.5 bg-red-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-red-700 active:bg-red-800 transition flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0"
-                          >
-                            <Ban className="w-4 h-4" />
-                            <span className="hidden sm:inline">Ban User</span>
-                            <span className="sm:hidden">Ban</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              {users.filter((user) => {
-                if (!verificationSearchQuery) return true;
-                const query = verificationSearchQuery.toLowerCase();
-                return (
-                  user.username.toLowerCase().includes(query) ||
-                  user.email.toLowerCase().includes(query) ||
-                  user._id.toLowerCase().includes(query)
-                );
-              }).length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No users found</p>
-                </div>
-              )}
-            </div>
+        {/* Chat Tab - always mounted so WebSocket stays connected for real-time notifications */}
+        {hasPermission('chat') && adminToken ? (
+          <div className={activeTab === 'chat' ? 'h-full min-h-[500px] sm:min-h-[600px]' : 'hidden'}>
+            <AdminChatPanel
+              adminToken={adminToken}
+              apiBaseUrl={API_BASE_URL}
+              wsBaseUrl={wsBaseUrl}
+              initialUserId={pendingChatUserId}
+              onInitialUserConsumed={() => setPendingChatUserId(null)}
+              onUnreadChange={setUnreadChatCount}
+              onSessionExpired={() => {
+                localStorage.removeItem('admin_session');
+                toast.error('Session expired. Please login again.');
+                navigate('/aceagent/login', { replace: true });
+              }}
+            />
           </div>
         ) : activeTab === 'chat' && hasPermission('chat') ? (
-          adminToken ? (
-            <div className="h-full min-h-[500px] sm:min-h-[600px]">
-              <AdminChatPanel
-                adminToken={adminToken}
-                apiBaseUrl={API_BASE_URL}
-                wsBaseUrl={wsBaseUrl}
-                initialUserId={pendingChatUserId}
-                onInitialUserConsumed={() => setPendingChatUserId(null)}
-              />
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 sm:p-8 text-center text-gray-600">
-              <p className="text-base sm:text-lg font-semibold mb-2">Admin session required</p>
-              <p className="text-xs sm:text-sm">
-                Please sign in again to access the support chat dashboard.
-              </p>
-            </div>
-          )
+          <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 sm:p-8 text-center text-gray-600">
+            <p className="text-base sm:text-lg font-semibold mb-2">Admin session required</p>
+            <p className="text-xs sm:text-sm">
+              Please sign in again to access the support chat dashboard.
+            </p>
+          </div>
         ) : null}
 
         {/* Referrals Tab */}
@@ -1720,98 +1377,6 @@ const AceagentDashboard: React.FC = () => {
               <p className="text-sm text-gray-500">Review loan requests, process repayments, and manage user limits.</p>
             </div>
             <AgentLoanPanel onNavigateToChat={navigateToUserChat} />
-          </div>
-        )}
-
-        {/* Loan Limit / Issue Loan Modal (User Management) */}
-        {loanModalUser && loanModalType && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
-            <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md mx-auto animate-slideUp border border-gray-200 max-h-[95vh] overflow-y-auto">
-              <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 py-3 rounded-t-2xl sm:rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
-                <h3 className="text-base font-bold text-white">
-                  {loanModalType === 'limit' ? 'Adjust Loan Limit' : 'Issue Loan'} — {loanModalUser.username}
-                </h3>
-                <button
-                  onClick={closeLoanModal}
-                  disabled={loanActionLoading}
-                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
-                  aria-label="Close"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-4 sm:p-6">
-                {loanModalLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-8 h-8 animate-spin text-green-600" />
-                  </div>
-                ) : loanAccount ? (
-                  <>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Limit: <strong>${loanAccount.loanLimit.toFixed(2)}</strong>
-                      {' · '}Owed: <strong>${loanAccount.activeBalance.toFixed(2)}</strong>
-                      {' · '}Available: <strong>${(loanAccount.loanLimit - loanAccount.activeBalance).toFixed(2)}</strong>
-                    </p>
-                    {loanModalType === 'limit' ? (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">New limit ($20 – $500)</label>
-                          <input
-                            type="number"
-                            min={20}
-                            max={500}
-                            value={loanLimitInput}
-                            onChange={(e) => setLoanLimitInput(e.target.value)}
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={closeLoanModal} disabled={loanActionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">
-                            Cancel
-                          </button>
-                          <button onClick={handleLoanLimitSubmit} disabled={loanActionLoading} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50">
-                            {loanActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><SlidersHorizontal className="w-4 h-4" /> Update</>}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Loan amount</label>
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={loanIssueAmount}
-                            onChange={(e) => setLoanIssueAmount(e.target.value)}
-                            placeholder="0.00"
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none placeholder:text-gray-400"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Remarks (optional)</label>
-                          <textarea
-                            value={loanRemarks}
-                            onChange={(e) => setLoanRemarks(e.target.value)}
-                            placeholder="Reason for manual issuance..."
-                            rows={2}
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none resize-none placeholder:text-gray-400"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={closeLoanModal} disabled={loanActionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">
-                            Cancel
-                          </button>
-                          <button onClick={handleLoanIssueSubmit} disabled={loanActionLoading || !loanIssueAmount} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50">
-                            {loanActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><DollarSign className="w-4 h-4" /> Issue Loan</>}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : null}
-              </div>
-            </div>
           </div>
         )}
 
@@ -2122,39 +1687,18 @@ const AceagentDashboard: React.FC = () => {
                 activeTab === 'chat' ? 'scale-110' : 'scale-100'
               }`}>
                 <MessageCircle className={`w-6 h-6 transition-colors ${activeTab === 'chat' ? 'text-indigo-600' : 'text-gray-500'}`} />
-                {activeTab === 'chat' && (
+                {unreadChatCount > 0 && activeTab !== 'chat' ? (
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-0.5 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full shadow animate-pulse">
+                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                  </span>
+                ) : activeTab === 'chat' ? (
                   <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
-                )}
+                ) : null}
               </div>
               <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
                 activeTab === 'chat' ? 'text-indigo-600' : 'text-gray-500'
               }`}>
                 Chat
-              </span>
-            </button>
-          )}
-
-          {hasPermission('verification') && (
-            <button
-              onClick={() => setActiveTab('verification')}
-              className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-200 min-w-0 ${
-                activeTab === 'verification'
-                  ? 'text-indigo-600'
-                  : 'text-gray-500 active:text-gray-700'
-              }`}
-            >
-              <div className={`relative mb-1 transition-all duration-200 ${
-                activeTab === 'verification' ? 'scale-110' : 'scale-100'
-              }`}>
-                <Shield className={`w-6 h-6 transition-colors ${activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'}`} />
-                {activeTab === 'verification' && (
-                  <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></div>
-                )}
-              </div>
-              <span className={`text-[10px] sm:text-xs font-semibold transition-colors truncate w-full text-center ${
-                activeTab === 'verification' ? 'text-indigo-600' : 'text-gray-500'
-              }`}>
-                Verify
               </span>
             </button>
           )}
@@ -2211,14 +1755,6 @@ const AceagentDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* User Notes Panel */}
-      <UserNotesPanel
-        userId={notesUserId || ''}
-        userName={notesUserName}
-        isOpen={!!notesUserId}
-        onClose={() => setNotesUserId(null)}
-        authType="session"
-      />
     </div>
   );
 };

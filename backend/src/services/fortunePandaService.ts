@@ -350,7 +350,9 @@ class FortunePandaService {
         code: response.data?.code,
         msg: response.data?.msg,
         hasUserbalance: !!response.data?.userbalance,
-        hasAgentBalance: !!response.data?.agentBalance
+        hasAgentBalance: !!response.data?.agentBalance,
+        responseKeys: response.data ? Object.keys(response.data) : [],
+        rawBalance: response.data?.userbalance ?? response.data?.userBalance ?? response.data?.balance ?? response.data?.Balance ?? 'NOT_FOUND'
       });
 
       // Process user info query response
@@ -560,6 +562,9 @@ class FortunePandaService {
       // Use account name directly as stored in database
       const fortunePandaAccount = account;
 
+      // API expects amount in cents (int), convert dollars to cents
+      const amountInCents = Math.round(parseFloat(amount) * 100).toString();
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -571,7 +576,7 @@ class FortunePandaService {
       const queryParams = {
         action: 'recharge',
         account: fortunePandaAccount,
-        amount: amount,
+        amount: amountInCents,
         agentName: this.config.agentName,
         time: time.toString(),
         sign: sign
@@ -609,7 +614,7 @@ class FortunePandaService {
         const retryQueryParams = {
           action: 'recharge',
           account: fortunePandaAccount,
-          amount: amount,
+          amount: amountInCents,
           agentName: this.config.agentName,
           time: retryTime.toString(),
           sign: retrySign
@@ -657,6 +662,9 @@ class FortunePandaService {
       // Use account name directly as stored in database
       const fortunePandaAccount = account;
 
+      // API expects amount in cents (int), convert dollars to cents
+      const amountInCents = Math.round(parseFloat(amount) * 100).toString();
+
       const time = Date.now();
       const sign = this.generateSignature(
         this.config.agentName,
@@ -668,7 +676,7 @@ class FortunePandaService {
       const queryParams = {
         action: 'redeem',
         account: fortunePandaAccount,
-        amount: amount,
+        amount: amountInCents,
         agentName: this.config.agentName,
         time: time.toString(),
         sign: sign
@@ -706,7 +714,7 @@ class FortunePandaService {
         const retryQueryParams = {
           action: 'redeem',
           account: fortunePandaAccount,
-          amount: amount,
+          amount: amountInCents,
           agentName: this.config.agentName,
           time: retryTime.toString(),
           sign: retrySign
