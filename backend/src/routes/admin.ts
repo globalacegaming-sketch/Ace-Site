@@ -574,20 +574,32 @@ router.post('/deposit', async (req: Request, res: Response) => {
     });
 
     if (result.success) {
-      // Update user balance in database
-      if (result.data?.userbalance || result.data?.userBalance) {
-        user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
-        user.fortunePandaLastSync = new Date();
-        await user.save();
-        logger.info('✅ User balance updated in database:', user.fortunePandaBalance);
+      // Recharge API doesn't return userbalance, so query it via queryInfo
+      let userbalance = '0.00';
+      let agentBalance = '0.00';
+      try {
+        if (user.fortunePandaUsername && user.fortunePandaPassword) {
+          const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+          const infoResult = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+          if (infoResult.success && infoResult.data) {
+            userbalance = infoResult.data.userbalance || infoResult.data.userBalance || '0.00';
+            agentBalance = infoResult.data.agentBalance || infoResult.data.agentbalance || '0.00';
+            user.fortunePandaBalance = parseFloat(userbalance);
+            user.fortunePandaLastSync = new Date();
+            await user.save();
+            logger.info('✅ User balance updated in database after deposit:', user.fortunePandaBalance);
+          }
+        }
+      } catch (queryError) {
+        logger.warn('⚠️ Could not query balance after deposit:', queryError);
       }
 
       return res.json({
         success: true,
         message: result.message,
         data: {
-          userbalance: result.data?.userbalance || result.data?.userBalance || '0.00',
-          agentBalance: result.data?.agentBalance || result.data?.agentbalance || '0.00',
+          userbalance,
+          agentBalance,
           ...result.data
         }
       });
@@ -723,20 +735,32 @@ router.post('/redeem', async (req: Request, res: Response) => {
     });
 
     if (result.success) {
-      // Update user balance in database
-      if (result.data?.userbalance || result.data?.userBalance) {
-        user.fortunePandaBalance = parseFloat(result.data.userbalance || result.data.userBalance || '0');
-        user.fortunePandaLastSync = new Date();
-        await user.save();
-        logger.info('✅ User balance updated in database:', user.fortunePandaBalance);
+      // Redeem API doesn't return userbalance, so query it via queryInfo
+      let userbalance = '0.00';
+      let agentBalance = '0.00';
+      try {
+        if (user.fortunePandaUsername && user.fortunePandaPassword) {
+          const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+          const infoResult = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
+          if (infoResult.success && infoResult.data) {
+            userbalance = infoResult.data.userbalance || infoResult.data.userBalance || '0.00';
+            agentBalance = infoResult.data.agentBalance || infoResult.data.agentbalance || '0.00';
+            user.fortunePandaBalance = parseFloat(userbalance);
+            user.fortunePandaLastSync = new Date();
+            await user.save();
+            logger.info('✅ User balance updated in database after redeem:', user.fortunePandaBalance);
+          }
+        }
+      } catch (queryError) {
+        logger.warn('⚠️ Could not query balance after redeem:', queryError);
       }
 
       return res.json({
         success: true,
         message: result.message,
         data: {
-          userbalance: result.data?.userbalance || result.data?.userBalance || '0.00',
-          agentBalance: result.data?.agentBalance || result.data?.agentbalance || '0.00',
+          userbalance,
+          agentBalance,
           ...result.data
         }
       });
