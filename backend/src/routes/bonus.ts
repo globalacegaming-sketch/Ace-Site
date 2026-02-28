@@ -9,25 +9,17 @@ import { bonusImageUpload } from '../config/bonusUploads';
 
 const router = Router();
 
-// Get all active bonuses (public)
+// Get all active bonuses (public) — includes upcoming & recently expired
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const now = new Date();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
     const bonuses = await Bonus.find({
       isActive: true,
-      $and: [
-        {
-          $or: [
-            { validFrom: { $exists: false } },
-            { validFrom: { $lte: now } }
-          ]
-        },
-        {
-          $or: [
-            { validUntil: { $exists: false } },
-            { validUntil: { $gte: now } }
-          ]
-        }
+      $or: [
+        { validUntil: { $exists: false } },
+        { validUntil: null },
+        { validUntil: { $gte: thirtyDaysAgo } }
       ]
     })
       .sort({ order: 1, createdAt: -1 })

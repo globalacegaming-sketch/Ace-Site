@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Gift, Star, Clock, CheckCircle, Loader2, Bell, BellOff, Users, Copy, Share2, Timer } from 'lucide-react';
+import { Gift, Star, Clock, CheckCircle, Loader2, Bell, BellOff, Users, Copy, Share2, Timer, ChevronDown, ChevronUp, CalendarClock, Ban } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -56,6 +56,7 @@ const Offers = () => {
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [reminders, setReminders] = useState<Set<string>>(getReminders);
+  const [expandedTerms, setExpandedTerms] = useState<Set<string>>(new Set());
   const [, setTick] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -228,23 +229,35 @@ const Offers = () => {
         {/* Tab Navigation */}
         <div className="flex justify-center mb-6 sm:mb-8">
           <div className="casino-bg-secondary rounded-xl p-1 casino-border border" style={{ boxShadow: '0 0 15px rgba(0,0,0,0.3)' }}>
-            {(['current', 'upcoming', 'expired'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 ${
-                  activeTab === tab
-                    ? 'text-[#0A0A0F] font-bold'
-                    : 'casino-text-secondary hover:text-[#F5F5F5]'
-                }`}
-                style={activeTab === tab ? {
-                  background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-                  boxShadow: '0 0 12px rgba(255,215,0,0.3)',
-                } : {}}
-              >
-                {tab === 'current' ? 'Current Bonuses' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+            {(['current', 'upcoming', 'expired'] as const).map((tab) => {
+              const now = new Date();
+              const count = bonuses.filter(b => {
+                if (!b.isActive) return false;
+                const vf = b.validFrom ? new Date(b.validFrom) : null;
+                const vu = b.validUntil ? new Date(b.validUntil) : null;
+                if (tab === 'current') return (!vf || vf <= now) && (!vu || vu >= now);
+                if (tab === 'upcoming') return vf && vf > now;
+                return vu && vu < now;
+              }).length;
+              const label = tab === 'current' ? 'Current' : tab === 'upcoming' ? 'Upcoming' : 'Expired';
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 ${
+                    activeTab === tab
+                      ? 'text-[#0A0A0F] font-bold'
+                      : 'casino-text-secondary hover:text-[#F5F5F5]'
+                  }`}
+                  style={activeTab === tab ? {
+                    background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                    boxShadow: '0 0 12px rgba(255,215,0,0.3)',
+                  } : {}}
+                >
+                  {label}{count > 0 && <span className="ml-1.5 text-xs opacity-70">({count})</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -310,6 +323,10 @@ const Offers = () => {
             const claimed = isClaimed(bonus);
             const claimState = getClaimState(bonus);
             const isRepeatable = (bonus.cooldownHours ?? 0) > 0;
+            const isUpcoming = activeTab === 'upcoming';
+            const isExpired = activeTab === 'expired';
+            const termsExpanded = expandedTerms.has(bonus._id);
+            const hasLongTerms = (bonus.termsAndConditions?.length ?? 0) > 80;
 
             const formatCooldown = (ends: Date) => {
               const diff = ends.getTime() - Date.now();
@@ -326,20 +343,38 @@ const Offers = () => {
               <div
                 key={bonus._id}
                 className={`casino-bg-secondary rounded-xl sm:rounded-2xl border transition-all duration-300 ${
-                  bonus.isActive && claimState.canClaim
-                    ? 'casino-border hover:border-[#FFD700]/40'
-                    : 'casino-border opacity-75'
+                  isExpired
+                    ? 'casino-border opacity-60'
+                    : isUpcoming
+                      ? 'casino-border border-amber-500/30'
+                      : bonus.isActive && claimState.canClaim
+                        ? 'casino-border hover:border-[#FFD700]/40'
+                        : 'casino-border opacity-75'
                 }`}
                 style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
               >
                 <div className="p-4 sm:p-6">
+                  {/* Status ribbon for upcoming/expired */}
+                  {isUpcoming && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg mb-4 text-xs font-semibold" style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>
+                      <CalendarClock className="w-3.5 h-3.5" />
+                      Starts {bonus.validFrom ? new Date(bonus.validFrom).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'soon'}
+                    </div>
+                  )}
+                  {isExpired && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg mb-4 text-xs font-semibold" style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                      <Ban className="w-3.5 h-3.5" />
+                      Expired {bonus.validUntil ? new Date(bonus.validUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                    </div>
+                  )}
+
                   {/* Image */}
                   {bonus.image && (
                     <div className="mb-4">
                       <img
                         src={getAttachmentUrl(bonus.image)}
                         alt={bonus.title}
-                        className="w-full h-40 sm:h-48 object-cover rounded-lg"
+                        className={`w-full h-40 sm:h-48 object-cover rounded-lg ${isExpired ? 'grayscale' : ''}`}
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=' + encodeURIComponent(bonus.title);
                         }}
@@ -349,18 +384,18 @@ const Offers = () => {
 
                   {/* Header */}
                   <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="flex items-center space-x-2">
-                      <Gift className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: 'var(--casino-highlight-gold)' }} />
-                      <h3 className="text-lg sm:text-xl font-bold casino-text-primary">{bonus.title}</h3>
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <Gift className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" style={{ color: 'var(--casino-highlight-gold)' }} />
+                      <h3 className="text-lg sm:text-xl font-bold casino-text-primary truncate">{bonus.title}</h3>
                     </div>
                     {showClaimed && (
-                      <div className="status-success-casino flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium">
+                      <div className="status-success-casino flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium flex-shrink-0">
                         <CheckCircle className="w-3.5 h-3.5" />
                         <span>Claimed</span>
                       </div>
                     )}
-                    {isRepeatable && claimState.claimCount > 0 && (
-                      <div className="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(255,215,0,0.15)', color: 'var(--casino-highlight-gold)' }}>
+                    {isRepeatable && claimState.claimCount > 0 && !isExpired && (
+                      <div className="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium flex-shrink-0" style={{ background: 'rgba(255,215,0,0.15)', color: 'var(--casino-highlight-gold)' }}>
                         <span>Claimed {claimState.claimCount}{(bonus.maxClaims ?? 0) > 0 ? `/${bonus.maxClaims}` : ''}</span>
                       </div>
                     )}
@@ -386,12 +421,20 @@ const Offers = () => {
 
                   {/* Details + Countdown */}
                   <div className="space-y-2 mb-4">
-                    {bonus.validUntil && (
+                    {bonus.validFrom && isUpcoming && (
+                      <div className="flex items-center space-x-2">
+                        <Clock className="w-4 h-4 casino-text-secondary" />
+                        <span className="text-xs sm:text-sm casino-text-secondary">
+                          Starts: {new Date(bonus.validFrom).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                    )}
+                    {bonus.validUntil && !isUpcoming && (
                       <div className="flex items-center justify-between flex-wrap gap-1">
                         <div className="flex items-center space-x-2">
                           <Clock className="w-4 h-4 casino-text-secondary" />
                           <span className="text-xs sm:text-sm casino-text-secondary">
-                            Valid until: {new Date(bonus.validUntil).toLocaleDateString()}
+                            {isExpired ? 'Expired' : 'Valid until'}: {new Date(bonus.validUntil).toLocaleDateString()}
                           </span>
                         </div>
                         {activeTab === 'current' && <BonusCountdown validUntil={bonus.validUntil} />}
@@ -405,15 +448,37 @@ const Offers = () => {
                         </span>
                       </div>
                     )}
-                    {bonus.termsAndConditions && (
-                      <div className="flex items-center space-x-2">
-                        <Star className="w-4 h-4 casino-text-secondary" />
-                        <span className="text-xs sm:text-sm casino-text-secondary line-clamp-1">
-                          {bonus.termsAndConditions}
-                        </span>
-                      </div>
-                    )}
                   </div>
+
+                  {/* Terms and Conditions — expandable */}
+                  {bonus.termsAndConditions && (
+                    <div className="mb-4 rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExpandedTerms(prev => {
+                            const next = new Set(prev);
+                            next.has(bonus._id) ? next.delete(bonus._id) : next.add(bonus._id);
+                            return next;
+                          });
+                        }}
+                        className="w-full flex items-center justify-between gap-2 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Star className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--casino-highlight-gold)' }} />
+                          <span className="text-xs font-semibold" style={{ color: 'var(--casino-highlight-gold)' }}>Terms & Conditions</span>
+                        </div>
+                        {hasLongTerms && (
+                          termsExpanded
+                            ? <ChevronUp className="w-4 h-4 casino-text-secondary flex-shrink-0" />
+                            : <ChevronDown className="w-4 h-4 casino-text-secondary flex-shrink-0" />
+                        )}
+                      </button>
+                      <p className={`text-xs casino-text-secondary mt-2 whitespace-pre-line leading-relaxed ${!termsExpanded && hasLongTerms ? 'line-clamp-2' : ''}`}>
+                        {bonus.termsAndConditions}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Wagering Progress */}
                   {showClaimed && bonus.wagerRequired != null && bonus.wagerRequired > 0 && (
@@ -424,7 +489,7 @@ const Offers = () => {
                   )}
 
                   {/* Action Buttons */}
-                  {activeTab === 'upcoming' ? (
+                  {isUpcoming ? (
                     <button
                       onClick={() => handleRemindMe(bonus._id)}
                       disabled={reminders.has(bonus._id)}
@@ -453,6 +518,14 @@ const Offers = () => {
                         </>
                       )}
                     </button>
+                  ) : isExpired ? (
+                    <div
+                      className="w-full py-2.5 sm:py-3 px-4 rounded-lg font-medium text-sm sm:text-base flex items-center justify-center gap-2 opacity-60"
+                      style={{ background: 'var(--casino-card-border)', color: 'var(--casino-text-secondary)' }}
+                    >
+                      <Ban className="w-4 h-4" />
+                      Offer Expired
+                    </div>
                   ) : (
                     <button
                       onClick={() => handleClaimBonus(bonus)}
