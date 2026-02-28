@@ -68,7 +68,7 @@ export async function oneSignalLogout(): Promise<void> {
  * Request notification permission. Call when the user opens the chat widget
  * (contextual) so we only prompt if they're likely to want support alerts.
  */
-export async function oneSignalRequestPermission(): Promise<boolean> {
+export async function oneSignalRequestPermission(force = false): Promise<boolean> {
   try {
     return new Promise<boolean>((resolve) => {
       whenReady(async (OneSignal) => {
@@ -78,7 +78,7 @@ export async function oneSignalRequestPermission(): Promise<boolean> {
             return;
           }
           if (OneSignal.Slidedown?.promptPush) {
-            OneSignal.Slidedown.promptPush();
+            OneSignal.Slidedown.promptPush({ force });
             resolve(true);
             return;
           }

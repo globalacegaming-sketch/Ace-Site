@@ -765,7 +765,7 @@ const Layout = ({ children }: LayoutProps) => {
         </>
       )}
 
-      <div className="relative z-10 flex">
+      <div className="relative z-10 flex w-full max-w-full">
         {/* Desktop Sidebar */}
         {!isMobile && (
           <div 
@@ -861,11 +861,11 @@ const Layout = ({ children }: LayoutProps) => {
         )}
 
         {/* Main Content */}
-        <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
+        <div className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-300 ${
           !isMobile && sidebarCollapsed ? 'ml-16' : !isMobile ? 'ml-64' : 'ml-0'
         } ${location.pathname === '/chat' ? 'h-screen overflow-hidden' : ''}`}>
           {/* Main Content Area - pt accounts for fixed header + iOS safe-area */}
-          <main className={`flex-1 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] ${location.pathname === '/chat' ? 'pb-0 h-full overflow-hidden relative' : 'pb-16 sm:pb-20 lg:pb-0'}`}>
+          <main className={`flex-1 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] overflow-x-hidden ${location.pathname === '/chat' ? 'pb-0 h-full overflow-hidden relative' : 'pb-20 sm:pb-24 lg:pb-0'}`}>
             {children}
           </main>
         </div>

@@ -145,6 +145,13 @@ const Games = () => {
           }
 
           triggerHaptic('success');
+          try {
+            const MAX_RECENT = 10;
+            const key = 'gag-recent-games';
+            const prev: Game[] = JSON.parse(localStorage.getItem(key) || '[]');
+            const next = [game, ...prev.filter(g => g.kindId !== game.kindId)].slice(0, MAX_RECENT);
+            localStorage.setItem(key, JSON.stringify(next));
+          } catch { /* non-critical */ }
           window.location.href = gameUrl;
           toast.success('Game launching...', { duration: 2000 });
         } catch (error: any) {
