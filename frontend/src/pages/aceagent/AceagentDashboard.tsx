@@ -311,6 +311,16 @@ const AceagentDashboard: React.FC = () => {
       loadUsers();
       loadAgentBalance();
       fetchLabels();
+
+      // Sync balances from FortunePanda in the background, then refresh
+      const token = getAdminToken();
+      if (token) {
+        axios.post(
+          `${API_BASE_URL}/admin/users/sync-fortune-panda`,
+          {},
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        ).then(() => loadUsers()).catch(() => {});
+      }
       
       // Mark session as checked
       sessionCheckedRef.current = true;
