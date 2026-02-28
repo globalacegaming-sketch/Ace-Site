@@ -17,6 +17,7 @@ export interface SupportTicketSectionProps {
   onSearchChange: (value: string) => void;
   onSortChange: (value: 'newest' | 'oldest') => void;
   onUpdateStatus: (ticketId: string, status: string) => Promise<void>;
+  onTicketUpdated?: (ticket: any) => void;
 }
 
 export default function SupportTicketSection({
@@ -33,6 +34,7 @@ export default function SupportTicketSection({
   onSearchChange,
   onSortChange,
   onUpdateStatus,
+  onTicketUpdated,
 }: SupportTicketSectionProps) {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'active' | 'completed' | 'all'>('active');
@@ -75,13 +77,13 @@ export default function SupportTicketSection({
                 placeholder="Search tickets..."
                 value={ticketSearchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <select
               value={ticketSortOrder}
               onChange={(e) => onSortChange(e.target.value as 'newest' | 'oldest')}
-              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
@@ -91,7 +93,7 @@ export default function SupportTicketSection({
             <select
               value={ticketCategoryFilter}
               onChange={(e) => onCategoryChange(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="all">All Categories</option>
               <option value="payment_related_queries">Payment</option>
@@ -159,6 +161,7 @@ export default function SupportTicketSection({
             apiBaseUrl={apiBaseUrl}
             onBack={() => setSelectedTicketId(null)}
             onUpdateStatus={onUpdateStatus}
+            onTicketUpdated={onTicketUpdated}
             showBackButton={showBackOnMobile}
           />
         </div>

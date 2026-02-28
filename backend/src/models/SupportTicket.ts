@@ -45,6 +45,13 @@ export interface ISupportTicket extends Document {
     notifyUser?: boolean;
   }[];
   
+  replies?: {
+    message: string;
+    fromAdmin: boolean;
+    agentName?: string;
+    createdAt: Date;
+  }[];
+
   // Email delivery tracking (avoid duplicates)
   lastEmailSentAt?: Date;
   lastEmailStatus?: 'sent' | 'failed';
@@ -147,6 +154,12 @@ const SupportTicketSchema = new Schema<ISupportTicket>({
     changedByName: String,
     note: String,
     notifyUser: { type: Boolean, default: true }
+  }],
+  replies: [{
+    message: { type: String, required: true, trim: true, maxlength: 5000 },
+    fromAdmin: { type: Boolean, default: true },
+    agentName: { type: String, trim: true },
+    createdAt: { type: Date, default: Date.now }
   }],
   lastEmailSentAt: Date,
   lastEmailStatus: { type: String, enum: ['sent', 'failed'] }

@@ -1,21 +1,34 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface IBonusClaim {
+  userId: string;
+  claimedAt: Date;
+}
+
 export interface IBonus extends Document {
   _id: string;
   title: string;
   description: string;
-  image: string; // URL to the bonus image
+  image: string;
   bonusType: 'welcome' | 'deposit' | 'free_spins' | 'cashback' | 'other';
-  bonusValue?: string; // e.g., "100%", "$50", "50 Free Spins"
+  bonusValue?: string;
   termsAndConditions?: string;
   isActive: boolean;
-  order: number; // For sorting/ordering bonuses
+  order: number;
   validFrom?: Date;
   validUntil?: Date;
-  claimedBy: string[]; // Array of user IDs who have claimed this bonus
+  maxClaims: number;       // max times a user can claim (0 = unlimited)
+  cooldownHours: number;   // hours before re-claim (0 = one-time only)
+  claimedBy: string[];     // legacy — unique user IDs who have ever claimed
+  claims: IBonusClaim[];   // detailed claim log with timestamps
   createdAt: Date;
   updatedAt: Date;
 }
+
+const BonusClaimSchema = new Schema({
+  userId:    { type: String, required: true },
+  claimedAt: { type: Date, default: Date.now }
+}, { _id: false });
 
 const BonusSchema = new Schema<IBonus>({
   title: {
@@ -53,8 +66,22 @@ const BonusSchema = new Schema<IBonus>({
     type: Boolean,
     default: true
   },
+  maxClaims: {
+    type: Number,
+    default: 1,
+    min: 0
+  },
+  cooldownHours: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   claimedBy: {
     type: [String],
+    default: []
+  },
+  claims: {
+    type: [BonusClaimSchema],
     default: []
   },
   order: {
@@ -71,10 +98,10 @@ const BonusSchema = new Schema<IBonus>({
   timestamps: true
 });
 
-// Index for better query performance
 BonusSchema.index({ isActive: 1, order: 1 });
 BonusSchema.index({ createdAt: -1 });
 BonusSchema.index({ validFrom: 1, validUntil: 1 });
+BonusSchema.index({ 'claims.userId': 1 });
 
 export default mongoose.model<IBonus>('Bonus', BonusSchema);
 

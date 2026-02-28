@@ -593,7 +593,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
               placeholder="Search user by name, email, or FP account..."
               value={manageSearch}
               onChange={(e) => setManageSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-gray-700 placeholder-gray-400"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-black placeholder-gray-400"
             />
           </div>
           {manageUsersLoading ? (
@@ -677,7 +677,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                           max={500}
                           value={loanLimitInput}
                           onChange={(e) => setLoanLimitInput(e.target.value)}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-black focus:ring-2 focus:ring-green-500 outline-none"
                         />
                       </div>
                       <div className="flex gap-2">
@@ -700,7 +700,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                           value={loanIssueAmount}
                           onChange={(e) => setLoanIssueAmount(e.target.value)}
                           placeholder="0.00"
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none placeholder:text-gray-400"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-black focus:ring-2 focus:ring-green-500 outline-none placeholder:text-gray-400"
                         />
                       </div>
                       <div>
@@ -710,7 +710,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                           onChange={(e) => setLoanRemarks(e.target.value)}
                           placeholder="Reason for manual issuance..."
                           rows={2}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-green-500 outline-none resize-none placeholder:text-gray-400"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-black focus:ring-2 focus:ring-green-500 outline-none resize-none placeholder:text-gray-400"
                         />
                       </div>
                       <div className="flex gap-2">
@@ -752,7 +752,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                 onChange={(e) => setLedgerSearch(e.target.value)}
                 onBlur={() => setTimeout(() => setLedgerSearchOpen(false), 200)}
                 onFocus={() => { if (ledgerSearchResults.length > 0) setLedgerSearchOpen(true); }}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-gray-700 placeholder-gray-400"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-black placeholder-gray-400"
               />
               {ledgerSearchOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-60 overflow-y-auto">
@@ -938,7 +938,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                   onChange={(e) => setModalRemarks(e.target.value)}
                   placeholder="Remarks (optional)..."
                   rows={2}
-                  className="w-full border border-gray-300 rounded-xl p-3 text-sm mb-4 focus:ring-2 focus:ring-green-500 outline-none resize-none text-gray-900 placeholder:text-gray-400"
+                  className="w-full border border-gray-300 rounded-xl p-3 text-sm mb-4 focus:ring-2 focus:ring-green-500 outline-none resize-none text-black placeholder:text-gray-400"
                 />
                 <div className="flex gap-2">
                   <button onClick={() => setActionModal(null)} disabled={actionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">Cancel</button>
@@ -961,7 +961,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                   onChange={(e) => setModalRemarks(e.target.value)}
                   placeholder="Reason for rejection (required)..."
                   rows={3}
-                  className="w-full border border-gray-300 rounded-xl p-3 text-sm mb-4 focus:ring-2 focus:ring-red-500 outline-none resize-none text-gray-900 placeholder:text-gray-400"
+                  className="w-full border border-gray-300 rounded-xl p-3 text-sm mb-4 focus:ring-2 focus:ring-red-500 outline-none resize-none text-black placeholder:text-gray-400"
                 />
                 <div className="flex gap-2">
                   <button onClick={() => setActionModal(null)} disabled={actionLoading} className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium">Cancel</button>
@@ -995,7 +995,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                         min="0.01"
                         step="0.01"
                         placeholder={(actionModal.data.remainingBalance ?? actionModal.data.principalAmount).toFixed(2)}
-                        className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 placeholder:text-gray-400"
+                        className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-black placeholder:text-gray-400"
                       />
                     </div>
                   </div>
@@ -1004,7 +1004,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                     <select
                       value={repayMethod}
                       onChange={(e) => setRepayMethod(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-gray-900"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-black"
                     >
                       {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
@@ -1015,7 +1015,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                       value={modalRemarks}
                       onChange={(e) => setModalRemarks(e.target.value)}
                       placeholder="Notes..."
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 placeholder:text-gray-400"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-black placeholder:text-gray-400"
                     />
                   </div>
                 </div>

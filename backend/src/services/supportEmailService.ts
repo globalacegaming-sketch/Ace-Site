@@ -2,6 +2,7 @@ import emailService from './emailService';
 import logger from '../utils/logger';
 import { getTicketCreatedHtml } from '../templates/support/ticketCreated';
 import { getTicketStatusChangedHtml } from '../templates/support/ticketStatusChanged';
+import { getTicketReplyHtml } from '../templates/support/ticketReply';
 import type { ISupportTicket } from '../models/SupportTicket';
 
 const SUPPORT_URL = process.env.FRONTEND_URL || process.env.PRODUCTION_FRONTEND_URL || 'https://www.globalacegaming.com';
@@ -85,6 +86,48 @@ export async function sendTicketStatusChangedEmail(params: {
     return { success: true };
   }
   logger.warn('Failed to send support ticket status changed email', {
+    ticketNumber: ticket.ticketNumber,
+    to: ticket.email
+  });
+  return { success: false, error: 'Email send failed' };
+}
+
+/**
+ * Send email when an admin replies to a ticket.
+ */
+export async function sendTicketReplyEmail(params: {
+  ticket: ISupportTicket;
+  replyMessage: string;
+  agentName: string;
+}): Promise<SendStatusChangedResult> {
+  const { ticket, replyMessage, agentName } = params;
+  const recipientName = ticket.name?.trim() || ticket.email?.split('@')[0] || 'there';
+
+  const html = getTicketReplyHtml({
+    ticketNumber: ticket.ticketNumber,
+    category: ticket.category as any,
+    status: ticket.status as any,
+    recipientName,
+    replyMessage,
+    agentName,
+    supportUrl: SUPPORT_PAGE,
+  });
+
+  const subject = `Re: Support Ticket ${ticket.ticketNumber} – Reply from Support`;
+  const success = await emailService.sendEmail({
+    to: ticket.email,
+    subject,
+    html
+  });
+
+  if (success) {
+    logger.info('Support ticket reply email sent', {
+      ticketNumber: ticket.ticketNumber,
+      to: ticket.email
+    });
+    return { success: true };
+  }
+  logger.warn('Failed to send support ticket reply email', {
     ticketNumber: ticket.ticketNumber,
     to: ticket.email
   });

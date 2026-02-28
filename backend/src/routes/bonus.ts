@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
 import Bonus, { IBonus } from '../models/Bonus';
 import User from '../models/User';
 import ChatMessage from '../models/ChatMessage';
 import { getSocketServerInstance } from '../utils/socketManager';
+import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
+import { bonusImageUpload } from '../config/bonusUploads';
 
 const router = Router();
 
@@ -94,6 +97,36 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Upload bonus image to Cloudinary (admin/agent only)
+router.post('/upload-image', bonusImageUpload.single('image'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file provided' });
+    }
+
+    const filePath = req.file.path;
+    let imageUrl: string;
+
+    if (isCloudinaryEnabled()) {
+      const result = await cloudinary.uploader.upload(filePath, {
+        folder: 'bonuses',
+        resource_type: 'image',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }]
+      });
+      imageUrl = result.secure_url;
+      fs.unlink(filePath, () => {});
+    } else {
+      imageUrl = `/uploads/bonus/${req.file.filename}`;
+    }
+
+    return res.json({ success: true, message: 'Image uploaded', data: { url: imageUrl } });
+  } catch (error: any) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    console.error('Error uploading bonus image:', error);
+    return res.status(500).json({ success: false, message: 'Failed to upload image', error: error.message });
+  }
+});
+
 // Create new bonus (admin/agent only)
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -107,7 +140,9 @@ router.post('/', async (req: Request, res: Response) => {
       order,
       isActive,
       validFrom,
-      validUntil
+      validUntil,
+      maxClaims,
+      cooldownHours
     } = req.body;
 
     if (!title || !description || !image) {
@@ -127,7 +162,9 @@ router.post('/', async (req: Request, res: Response) => {
       order: order || 0,
       isActive: isActive !== undefined ? isActive : true,
       validFrom: validFrom ? new Date(validFrom) : undefined,
-      validUntil: validUntil ? new Date(validUntil) : undefined
+      validUntil: validUntil ? new Date(validUntil) : undefined,
+      maxClaims: maxClaims !== undefined ? Number(maxClaims) : 1,
+      cooldownHours: cooldownHours !== undefined ? Number(cooldownHours) : 0
     });
 
     await bonus.save();
@@ -160,7 +197,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       order,
       isActive,
       validFrom,
-      validUntil
+      validUntil,
+      maxClaims,
+      cooldownHours
     } = req.body;
 
     const bonus = await Bonus.findById(req.params.id);
@@ -182,6 +221,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (isActive !== undefined) bonus.isActive = isActive;
     if (validFrom !== undefined) bonus.validFrom = validFrom ? new Date(validFrom) : undefined;
     if (validUntil !== undefined) bonus.validUntil = validUntil ? new Date(validUntil) : undefined;
+    if (maxClaims !== undefined) bonus.maxClaims = Number(maxClaims);
+    if (cooldownHours !== undefined) bonus.cooldownHours = Number(cooldownHours);
 
     await bonus.save();
 
@@ -271,17 +312,52 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if user has already claimed
-    if (bonus.claimedBy.includes(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'You have already claimed this bonus',
-        alreadyClaimed: true
-      });
+    // Gather this user's claim history for this bonus
+    const userClaims = (bonus.claims || []).filter(c => c.userId === userId);
+    const claimCount = userClaims.length;
+    const maxClaims = bonus.maxClaims ?? 1;   // default 1 for legacy docs
+    const cooldownHrs = bonus.cooldownHours ?? 0;
+
+    if (cooldownHrs > 0) {
+      // Repeatable bonus — check cooldown
+      if (maxClaims > 0 && claimCount >= maxClaims) {
+        return res.status(400).json({
+          success: false,
+          message: `You have reached the maximum of ${maxClaims} claim(s) for this bonus`,
+          alreadyClaimed: true
+        });
+      }
+      if (claimCount > 0) {
+        const lastClaim = userClaims.reduce((a, b) =>
+          new Date(a.claimedAt) > new Date(b.claimedAt) ? a : b
+        );
+        const msSinceLast = Date.now() - new Date(lastClaim.claimedAt).getTime();
+        const cooldownMs = cooldownHrs * 60 * 60 * 1000;
+        if (msSinceLast < cooldownMs) {
+          const availableAt = new Date(new Date(lastClaim.claimedAt).getTime() + cooldownMs);
+          return res.status(400).json({
+            success: false,
+            message: 'Bonus is on cooldown',
+            cooldown: true,
+            availableAt: availableAt.toISOString()
+          });
+        }
+      }
+    } else {
+      // One-time bonus (cooldown=0) — legacy behaviour
+      if (bonus.claimedBy.includes(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'You have already claimed this bonus',
+          alreadyClaimed: true
+        });
+      }
     }
 
-    // Add user to claimedBy array
-    bonus.claimedBy.push(userId);
+    // Record the claim
+    if (!bonus.claims) bonus.claims = [];
+    bonus.claims.push({ userId, claimedAt: new Date() });
+    if (!bonus.claimedBy.includes(userId)) bonus.claimedBy.push(userId);
     await bonus.save();
 
     // Send special system message to admin chat about bonus claim

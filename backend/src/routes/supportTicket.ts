@@ -542,6 +542,74 @@ router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) 
   }
 });
 
+// Reply to a ticket (agent/admin only) – saves reply and sends email
+router.post('/:id/reply', requireAgentAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'Reply message is required' });
+    }
+    if (message.trim().length > 5000) {
+      return res.status(400).json({ success: false, message: 'Reply cannot exceed 5000 characters' });
+    }
+
+    const ticket = await SupportTicket.findById(id);
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    const agentName = (req as any).agentSession?.username || 'Support Team';
+
+    const reply = {
+      message: message.trim(),
+      fromAdmin: true,
+      agentName,
+      createdAt: new Date(),
+    };
+
+    if (!ticket.replies) ticket.replies = [];
+    ticket.replies.push(reply);
+
+    if (ticket.status === 'pending') {
+      ticket.status = 'in_progress';
+      if (!ticket.statusHistory) ticket.statusHistory = [];
+      ticket.statusHistory.push({
+        status: 'in_progress',
+        changedAt: new Date(),
+        changedByName: agentName,
+        note: 'Auto-updated on first reply',
+        notifyUser: false,
+      });
+    }
+
+    await ticket.save();
+
+    const populated = await SupportTicket.findById(id)
+      .populate('userId', 'username email firstName lastName')
+      .populate('assignedTo', 'username')
+      .populate('resolvedBy', 'username')
+      .lean();
+
+    void supportEmailService.sendTicketReplyEmail({
+      ticket: ticket as any,
+      replyMessage: message.trim(),
+      agentName,
+    }).then((r) => {
+      SupportTicket.findByIdAndUpdate(id, {
+        lastEmailSentAt: r.success ? new Date() : undefined,
+        lastEmailStatus: r.success ? 'sent' : 'failed',
+      }).catch(() => {});
+    });
+
+    res.json({ success: true, message: 'Reply sent', data: populated });
+  } catch (error: any) {
+    console.error('Error replying to ticket:', error);
+    res.status(500).json({ success: false, message: 'Failed to send reply', error: error.message });
+  }
+});
+
 // Get single ticket (agent/admin only)
 router.get('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {

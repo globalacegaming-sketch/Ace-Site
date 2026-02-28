@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Gift, Star, Clock, CheckCircle, Loader2, Bell, BellOff, Users, Copy, Share2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Gift, Star, Clock, CheckCircle, Loader2, Bell, BellOff, Users, Copy, Share2, Timer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
-import { getApiBaseUrl } from '../utils/api';
+import { getApiBaseUrl, getAttachmentUrl } from '../utils/api';
 import { PageMeta } from '../components/PageMeta';
 import BonusCountdown from '../components/BonusCountdown';
 import BonusProgressBar from '../components/BonusProgressBar';
+
+interface BonusClaim {
+  userId: string;
+  claimedAt: string;
+}
 
 interface Bonus {
   _id: string;
@@ -21,7 +26,9 @@ interface Bonus {
   validFrom?: string;
   validUntil?: string;
   claimedBy?: string[];
-  /** Wagering progress — populated by backend when bonus is claimed */
+  claims?: BonusClaim[];
+  maxClaims?: number;
+  cooldownHours?: number;
   wagerRequired?: number;
   wagerCompleted?: number;
 }
@@ -49,6 +56,13 @@ const Offers = () => {
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [reminders, setReminders] = useState<Set<string>>(getReminders);
+  const [, setTick] = useState(0);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    tickRef.current = setInterval(() => setTick(t => t + 1), 1000);
+    return () => { if (tickRef.current) clearInterval(tickRef.current); };
+  }, []);
 
   const handleRemindMe = useCallback(async (bonusId: string) => {
     try {
@@ -91,9 +105,11 @@ const Offers = () => {
     }
 
     const userId = (user as any)._id || user.id;
+    const state = getClaimState(bonus);
 
-    if (bonus.claimedBy?.includes(userId)) {
-      toast.error('You have already claimed this bonus');
+    if (!state.canClaim) {
+      if (state.onCooldown) toast.error('This bonus is on cooldown');
+      else toast.error('You have already claimed this bonus');
       return;
     }
 
@@ -111,11 +127,14 @@ const Offers = () => {
         toast.error(claimResponse.data.message || 'Failed to claim bonus');
       }
     } catch (error: any) {
-      if (error.response?.data?.alreadyClaimed) {
+      if (error.response?.data?.cooldown) {
+        toast.error('Bonus is on cooldown. Try again later.');
+      } else if (error.response?.data?.alreadyClaimed) {
         toast.error('You have already claimed this bonus');
       } else {
         toast.error(error.response?.data?.message || 'Failed to claim bonus');
       }
+      loadBonuses();
     } finally {
       setClaiming(null);
     }
@@ -141,10 +160,36 @@ const Offers = () => {
     });
   };
 
-  const isClaimed = (bonus: Bonus) => {
-    if (!isAuthenticated || !user) return false;
+  const getClaimState = (bonus: Bonus): { canClaim: boolean; onCooldown: boolean; cooldownEnds: Date | null; claimCount: number; maxReached: boolean } => {
+    if (!isAuthenticated || !user) return { canClaim: true, onCooldown: false, cooldownEnds: null, claimCount: 0, maxReached: false };
     const userId = (user as any)._id || user.id;
-    return bonus.claimedBy?.includes(userId) || false;
+    const cooldownHrs = bonus.cooldownHours ?? 0;
+    const maxClaims = bonus.maxClaims ?? 1;
+    const userClaims = (bonus.claims || []).filter(c => c.userId === userId);
+    const claimCount = userClaims.length;
+
+    if (cooldownHrs > 0) {
+      if (maxClaims > 0 && claimCount >= maxClaims) return { canClaim: false, onCooldown: false, cooldownEnds: null, claimCount, maxReached: true };
+      if (claimCount > 0) {
+        const lastClaim = userClaims.reduce((a, b) => new Date(a.claimedAt) > new Date(b.claimedAt) ? a : b);
+        const cooldownMs = cooldownHrs * 60 * 60 * 1000;
+        const elapsed = Date.now() - new Date(lastClaim.claimedAt).getTime();
+        if (elapsed < cooldownMs) {
+          const cooldownEnds = new Date(new Date(lastClaim.claimedAt).getTime() + cooldownMs);
+          return { canClaim: false, onCooldown: true, cooldownEnds, claimCount, maxReached: false };
+        }
+      }
+      return { canClaim: true, onCooldown: false, cooldownEnds: null, claimCount, maxReached: false };
+    }
+
+    // One-time bonus
+    const alreadyClaimed = bonus.claimedBy?.includes(userId) || false;
+    return { canClaim: !alreadyClaimed, onCooldown: false, cooldownEnds: null, claimCount, maxReached: alreadyClaimed };
+  };
+
+  const isClaimed = (bonus: Bonus) => {
+    const state = getClaimState(bonus);
+    return state.maxReached && (bonus.cooldownHours ?? 0) === 0;
   };
 
   if (loading) {
@@ -263,11 +308,25 @@ const Offers = () => {
 
           {filteredBonuses.map((bonus) => {
             const claimed = isClaimed(bonus);
+            const claimState = getClaimState(bonus);
+            const isRepeatable = (bonus.cooldownHours ?? 0) > 0;
+
+            const formatCooldown = (ends: Date) => {
+              const diff = ends.getTime() - Date.now();
+              if (diff <= 0) return null;
+              const h = Math.floor(diff / 3600000);
+              const m = Math.floor((diff % 3600000) / 60000);
+              const s = Math.floor((diff % 60000) / 1000);
+              return h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+            };
+            const cooldownLabel = claimState.onCooldown && claimState.cooldownEnds ? formatCooldown(claimState.cooldownEnds) : null;
+            const showClaimed = claimed && !isRepeatable;
+
             return (
               <div
                 key={bonus._id}
                 className={`casino-bg-secondary rounded-xl sm:rounded-2xl border transition-all duration-300 ${
-                  bonus.isActive && !claimed
+                  bonus.isActive && claimState.canClaim
                     ? 'casino-border hover:border-[#FFD700]/40'
                     : 'casino-border opacity-75'
                 }`}
@@ -278,7 +337,7 @@ const Offers = () => {
                   {bonus.image && (
                     <div className="mb-4">
                       <img
-                        src={bonus.image}
+                        src={getAttachmentUrl(bonus.image)}
                         alt={bonus.title}
                         className="w-full h-40 sm:h-48 object-cover rounded-lg"
                         onError={(e) => {
@@ -294,10 +353,15 @@ const Offers = () => {
                       <Gift className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: 'var(--casino-highlight-gold)' }} />
                       <h3 className="text-lg sm:text-xl font-bold casino-text-primary">{bonus.title}</h3>
                     </div>
-                    {claimed && (
+                    {showClaimed && (
                       <div className="status-success-casino flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium">
                         <CheckCircle className="w-3.5 h-3.5" />
                         <span>Claimed</span>
+                      </div>
+                    )}
+                    {isRepeatable && claimState.claimCount > 0 && (
+                      <div className="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(255,215,0,0.15)', color: 'var(--casino-highlight-gold)' }}>
+                        <span>Claimed {claimState.claimCount}{(bonus.maxClaims ?? 0) > 0 ? `/${bonus.maxClaims}` : ''}</span>
                       </div>
                     )}
                   </div>
@@ -333,6 +397,14 @@ const Offers = () => {
                         {activeTab === 'current' && <BonusCountdown validUntil={bonus.validUntil} />}
                       </div>
                     )}
+                    {isRepeatable && (
+                      <div className="flex items-center space-x-2">
+                        <Timer className="w-4 h-4 casino-text-secondary" />
+                        <span className="text-xs sm:text-sm casino-text-secondary">
+                          Claimable every {bonus.cooldownHours}h{(bonus.maxClaims ?? 0) > 0 ? ` · Max ${bonus.maxClaims} times` : ' · Unlimited'}
+                        </span>
+                      </div>
+                    )}
                     {bonus.termsAndConditions && (
                       <div className="flex items-center space-x-2">
                         <Star className="w-4 h-4 casino-text-secondary" />
@@ -344,7 +416,7 @@ const Offers = () => {
                   </div>
 
                   {/* Wagering Progress */}
-                  {claimed && bonus.wagerRequired != null && bonus.wagerRequired > 0 && (
+                  {showClaimed && bonus.wagerRequired != null && bonus.wagerRequired > 0 && (
                     <BonusProgressBar
                       wagered={bonus.wagerCompleted || 0}
                       required={bonus.wagerRequired}
@@ -384,9 +456,14 @@ const Offers = () => {
                   ) : (
                     <button
                       onClick={() => handleClaimBonus(bonus)}
-                      disabled={!bonus.isActive || claimed || claiming === bonus._id}
+                      disabled={!bonus.isActive || !claimState.canClaim || claiming === bonus._id}
                       className="w-full py-2.5 sm:py-3 px-4 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 flex items-center justify-center gap-2 touch-manipulation disabled:opacity-50"
-                      style={claimed ? {
+                      style={claimState.onCooldown ? {
+                        background: 'rgba(255,215,0,0.1)',
+                        color: 'var(--casino-highlight-gold)',
+                        border: '1px solid rgba(255,215,0,0.3)',
+                        cursor: 'not-allowed',
+                      } : showClaimed || claimState.maxReached ? {
                         background: 'rgba(0,200,83,0.15)',
                         color: 'var(--casino-accent-green)',
                         border: '1px solid var(--casino-accent-green)',
@@ -406,13 +483,18 @@ const Offers = () => {
                           <Loader2 className="w-5 h-5 animate-spin" />
                           Claiming...
                         </>
-                      ) : claimed ? (
+                      ) : claimState.onCooldown && cooldownLabel ? (
+                        <>
+                          <Timer className="w-5 h-5" />
+                          Available in {cooldownLabel}
+                        </>
+                      ) : claimState.maxReached ? (
                         <>
                           <CheckCircle className="w-5 h-5" />
-                          Already Claimed
+                          {isRepeatable ? 'Max Claims Reached' : 'Already Claimed'}
                         </>
                       ) : bonus.isActive ? (
-                        'Claim Offer'
+                        claimState.claimCount > 0 ? 'Claim Again' : 'Claim Offer'
                       ) : (
                         'Not Available'
                       )}

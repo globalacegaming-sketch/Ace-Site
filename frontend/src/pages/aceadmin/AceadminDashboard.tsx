@@ -9,7 +9,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { getApiBaseUrl } from '../../utils/api';
+import { getApiBaseUrl, getAttachmentUrl } from '../../utils/api';
 import { useMusic } from '../../contexts/MusicContext';
 import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
 import SupportTicketSection from '../../components/support/SupportTicketSection';
@@ -40,6 +40,9 @@ interface Bonus {
   validFrom?: string;
   validUntil?: string;
   claimedBy?: string[];
+  maxClaims?: number;
+  cooldownHours?: number;
+  claims?: { userId: string; claimedAt: string }[];
 }
 
 interface Contact {
@@ -250,8 +253,12 @@ const AceadminDashboard: React.FC = () => {
   const [bonusForm, setBonusForm] = useState({
     title: '', description: '', image: '', bonusType: 'other' as Bonus['bonusType'],
     bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
-    validFrom: '', validUntil: ''
+    validFrom: '', validUntil: '', maxClaims: 1, cooldownHours: 0
   });
+  const [bonusImageMode, setBonusImageMode] = useState<'url' | 'upload'>('url');
+  const [bonusImageFile, setBonusImageFile] = useState<File | null>(null);
+  const [bonusImagePreview, setBonusImagePreview] = useState<string>('');
+  const [bonusImageUploading, setBonusImageUploading] = useState(false);
   const [faqForm, setFaqForm] = useState({
     question: '', answer: '', category: 'general', order: 0, isActive: true
   });
@@ -771,8 +778,9 @@ const AceadminDashboard: React.FC = () => {
               setBonusForm({
                 title: '', description: '', image: '', bonusType: 'other',
                 bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
-                validFrom: '', validUntil: ''
+                validFrom: '', validUntil: '', maxClaims: 1, cooldownHours: 0
               });
+              setBonusImageMode('url'); setBonusImageFile(null); setBonusImagePreview('');
             }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
           >
@@ -1492,8 +1500,9 @@ const AceadminDashboard: React.FC = () => {
             setBonusForm({
               title: '', description: '', image: '', bonusType: 'other',
               bonusValue: '', termsAndConditions: '', order: 0, isActive: true,
-              validFrom: '', validUntil: ''
+              validFrom: '', validUntil: '', maxClaims: 1, cooldownHours: 0
             });
+            setBonusImageMode('url'); setBonusImageFile(null); setBonusImagePreview('');
           }}
           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
         >
@@ -1510,7 +1519,8 @@ const AceadminDashboard: React.FC = () => {
             onClick={() => {
               setShowBonusModal(true);
               setEditingBonus(null);
-              setBonusForm({ title: '', description: '', image: '', bonusType: 'other', bonusValue: '', termsAndConditions: '', order: 0, isActive: true, validFrom: '', validUntil: '' });
+              setBonusForm({ title: '', description: '', image: '', bonusType: 'other', bonusValue: '', termsAndConditions: '', order: 0, isActive: true, validFrom: '', validUntil: '', maxClaims: 1, cooldownHours: 0 });
+              setBonusImageMode('url'); setBonusImageFile(null); setBonusImagePreview('');
             }}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 inline-flex items-center gap-2"
           >
@@ -1524,15 +1534,21 @@ const AceadminDashboard: React.FC = () => {
             <span className={`absolute top-3 right-3 px-2 py-0.5 text-xs font-medium rounded-full ${bonus.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
               {bonus.isActive ? 'Active' : 'Inactive'}
             </span>
-            <img src={bonus.image} alt={bonus.title} className="w-full h-48 object-cover rounded-lg mb-4" />
+            <img src={getAttachmentUrl(bonus.image)} alt={bonus.title} className="w-full h-48 object-cover rounded-lg mb-4" />
             <h3 className="font-semibold text-gray-900 mb-2">{bonus.title}</h3>
             <p className="text-sm text-gray-600 mb-2">{bonus.description}</p>
-            <div className="flex items-center justify-between mb-4">
-              <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
-                {bonus.bonusType}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">{bonus.bonusType}</span>
+              <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">
+                {(bonus.cooldownHours ?? 0) > 0 ? `Every ${bonus.cooldownHours}h` : 'One-time'}
               </span>
+              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                Max: {(bonus.maxClaims ?? 1) === 0 ? '∞' : bonus.maxClaims ?? 1}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-gray-500">
-                {bonus.claimedBy?.length || 0} claimed
+                {bonus.claims?.length || bonus.claimedBy?.length || 0} total claims · {bonus.claimedBy?.length || 0} unique users
               </span>
             </div>
             <div className="flex gap-2">
@@ -1549,8 +1565,11 @@ const AceadminDashboard: React.FC = () => {
                     order: bonus.order,
                     isActive: bonus.isActive,
                     validFrom: bonus.validFrom ? bonus.validFrom.split('T')[0] : '',
-                    validUntil: bonus.validUntil ? bonus.validUntil.split('T')[0] : ''
+                    validUntil: bonus.validUntil ? bonus.validUntil.split('T')[0] : '',
+                    maxClaims: bonus.maxClaims ?? 1,
+                    cooldownHours: bonus.cooldownHours ?? 0
                   });
+                  setBonusImageMode('url'); setBonusImageFile(null); setBonusImagePreview('');
                   setShowBonusModal(true);
                 }}
                 className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
@@ -1604,7 +1623,11 @@ const AceadminDashboard: React.FC = () => {
     }
   };
 
-  // Render Support Tickets Section
+  const handleTicketUpdated = useCallback((updated: any) => {
+    setActiveTickets(prev => prev.map(t => t._id === updated._id ? updated : t));
+    setCompletedTickets(prev => prev.map(t => t._id === updated._id ? updated : t));
+  }, []);
+
   const renderSupportTickets = () => (
     <SupportTicketSection
       activeTickets={activeTickets}
@@ -1620,6 +1643,7 @@ const AceadminDashboard: React.FC = () => {
       onSearchChange={setTicketSearchQuery}
       onSortChange={setTicketSortOrder}
       onUpdateStatus={updateTicketStatus}
+      onTicketUpdated={handleTicketUpdated}
     />
   );
 
@@ -1853,7 +1877,7 @@ const AceadminDashboard: React.FC = () => {
                   value={agentForm.agentName}
                   onChange={(e) => setAgentForm((f) => ({ ...f, agentName: e.target.value }))}
                   placeholder="e.g. john_agent"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
                 />
               </div>
 
@@ -1868,7 +1892,7 @@ const AceadminDashboard: React.FC = () => {
                     value={agentForm.password}
                     onChange={(e) => setAgentForm((f) => ({ ...f, password: e.target.value }))}
                     placeholder={editingAgent ? '••••••' : 'Enter password'}
-                    className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                    className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
                   />
                   <button
                     type="button"
@@ -2044,7 +2068,7 @@ const AceadminDashboard: React.FC = () => {
                   onChange={e => setLabelForm(prev => ({ ...prev, name: e.target.value }))}
                   maxLength={30}
                   placeholder="e.g. VIP, Lead, Follow-up"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-black"
                 />
               </div>
               <div>
@@ -2537,22 +2561,40 @@ const AceadminDashboard: React.FC = () => {
               try {
                 setLoading(true);
                 const token = getAgentToken();
+                let finalImage = bonusForm.image;
+
+                if (bonusImageMode === 'upload' && bonusImageFile) {
+                  setBonusImageUploading(true);
+                  const fd = new FormData();
+                  fd.append('image', bonusImageFile);
+                  const uploadRes = await axios.post(`${API_BASE_URL}/bonuses/upload-image`, fd, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
+                  });
+                  finalImage = uploadRes.data.data.url;
+                  setBonusImageUploading(false);
+                }
+
+                if (!finalImage) { toast.error('Please provide an image'); setLoading(false); return; }
+
+                const payload = { ...bonusForm, image: finalImage };
                 if (editingBonus) {
-                  await axios.put(`${API_BASE_URL}/bonuses/${editingBonus._id}`, bonusForm, {
+                  await axios.put(`${API_BASE_URL}/bonuses/${editingBonus._id}`, payload, {
                     headers: { 'Authorization': `Bearer ${token}` }
                   });
                   toast.success('Bonus updated');
                 } else {
-                  await axios.post(`${API_BASE_URL}/bonuses`, bonusForm, {
+                  await axios.post(`${API_BASE_URL}/bonuses`, payload, {
                     headers: { 'Authorization': `Bearer ${token}` }
                   });
                   toast.success('Bonus created');
                 }
                 setShowBonusModal(false);
                 setEditingBonus(null);
+                setBonusImageFile(null); setBonusImagePreview('');
                 loadBonuses();
               } catch (error: any) {
                 toast.error(error.response?.data?.message || 'Failed to save');
+                setBonusImageUploading(false);
               } finally {
                 setLoading(false);
               }
@@ -2563,8 +2605,60 @@ const AceadminDashboard: React.FC = () => {
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Description *</label>
                 <textarea value={bonusForm.description} onChange={(e) => setBonusForm({...bonusForm, description: e.target.value})} required rows={3} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
               </div>
-              <div><label className="block text-sm font-semibold text-gray-700 mb-2">Image URL *</label>
-                <input type="url" value={bonusForm.image} onChange={(e) => setBonusForm({...bonusForm, image: e.target.value})} required className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
+
+              {/* Image: URL or Upload */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Image *</label>
+                <div className="flex gap-2 mb-3">
+                  <button type="button" onClick={() => setBonusImageMode('url')}
+                    className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${bonusImageMode === 'url' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    URL
+                  </button>
+                  <button type="button" onClick={() => setBonusImageMode('upload')}
+                    className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${bonusImageMode === 'upload' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    Upload
+                  </button>
+                </div>
+
+                {bonusImageMode === 'url' ? (
+                  <input type="url" value={bonusForm.image} onChange={(e) => setBonusForm({...bonusForm, image: e.target.value})}
+                    placeholder="https://example.com/image.png"
+                    className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
+                ) : (
+                  <div>
+                    <label className="block cursor-pointer">
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setBonusImageFile(file);
+                          setBonusImagePreview(URL.createObjectURL(file));
+                          setBonusForm({...bonusForm, image: ''});
+                        }
+                      }} />
+                      <div className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+                        <Upload className="w-5 h-5 text-gray-400" />
+                        <span className="text-sm text-gray-600">
+                          {bonusImageFile ? bonusImageFile.name : 'Click to select an image'}
+                        </span>
+                      </div>
+                    </label>
+                    {bonusImageFile && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <button type="button" onClick={() => { setBonusImageFile(null); setBonusImagePreview(''); }}
+                          className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(bonusImagePreview || bonusForm.image) && (
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-1">Preview</p>
+                    <img src={bonusImagePreview || (bonusForm.image ? getAttachmentUrl(bonusForm.image) : '')} alt="Preview"
+                      className="w-full max-h-40 object-cover rounded-lg border border-gray-200"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Bonus Type</label>
@@ -2594,6 +2688,24 @@ const AceadminDashboard: React.FC = () => {
                   <input type="date" value={bonusForm.validUntil} onChange={(e) => setBonusForm({...bonusForm, validUntil: e.target.value})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
               </div>
+
+              {/* Claim Settings */}
+              <div className="border-t border-gray-200 pt-4">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">Claim Settings</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Max Claims per User</label>
+                    <input type="number" min={0} value={bonusForm.maxClaims} onChange={(e) => setBonusForm({...bonusForm, maxClaims: parseInt(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
+                    <p className="text-xs text-gray-500 mt-1">0 = unlimited claims</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Cooldown (hours)</label>
+                    <input type="number" min={0} step={0.5} value={bonusForm.cooldownHours} onChange={(e) => setBonusForm({...bonusForm, cooldownHours: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
+                    <p className="text-xs text-gray-500 mt-1">0 = one-time only. e.g. 12 = re-claimable every 12h</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={bonusForm.isActive} onChange={(e) => setBonusForm({...bonusForm, isActive: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded" />
@@ -2601,8 +2713,8 @@ const AceadminDashboard: React.FC = () => {
                 </label>
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="submit" disabled={loading} className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" />{editingBonus ? 'Update' : 'Create'} Bonus</>}
+                <button type="submit" disabled={loading || bonusImageUploading} className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" />{bonusImageUploading ? 'Uploading...' : editingBonus ? 'Update' : 'Create'} Bonus</>}
                 </button>
                 <button type="button" onClick={() => { setShowBonusModal(false); setEditingBonus(null); }} className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all">Cancel</button>
               </div>
