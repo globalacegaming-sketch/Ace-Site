@@ -109,6 +109,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
   const [conversationMessages, setConversationMessages] = useState<Record<string, ChatMessage[]>>({});
   const [hasMoreMessages, setHasMoreMessages] = useState<Record<string, boolean>>({});
+  const loadedConversationsRef = useRef<Set<string>>(new Set());
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'resolved'>('all');
@@ -614,19 +615,16 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
 
+        loadedConversationsRef.current.add(userId);
+
         if (loadOlder) {
-          // Prepend older messages to the beginning
-          // Calculate hasMore inside setState callback to use actual merged count
-          // This prevents stale closure issues if socket events add messages before state updates
           const totalMessages = response.data.pagination?.total || 0;
           setConversationMessages((prev) => {
             const prevMessages = prev[userId] || [];
             const updatedMessages = [...sorted, ...prevMessages];
-            // Use the actual merged count from the state update, not the captured value
             const updatedMessagesCount = updatedMessages.length;
             const hasMore = sorted.length >= LOAD_MORE_LIMIT && 
                            (totalMessages === 0 || updatedMessagesCount < totalMessages);
-            // Update hasMoreMessages state using the actual merged count
             setHasMoreMessages((prevHasMore) => ({
               ...prevHasMore,
               [userId]: hasMore
@@ -637,11 +635,16 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
             };
           });
         } else {
-          // Initial load - replace all messages
-          setConversationMessages((prev) => ({
-            ...prev,
-            [userId]: sorted
-          }));
+          // Initial load — merge with any socket-delivered messages already in state
+          setConversationMessages((prev) => {
+            const socketMessages = prev[userId] || [];
+            const apiIds = new Set(sorted.map(m => m.id));
+            const newFromSocket = socketMessages.filter(m => !apiIds.has(m.id));
+            const merged = [...sorted, ...newFromSocket].sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+            return { ...prev, [userId]: merged };
+          });
           markMessagesAsRead(userId, sorted);
           // Check if there are more messages based on:
           // 1. Total count from pagination (most reliable)
@@ -1102,15 +1105,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     // Hide conversations sidebar on mobile when selecting a conversation
     // This ensures chat area takes full width on mobile
     setShowConversations(false);
-    if (!conversationMessages[userId]) {
-      // Initialize hasMoreMessages as undefined (unknown) when starting to load
+    if (!loadedConversationsRef.current.has(userId)) {
       setHasMoreMessages((prev) => ({
         ...prev,
         [userId]: undefined as any
       }));
       void loadConversation(userId);
     } else {
-      // Already loaded -- still scroll to bottom
+      // Already loaded via API — just scroll to bottom
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
         setNewMsgCount(0);

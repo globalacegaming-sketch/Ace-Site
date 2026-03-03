@@ -1246,7 +1246,7 @@ const AceagentDashboard: React.FC = () => {
                 <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />
                 Referral Management
               </h2>
-              <p className="text-sm text-gray-500">Review and verify user referrals. Verified referrals send a $10 bonus message to both users.</p>
+              <p className="text-sm text-gray-500">Review and verify user referrals. Verified referrals send a $10 bonus to the referrer.</p>
             </div>
 
             {/* Filter tabs */}

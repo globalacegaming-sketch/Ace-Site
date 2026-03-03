@@ -139,20 +139,19 @@ router.post('/:id/verify', async (req: Request, res: Response) => {
     referral.verifiedBy = agentUsername;
     await referral.save();
 
-    // ── Send system message to the REFERRED USER (the new user) ──
+    // ── Send system message to the REFERRED USER (the new user) — no bonus for them ──
     const bonusMessage = await ChatMessage.create({
       userId: referral.referredUser,
       senderType: 'system',
-      message: `🎉 You got $${referral.bonusAmount} referral bonus! Thank you for joining through a friend's referral.`,
+      message: `✅ Your referral has been verified! Welcome to Global Ace Gaming.`,
       status: 'sent',
       metadata: {
-        type: 'referral_bonus',
+        type: 'referral_verified',
         referralId: referral._id.toString(),
-        bonusAmount: referral.bonusAmount,
       },
     });
 
-    // ── Send system message to the REFERRER (the user who invited) ──
+    // ── Send system message to the REFERRER (the user who invited) — they get the bonus ──
     const referrerMessage = await ChatMessage.create({
       userId: referral.referredBy,
       senderType: 'system',
