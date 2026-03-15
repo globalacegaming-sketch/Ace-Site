@@ -113,7 +113,7 @@ function formatPageName(path: any): string {
     .replace(/^\//, '')
     .replace(/[-_]/g, ' ')
     .replace(/\//g, ' / ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 export default function AnalyticsDashboard() {
@@ -247,7 +247,7 @@ export default function AnalyticsDashboard() {
                 <h3 className="text-sm font-semibold text-gray-800 mb-4">Devices</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
-                    <Pie data={devices.devices} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                    <Pie data={devices.devices} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                       {devices.devices.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
