@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Gamepad2, DollarSign, RefreshCw, Play, Eye, EyeOff, User, CreditCard } from 'lucide-react';
 import fortunePandaApi from '../services/fortunePandaApi';
+import { trackFeature } from '../services/analyticsTracker';
 
 interface Game {
   kindId: string;
@@ -60,22 +61,24 @@ const UserFortunePandaDashboard: React.FC = () => {
   const handleEnterGame = async (kindId: string) => {
     setIsLoading(true);
     setError(null);
+    trackFeature('game_launch', 'feature_opened', { gameId: kindId });
     try {
       const result = await fortunePandaApi.enterUserGame(kindId);
       if (result.success) {
-        // Directly navigate to game URL (works on mobile and desktop)
-        // This avoids iframe issues and popup blockers
-        // User can use browser back button to return
         const gameUrl = result.data?.webLoginUrl || result.data?.gameUrl || result.data?.url;
         if (gameUrl) {
+          trackFeature('game_launch', 'feature_used', { gameId: kindId });
           window.location.href = gameUrl;
         } else {
+          trackFeature('game_launch', 'feature_failed', { gameId: kindId, error: 'Game URL not found' });
           setError('Game URL not found');
         }
       } else {
+        trackFeature('game_launch', 'feature_failed', { gameId: kindId, error: result.message });
         setError(result.message);
       }
     } catch (error) {
+      trackFeature('game_launch', 'feature_failed', { gameId: kindId, error: 'Failed to enter game' });
       setError('Failed to enter game');
     } finally {
       setIsLoading(false);

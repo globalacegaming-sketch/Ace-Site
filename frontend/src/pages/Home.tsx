@@ -5,6 +5,7 @@ import axios from 'axios';
 import { getGamesApiUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 import { useMusic } from '../contexts/MusicContext';
+import { trackFeature } from '../services/analyticsTracker';
 import { PageMeta } from '../components/PageMeta';
 import { LazyImage } from '../components/LazyImage';
 import { GameCardSkeleton } from '../components/skeletons/GameCardSkeleton';
@@ -72,11 +73,10 @@ const Home = () => {
   };
 
   const handlePlayGame = () => {
+    trackFeature('game_launch', 'feature_opened');
     if (isAuthenticated) {
-      // Navigate to game launch or dashboard
       navigate('/dashboard');
     } else {
-      // Show login prompt
       const shouldLogin = window.confirm('Please login to play games. Would you like to login now?');
       if (shouldLogin) {
         navigate('/login');

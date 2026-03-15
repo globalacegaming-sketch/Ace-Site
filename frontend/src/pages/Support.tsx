@@ -4,7 +4,9 @@ import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 import toast from 'react-hot-toast';
+import { trackFeature } from '../services/analyticsTracker';
 import { PageMeta } from '../components/PageMeta';
+import { trackFeature } from '../services/analyticsTracker';
 
 interface FAQ {
   _id: string;
@@ -164,6 +166,7 @@ const Support = () => {
       );
 
       if (response.data.success) {
+        trackFeature('support_ticket', 'feature_used', { category: formData.category });
         setSubmitted(true);
         toast.success(response.data.message || 'Your ticket has been created with Global Ace Management. We will try to reach you soon.');
         
@@ -184,6 +187,7 @@ const Support = () => {
         }, 3000);
       }
     } catch (error: any) {
+      trackFeature('support_ticket', 'feature_failed', { error: error.response?.status || error.message });
       console.error('Error submitting ticket:', error);
       
       // Show detailed validation errors if available
@@ -253,7 +257,7 @@ const Support = () => {
                 Need help? Fill out our support form and we'll get back to you soon.
               </p>
               <button
-                onClick={() => setShowForm(true)}
+                onClick={() => { setShowForm(true); trackFeature('support_ticket', 'feature_opened'); }}
                 className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
               >
                 Submit Ticket

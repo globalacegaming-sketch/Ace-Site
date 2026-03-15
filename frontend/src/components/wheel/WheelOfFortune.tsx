@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { getApiBaseUrl } from '../../utils/api';
+import { trackFeature } from '../../services/analyticsTracker';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -696,12 +697,15 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
         };
       });
 
+      trackFeature('wheel_spin', 'feature_used');
+
       // Switch to deceleration phase
       anim.decelStartTime = Date.now();
       anim.decelStartAngle = angleRef.current;
       anim.targetAngle = finalTarget;
       anim.phase = 'decelerating';
     } catch (error: any) {
+      trackFeature('wheel_spin', 'feature_failed', { error: error.response?.status || error.message });
       // API failed — smoothly decelerate to random stop
       const randomStop = angleRef.current + 2 * TAU + Math.random() * TAU;
       anim.isError = true;
@@ -826,7 +830,7 @@ export default function Wheel({ size: initialSize = 500 }: WheelProps) {
       {/* ─── Floating Button ─── */}
       <div className="fixed z-[100] top-1/2 -translate-y-[calc(50%-2px)] right-4 sm:right-6">
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { setIsOpen(true); trackFeature('wheel_spin', 'feature_opened'); }}
           className="relative flex items-center justify-center p-1.5 bg-transparent hover:scale-110 active:scale-95 transition-transform touch-manipulation min-w-[60px] min-h-[60px] sm:min-w-[72px] sm:min-h-[72px]"
           aria-label="Open Wheel of Fortune"
         >

@@ -151,7 +151,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
 
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const onUnreadChangeRef = useRef(onUnreadChange);
   onUnreadChangeRef.current = onUnreadChange;
   const onSessionExpiredRef = useRef(onSessionExpired);
@@ -162,82 +162,50 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     onUnreadChangeRef.current?.(total);
   }, [conversationSummaries]);
 
-  // Initialize notification audio on mount
-  useEffect(() => {
-    let audio: HTMLAudioElement | null = null;
-    
-    try {
-      // Create audio element for notification sound
-      audio = new Audio('/music/notification.mp3');
-      audio.preload = 'auto';
-      audio.volume = 0.7; // Set volume to 70%
-      
-      // Handle audio loading errors silently
-      audio.onerror = () => {
-        // Silently handle error - notification sound is optional
-        audio = null;
-      };
-      
-      // Only set ref if audio loads successfully
-      audio.addEventListener('canplaythrough', () => {
-        if (audio) {
-          notificationAudioRef.current = audio;
-        }
-      }, { once: true });
-      
-      // Try to load the audio
-      audio.load();
-      
-      // Set ref immediately but handle errors gracefully
-      notificationAudioRef.current = audio;
-    } catch (error) {
-      // Silently handle initialization errors
-      audio = null;
+  const getAudioContext = useCallback(() => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
 
+  useEffect(() => {
     return () => {
-      // Cleanup audio on unmount
-      if (notificationAudioRef.current) {
-        notificationAudioRef.current.pause();
-        notificationAudioRef.current.src = '';
-        notificationAudioRef.current = null;
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close();
       }
     };
   }, []);
 
   const playNotificationSound = useCallback(() => {
     try {
-      if (!notificationAudioRef.current) {
-        // Fallback: try to create audio element if ref is null
-        const audio = new Audio('/music/notification.mp3');
-        audio.volume = 0.7;
-        notificationAudioRef.current = audio;
-      }
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
 
-      const audio = notificationAudioRef.current;
-      
-      // Reset audio to beginning and play
-      audio.currentTime = 0;
-      audio.play().catch(() => {
-        // Silently handle autoplay restrictions - notification sound is optional
-        // Try to play after user interaction
-        // Use notificationAudioRef.current directly to avoid closure bug
-        const playOnInteraction = () => {
-          if (notificationAudioRef.current) {
-            notificationAudioRef.current.play().catch(() => {
-              // Silently handle playback failure
-            });
-          }
-          document.removeEventListener('click', playOnInteraction);
-          document.removeEventListener('keydown', playOnInteraction);
-        };
-        document.addEventListener('click', playOnInteraction, { once: true });
-        document.addEventListener('keydown', playOnInteraction, { once: true });
-      });
-    } catch (error) {
-      // Silently handle errors - notification sound is optional
+      const playTone = (freq: number, start: number, duration: number, gain: number) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + start);
+        g.gain.setValueAtTime(0, now + start);
+        g.gain.linearRampToValueAtTime(gain, now + start + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration);
+      };
+
+      playTone(880, 0, 0.15, 0.3);
+      playTone(1175, 0.12, 0.15, 0.3);
+      playTone(1320, 0.24, 0.2, 0.25);
+    } catch {
+      // Web Audio API not available — silent fallback
     }
-  }, []);
+  }, [getAudioContext]);
 
   // Request browser notification permission
   const requestNotificationPermission = useCallback(async () => {

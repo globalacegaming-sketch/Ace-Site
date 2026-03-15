@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { trackFeature } from '../services/analyticsTracker';
 import {
   Banknote,
   Loader2,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loanApi, type LoanSummary } from '../services/loanApi';
+import { trackFeature } from '../services/analyticsTracker';
 
 export default function LoansPage() {
   const [data, setData] = useState<LoanSummary | null>(null);
@@ -45,6 +47,7 @@ export default function LoansPage() {
   }, []);
 
   useEffect(() => {
+    trackFeature('loan', 'feature_opened');
     fetchData();
   }, [fetchData]);
 
@@ -81,13 +84,16 @@ export default function LoansPage() {
     try {
       const res = await loanApi.submitRequest(amount);
       if (res.success) {
+        trackFeature('loan', 'feature_used', { amount });
         toast.success('Loan request submitted!');
         setRequestAmount('');
         fetchData();
       } else {
+        trackFeature('loan', 'feature_failed', { reason: res.message });
         toast.error(res.message || 'Failed to submit request.');
       }
     } catch (err: any) {
+      trackFeature('loan', 'feature_failed', { error: err?.response?.data?.message || err.message });
       toast.error(err?.response?.data?.message || 'Failed to submit request.');
     } finally {
       setSubmitting(false);

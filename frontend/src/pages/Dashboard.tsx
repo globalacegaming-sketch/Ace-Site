@@ -11,6 +11,7 @@ import { useMusic } from '../contexts/MusicContext';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { getApiBaseUrl, getGamesApiUrl } from '../utils/api';
+import { trackFeature } from '../services/analyticsTracker';
 
 interface GameItem {
   kindId: number;
@@ -100,6 +101,7 @@ function GameCarousel({ title, games, icon, loading = false }: { title: string; 
       if (window.confirm('Please login to play. Go to login?')) navigate('/login');
       return;
     }
+    trackFeature('game_launch', 'feature_opened', { gameId: game.kindId, gameName: game.gameName });
     try {
       setLaunchingId(game.kindId);
       stopMusic();
@@ -111,12 +113,14 @@ function GameCarousel({ title, games, icon, loading = false }: { title: string; 
       if (!res.data.success) { toast.error(res.data.message || 'Failed to start game'); return; }
       const url = res.data.data?.webLoginUrl || res.data.data?.gameUrl || res.data.data?.url || res.data.data?.game_url;
       if (!url) { toast.error('Game URL not found'); return; }
+      trackFeature('game_launch', 'feature_used', { gameId: game.kindId, gameName: game.gameName });
       try {
         const prev: GameItem[] = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
         localStorage.setItem(RECENT_KEY, JSON.stringify([game, ...prev.filter(g => g.kindId !== game.kindId)].slice(0, 10)));
       } catch { /* */ }
       window.location.href = url;
     } catch (e: any) {
+      trackFeature('game_launch', 'feature_failed', { gameId: game.kindId, error: e.response?.data?.message || e.message });
       toast.error(e.response?.data?.message || 'Failed to start game');
     } finally {
       setLaunchingId(null);

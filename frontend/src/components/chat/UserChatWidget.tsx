@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../../utils/api';
+import { trackFeature } from '../../services/analyticsTracker';
 import { linkify } from '../../utils/linkify';
 import { oneSignalRequestPermission } from '../../services/oneSignal';
 
@@ -458,6 +459,7 @@ const UserChatWidget = () => {
     } else {
       setIsOpen(true);
       setUnreadCount(0);
+      trackFeature('live_chat', 'feature_opened');
       oneSignalRequestPermission().catch(() => {});
     }
   };
@@ -537,9 +539,11 @@ const UserChatWidget = () => {
       setInputValue('');
       setAttachment(null);
       setReplyingTo(null);
+      trackFeature('live_chat', 'feature_used');
       toast.success('Message sent');
     } catch (error: any) {
       console.error('Failed to send chat message', error);
+      trackFeature('live_chat', 'feature_failed', { error: error.response?.status || error.message });
       
       // Handle 401 (unauthorized) - session expired
       if (error.response?.status === 401) {

@@ -5,6 +5,7 @@ import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
+import { trackOnboarding } from '../services/analyticsTracker';
 
 const RESEND_COOLDOWN = 60; // seconds
 
@@ -23,10 +24,15 @@ const VerifyCode = () => {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    // Focus first input on mount
     if (inputRefs.current[0]) {
       inputRefs.current[0].focus();
     }
+    trackOnboarding('onboarding_step_viewed', { step: 'email_verification' });
+    return () => {
+      if (!window.location.pathname.includes('dashboard')) {
+        trackOnboarding('onboarding_abandoned', { step: 'email_verification' });
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -110,6 +116,7 @@ const VerifyCode = () => {
       });
 
       if (response.data.success) {
+        trackOnboarding('onboarding_completed', { step: 'email_verification' });
         toast.success('Email verified successfully!');
         
         // Update user in store if logged in

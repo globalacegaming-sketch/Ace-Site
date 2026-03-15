@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 import { useMusic } from '../contexts/MusicContext';
+import { trackOnboarding } from '../services/analyticsTracker';
 import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter';
 
 const registerSchema = z.object({
@@ -38,6 +39,12 @@ const Register = () => {
   // Stop music on register page
   useEffect(() => {
     stopMusic();
+    trackOnboarding('onboarding_started', { step: 'registration' });
+    return () => {
+      if (!window.location.pathname.includes('verify-code')) {
+        trackOnboarding('onboarding_abandoned', { step: 'registration' });
+      }
+    };
   }, [stopMusic]);
 
 
@@ -100,7 +107,7 @@ const Register = () => {
           );
         }
 
-        // Redirect to verification code page
+        trackOnboarding('onboarding_step_completed', { step: 'registration' });
         navigate('/verify-code', { state: { email: result.data.user.email } });
       } else {
         const errorMessage = result.message || 'Registration failed';

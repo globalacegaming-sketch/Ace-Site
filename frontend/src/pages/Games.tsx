@@ -12,6 +12,8 @@ import { LazyImage } from '../components/LazyImage';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { triggerHaptic } from '../utils/haptic';
+import { trackFeature } from '../services/analyticsTracker';
+import { trackFeature } from '../services/analyticsTracker';
 
 /* ── Game-type card data (visible above the fold) ── */
 const GAME_TYPE_CARDS = [
@@ -102,6 +104,7 @@ const Games = () => {
       }
 
       try {
+        trackFeature('game_launch', 'feature_opened', { gameId: game.kindId, gameName: game.name });
         triggerHaptic('medium');
         stopMusic();
         setPlayingGame(game.kindId);
@@ -144,6 +147,7 @@ const Games = () => {
             return;
           }
 
+          trackFeature('game_launch', 'feature_used', { gameId: game.kindId, gameName: game.name });
           triggerHaptic('success');
           try {
             const MAX_RECENT = 10;
@@ -155,12 +159,14 @@ const Games = () => {
           window.location.href = gameUrl;
           toast.success('Game launching...', { duration: 2000 });
         } catch (error: any) {
+          trackFeature('game_launch', 'feature_failed', { gameId: game.kindId, error: error.response?.data?.message || error.message });
           toast.error(
             error.response?.data?.message || error.message || 'Failed to start game.',
           );
           triggerHaptic('error');
         }
       } catch (error: any) {
+        trackFeature('game_launch', 'feature_failed', { gameId: game.kindId, error: error.message });
         toast.error(error.message || 'An unexpected error occurred.');
         triggerHaptic('error');
       } finally {
