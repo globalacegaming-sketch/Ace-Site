@@ -102,7 +102,7 @@ async function flush() {
   if (eventQueue.length === 0) return;
   const batch = eventQueue.splice(0, MAX_BATCH_SIZE);
   try {
-    const url = `${getApiBaseUrl()}/api/analytics/events`;
+    const url = `${getApiBaseUrl()}/analytics/events`;
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

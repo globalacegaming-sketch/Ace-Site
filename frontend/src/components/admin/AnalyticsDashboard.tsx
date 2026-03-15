@@ -12,10 +12,30 @@ import {
   Globe, Layers, LogOut,
 } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+import { getApiBaseUrl } from '../../utils/api';
+
+const API_BASE_URL = getApiBaseUrl();
 
 function getToken(): string {
-  return localStorage.getItem('agent_session') || localStorage.getItem('admin_session') || '';
+  const session = localStorage.getItem('agent_session');
+  if (session) {
+    try {
+      const parsed = JSON.parse(session);
+      return parsed.token || session;
+    } catch {
+      return session;
+    }
+  }
+  const admin = localStorage.getItem('admin_session');
+  if (admin) {
+    try {
+      const parsed = JSON.parse(admin);
+      return parsed.token || admin;
+    } catch {
+      return admin;
+    }
+  }
+  return '';
 }
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f97316', '#14b8a6'];
@@ -131,23 +151,24 @@ export default function AnalyticsDashboard() {
   const [dropoff, setDropoff] = useState<DropoffData | null>(null);
   const [devices, setDevices] = useState<DeviceData | null>(null);
 
-  const headers = { Authorization: `Bearer ${getToken()}` };
-  const getParams = useCallback(() => {
+  const getHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
+  const getParams = () => {
     const end = new Date();
     const start = new Date(end.getTime() - dateRange * 24 * 60 * 60 * 1000);
     return { startDate: start.toISOString(), endDate: end.toISOString() };
-  }, [dateRange]);
+  };
 
   const loadTab = useCallback(async (tab: Tab) => {
     setLoading(true);
+    const headers = getHeaders();
     const params = getParams();
     try {
       switch (tab) {
         case 'overview': {
           const [ovRes, trRes, dvRes] = await Promise.all([
-            axios.get(`${API_BASE_URL}/api/analytics/overview`, { headers, params }),
-            axios.get(`${API_BASE_URL}/api/analytics/traffic`, { headers, params }),
-            axios.get(`${API_BASE_URL}/api/analytics/devices`, { headers, params }),
+            axios.get(`${API_BASE_URL}/analytics/overview`, { headers, params }),
+            axios.get(`${API_BASE_URL}/analytics/traffic`, { headers, params }),
+            axios.get(`${API_BASE_URL}/analytics/devices`, { headers, params }),
           ]);
           setOverview(ovRes.data.data);
           setTraffic(trRes.data.data);
@@ -155,27 +176,27 @@ export default function AnalyticsDashboard() {
           break;
         }
         case 'pages': {
-          const r = await axios.get(`${API_BASE_URL}/api/analytics/pages`, { headers, params });
+          const r = await axios.get(`${API_BASE_URL}/analytics/pages`, { headers, params });
           setPages(r.data.data);
           break;
         }
         case 'features': {
-          const r = await axios.get(`${API_BASE_URL}/api/analytics/features`, { headers, params });
+          const r = await axios.get(`${API_BASE_URL}/analytics/features`, { headers, params });
           setFeatures(r.data.data);
           break;
         }
         case 'clicks': {
-          const r = await axios.get(`${API_BASE_URL}/api/analytics/clicks`, { headers, params });
+          const r = await axios.get(`${API_BASE_URL}/analytics/clicks`, { headers, params });
           setClicks(r.data.data);
           break;
         }
         case 'funnel': {
-          const r = await axios.get(`${API_BASE_URL}/api/analytics/funnel`, { headers, params });
+          const r = await axios.get(`${API_BASE_URL}/analytics/funnel`, { headers, params });
           setFunnel(r.data.data);
           break;
         }
         case 'dropoff': {
-          const r = await axios.get(`${API_BASE_URL}/api/analytics/dropoff`, { headers, params });
+          const r = await axios.get(`${API_BASE_URL}/analytics/dropoff`, { headers, params });
           setDropoff(r.data.data);
           break;
         }
@@ -185,11 +206,11 @@ export default function AnalyticsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [getParams]);
+  }, [dateRange]);
 
   useEffect(() => {
     loadTab(activeTab);
-  }, [activeTab, dateRange]);
+  }, [activeTab, loadTab]);
 
   // ─── Renderers ─────────────────────────────────────────────
 

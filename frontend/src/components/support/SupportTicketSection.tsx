@@ -78,7 +78,15 @@ export default function SupportTicketSection({
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function getToken(): string {
-    return localStorage.getItem('agent_session') || localStorage.getItem('admin_session') || '';
+    const session = localStorage.getItem('agent_session');
+    if (session) {
+      try { return JSON.parse(session).token || session; } catch { return session; }
+    }
+    const admin = localStorage.getItem('admin_session');
+    if (admin) {
+      try { return JSON.parse(admin).token || admin; } catch { return admin; }
+    }
+    return '';
   }
 
   const searchUsers = useCallback(async (q: string) => {

@@ -464,10 +464,10 @@ const AceadminDashboard: React.FC = () => {
       const params = { startDate: start.toISOString(), endDate: end.toISOString() };
 
       const [ovRes, trRes, dvRes, pgRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/api/analytics/overview`, { headers, params }).catch(() => null),
-        axios.get(`${API_BASE_URL}/api/analytics/traffic`, { headers, params }).catch(() => null),
-        axios.get(`${API_BASE_URL}/api/analytics/devices`, { headers, params }).catch(() => null),
-        axios.get(`${API_BASE_URL}/api/analytics/pages`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/analytics/overview`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/analytics/traffic`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/analytics/devices`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/analytics/pages`, { headers, params }).catch(() => null),
       ]);
       if (ovRes?.data?.data) setAnalyticsOverview(ovRes.data.data);
       if (trRes?.data?.data) setAnalyticsTraffic(trRes.data.data);
