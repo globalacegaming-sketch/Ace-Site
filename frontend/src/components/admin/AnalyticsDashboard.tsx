@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -107,7 +107,7 @@ function formatNumber(n: number): string {
   return n.toString();
 }
 
-function formatPageName(path: string): string {
+function formatPageName(path: any): string {
   if (!path || path === '/') return 'Home';
   return path
     .replace(/^\//, '')
@@ -513,7 +513,7 @@ export default function AnalyticsDashboard() {
               <FunnelChart>
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Funnel dataKey="users" data={funnel.filter((f) => f.users > 0)} isAnimationActive>
-                  <LabelList position="right" fill="#000" fontSize={11} formatter={(v: number) => formatNumber(v)} />
+                  <LabelList position="right" fill="#000" fontSize={11} formatter={(v: any) => formatNumber(Number(v))} />
                   <LabelList position="left" fill="#666" fontSize={10} dataKey="step" />
                   {funnel.filter((f) => f.users > 0).map((_, i) => (
                     <Cell key={i} fill={FUNNEL_COLORS[i % FUNNEL_COLORS.length]} />
@@ -654,7 +654,7 @@ export default function AnalyticsDashboard() {
     );
   };
 
-  const tabContent: Record<Tab, () => JSX.Element | null> = {
+  const tabContent: Record<Tab, () => React.ReactNode> = {
     overview: renderOverview,
     pages: renderPages,
     features: renderFeatures,

@@ -887,7 +887,7 @@ const AceadminDashboard: React.FC = () => {
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Devices</h4>
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
-                    <Pie data={analyticsDevices} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                    <Pie data={analyticsDevices} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                       {analyticsDevices.map((_, i) => (
                         <Cell key={i} fill={['#6366f1', '#ec4899', '#f59e0b', '#10b981'][i % 4]} />
                       ))}
