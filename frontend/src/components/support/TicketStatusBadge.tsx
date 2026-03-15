@@ -1,6 +1,6 @@
-import { Clock, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Clock, Loader2, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 
-export type TicketStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
+export type TicketStatus = 'pending' | 'in_progress' | 'resolved' | 'closed' | 'removed';
 
 const STATUS_CONFIG: Record<
   TicketStatus,
@@ -25,6 +25,11 @@ const STATUS_CONFIG: Record<
     bg: 'bg-gray-100',
     text: 'text-gray-700',
     icon: XCircle,
+  },
+  removed: {
+    bg: 'bg-red-100',
+    text: 'text-red-700',
+    icon: Trash2,
   },
 };
 

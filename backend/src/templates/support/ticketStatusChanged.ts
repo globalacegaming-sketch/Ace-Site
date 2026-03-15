@@ -12,7 +12,8 @@ const STATUS_STYLES: Record<SupportTicketStatus, string> = {
   pending: 'background: #fef3c7; color: #92400e;',
   in_progress: 'background: #dbeafe; color: #1e40af;',
   resolved: 'background: #d1fae5; color: #065f46;',
-  closed: 'background: #f3f4f6; color: #374151;'
+  closed: 'background: #f3f4f6; color: #374151;',
+  removed: 'background: #fee2e2; color: #991b1b;'
 };
 
 function formatStatus(s: SupportTicketStatus): string {

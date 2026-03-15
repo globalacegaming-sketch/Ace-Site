@@ -82,6 +82,7 @@ router.post('/login', adminAuthLimiter, async (req: Request, res: Response) => {
       {
         agentId: agent._id.toString(),
         username: agent.agentName,
+        displayName: agent.displayName || undefined,
         role: agent.role,
         type: 'agent',
       },
@@ -97,6 +98,7 @@ router.post('/login', adminAuthLimiter, async (req: Request, res: Response) => {
       data: {
         token,
         username: agent.agentName,
+        displayName: agent.displayName || agent.agentName,
         role: agent.role,
         expiresAt: Date.now() + 24 * 60 * 60 * 1000,
       },
@@ -132,6 +134,7 @@ router.get('/verify', async (req: Request, res: Response) => {
         message: 'Token is valid',
         data: {
           username: decoded.username,
+          displayName: decoded.displayName,
           role: decoded.role,
         },
       });
@@ -156,7 +159,7 @@ router.get('/verify', async (req: Request, res: Response) => {
 router.get('/agents', requireSuperAdmin, async (_req: Request, res: Response) => {
   try {
     const agents = await Agent.find({})
-      .select('agentName role permissions isActive lastLogin createdAt updatedAt')
+      .select('agentName displayName role permissions isActive lastLogin createdAt updatedAt')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -174,7 +177,7 @@ router.get('/agents', requireSuperAdmin, async (_req: Request, res: Response) =>
 // POST /agent-auth/agents -- create a new agent
 router.post('/agents', requireSuperAdmin, async (req: Request, res: Response) => {
   try {
-    const { agentName, password, role, permissions } = req.body;
+    const { agentName, displayName, password, role, permissions } = req.body;
 
     if (!agentName || !password) {
       return res.status(400).json({ success: false, message: 'agentName and password are required' });
@@ -201,6 +204,7 @@ router.post('/agents', requireSuperAdmin, async (req: Request, res: Response) =>
 
     const agent = await Agent.create({
       agentName,
+      displayName: displayName?.trim() || undefined,
       passwordHash: password, // pre-save hook will bcrypt this
       role: agentRole,
       permissions: agentPermissions,
@@ -215,6 +219,7 @@ router.post('/agents', requireSuperAdmin, async (req: Request, res: Response) =>
       data: {
         _id: agent._id,
         agentName: agent.agentName,
+        displayName: agent.displayName,
         role: agent.role,
         permissions: agent.permissions,
         isActive: agent.isActive,
@@ -234,7 +239,7 @@ router.post('/agents', requireSuperAdmin, async (req: Request, res: Response) =>
 router.put('/agents/:id', requireSuperAdmin, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { agentName, role, permissions, isActive, password } = req.body;
+    const { agentName, displayName, role, permissions, isActive, password } = req.body;
 
     const agent = await Agent.findById(id).select('+passwordHash');
     if (!agent) {
@@ -264,6 +269,7 @@ router.put('/agents/:id', requireSuperAdmin, async (req: Request, res: Response)
     }
 
     if (agentName !== undefined) agent.agentName = agentName;
+    if (displayName !== undefined) agent.displayName = displayName?.trim() || undefined;
     if (role !== undefined) {
       const validRoles = ['super_admin', 'admin', 'agent'];
       if (validRoles.includes(role)) agent.role = role;
@@ -292,6 +298,7 @@ router.put('/agents/:id', requireSuperAdmin, async (req: Request, res: Response)
       data: {
         _id: agent._id,
         agentName: agent.agentName,
+        displayName: agent.displayName,
         role: agent.role,
         permissions: agent.permissions,
         isActive: agent.isActive,

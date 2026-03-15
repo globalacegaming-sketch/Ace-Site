@@ -121,6 +121,14 @@ export default function TicketCard({
             >
               Close
             </button>
+            {ticket.status !== 'removed' && (
+              <button
+                onClick={() => onUpdateStatus(ticket._id, 'removed')}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-colors min-h-[36px]"
+              >
+                Remove
+              </button>
+            )}
           </>
         ) : (
           <button

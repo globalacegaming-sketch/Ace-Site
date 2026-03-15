@@ -8,6 +8,7 @@ declare global {
     interface Request {
       agentSession?: {
         username: string;
+        displayName?: string;
         role: string;
         userId?: string;
       };
@@ -44,6 +45,7 @@ export const requireAgentAuth = (req: Request, res: Response, next: NextFunction
     // Add agent session to request
     req.agentSession = {
       username: decoded.username,
+      displayName: decoded.displayName,
       role: decoded.role,
       userId: decoded.userId || decoded.agentId
     };

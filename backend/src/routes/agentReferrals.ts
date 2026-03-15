@@ -35,6 +35,7 @@ const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction
     if (decoded.role === 'agent' && decoded.type === 'agent') {
       (req as any).agentSession = {
         username: decoded.username,
+        displayName: decoded.displayName,
         role: decoded.role,
       };
       return next();

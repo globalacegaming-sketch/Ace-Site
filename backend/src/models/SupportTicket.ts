@@ -11,7 +11,8 @@ export type SupportTicketStatus =
   | 'pending'
   | 'in_progress'
   | 'resolved'
-  | 'closed';
+  | 'closed'
+  | 'removed';
 
 export interface ISupportTicket extends Document {
   _id: string;
@@ -127,7 +128,7 @@ const SupportTicketSchema = new Schema<ISupportTicket>({
   },
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'resolved', 'closed'],
+    enum: ['pending', 'in_progress', 'resolved', 'closed', 'removed'],
     default: 'pending',
     index: true
   },
@@ -148,7 +149,7 @@ const SupportTicketSchema = new Schema<ISupportTicket>({
     maxlength: [2000, 'Notes cannot exceed 2000 characters']
   },
   statusHistory: [{
-    status: { type: String, enum: ['pending', 'in_progress', 'resolved', 'closed'] },
+    status: { type: String, enum: ['pending', 'in_progress', 'resolved', 'closed', 'removed'] },
     changedAt: { type: Date, default: Date.now },
     changedBy: { type: Schema.Types.ObjectId, ref: 'Agent' },
     changedByName: String,

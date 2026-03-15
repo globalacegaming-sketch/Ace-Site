@@ -86,7 +86,7 @@ export default function TicketDetailPanel({
 
   const categoryLabel = CATEGORY_LABELS[ticket.category] || ticket.category;
   const replies = ticket.replies || [];
-  const isClosed = ticket.status === 'closed';
+  const isClosed = ticket.status === 'closed' || ticket.status === 'removed';
 
   const handleSendReply = async () => {
     if (!replyText.trim() || sending) return;
@@ -116,18 +116,26 @@ export default function TicketDetailPanel({
     <div className="flex flex-col h-full min-h-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Status progress bar */}
       <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between text-xs font-medium text-gray-500 mb-2">
-          <span className={ticket.status !== 'pending' ? 'text-blue-600' : ''}>Pending</span>
-          <span className={['in_progress', 'resolved', 'closed'].includes(ticket.status) ? 'text-blue-600' : ''}>In Progress</span>
-          <span className={['resolved', 'closed'].includes(ticket.status) ? 'text-emerald-600' : ''}>Resolved</span>
-          <span className={ticket.status === 'closed' ? 'text-gray-600' : ''}>Closed</span>
-        </div>
-        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden flex">
-          <div
-            className="h-full bg-blue-500 transition-all duration-300"
-            style={{ width: ticket.status === 'pending' ? '25%' : ticket.status === 'in_progress' ? '50%' : ticket.status === 'resolved' ? '75%' : '100%' }}
-          />
-        </div>
+        {ticket.status === 'removed' ? (
+          <div className="flex items-center gap-2 text-xs font-semibold text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            <span>This ticket has been removed</span>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-xs font-medium text-gray-500 mb-2">
+              <span className={ticket.status !== 'pending' ? 'text-blue-600' : ''}>Pending</span>
+              <span className={['in_progress', 'resolved', 'closed'].includes(ticket.status) ? 'text-blue-600' : ''}>In Progress</span>
+              <span className={['resolved', 'closed'].includes(ticket.status) ? 'text-emerald-600' : ''}>Resolved</span>
+              <span className={ticket.status === 'closed' ? 'text-gray-600' : ''}>Closed</span>
+            </div>
+            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden flex">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ width: ticket.status === 'pending' ? '25%' : ticket.status === 'in_progress' ? '50%' : ticket.status === 'resolved' ? '75%' : '100%' }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Header */}
@@ -290,6 +298,14 @@ export default function TicketDetailPanel({
           >
             Close
           </button>
+          {ticket.status !== 'removed' && (
+            <button
+              onClick={() => onUpdateStatus(ticket._id, 'removed')}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+            >
+              Remove
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -353,7 +353,7 @@ router.get('/my-tickets', authenticate, async (req: Request, res: Response) => {
         message: 'User not authenticated'
       });
     }
-    const query: any = { userId: req.user._id };
+    const query: any = { userId: req.user._id, status: { $ne: 'removed' } };
     if (status && ['pending', 'in_progress', 'resolved', 'closed'].includes(status as string)) {
       query.status = status;
     }
@@ -398,13 +398,15 @@ router.get('/', requireAgentAuth, async (req: Request, res: Response) => {
     
     if (statusIn && typeof statusIn === 'string') {
       const statuses = statusIn.split(',').map((s: string) => s.trim()).filter((s: string) =>
-        ['pending', 'in_progress', 'resolved', 'closed'].includes(s)
+        ['pending', 'in_progress', 'resolved', 'closed', 'removed'].includes(s)
       );
       if (statuses.length > 0) query.status = { $in: statuses };
-    } else if (status && ['pending', 'in_progress', 'resolved', 'closed'].includes(status as string)) {
+    } else if (status && ['pending', 'in_progress', 'resolved', 'closed', 'removed'].includes(status as string)) {
       query.status = status;
     } else if (excludeClosed === 'true') {
-      query.status = { $nin: ['closed'] };
+      query.status = { $nin: ['closed', 'removed'] };
+    } else {
+      query.status = { $ne: 'removed' };
     }
     
     if (category && [
@@ -464,7 +466,7 @@ router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) 
     const { id } = req.params;
     const { status, notes, notifyUser = true } = req.body;
 
-    if (!status || !['pending', 'in_progress', 'resolved', 'closed'].includes(status)) {
+    if (!status || !['pending', 'in_progress', 'resolved', 'closed', 'removed'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Valid status is required'
@@ -484,7 +486,7 @@ router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) 
       return res.json({ success: true, message: 'No change', data: ticket });
     }
 
-    const agentName = (req as any).agentSession?.username || 'Support';
+    const agentName = (req as any).agentSession?.displayName || (req as any).agentSession?.username || 'Support';
     const statusHistoryEntry = {
       status: status as SupportTicketStatus,
       changedAt: new Date(),
@@ -513,8 +515,8 @@ router.put('/:id/status', requireAgentAuth, async (req: Request, res: Response) 
       .populate('resolvedBy', 'username')
       .lean();
 
-    // Send transactional email when status changed (if notifyUser is true)
-    if (notifyUser !== false) {
+    // Send transactional email when status changed (skip for 'removed', respect notifyUser)
+    if (notifyUser !== false && status !== 'removed') {
       void supportEmailService.sendTicketStatusChangedEmail({
         ticket: updatedTicket as any,
         previousStatus,
@@ -560,7 +562,7 @@ router.post('/:id/reply', requireAgentAuth, async (req: Request, res: Response) 
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
-    const agentName = (req as any).agentSession?.username || 'Support Team';
+    const agentName = (req as any).agentSession?.displayName || (req as any).agentSession?.username || 'Support Team';
 
     const reply = {
       message: message.trim(),

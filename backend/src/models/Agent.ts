@@ -8,6 +8,7 @@ export type AgentRole = 'super_admin' | 'admin' | 'agent';
 
 export interface IAgent extends Document {
   agentName: string;
+  displayName?: string;
   passwordHash: string;
   role: AgentRole;
   permissions: AgentPermission[];
@@ -27,6 +28,11 @@ const AgentSchema = new Schema<IAgent>(
       trim: true,
       minlength: [2, 'Agent name must be at least 2 characters'],
       maxlength: [50, 'Agent name cannot exceed 50 characters'],
+    },
+    displayName: {
+      type: String,
+      trim: true,
+      maxlength: [50, 'Display name cannot exceed 50 characters'],
     },
     passwordHash: {
       type: String,

@@ -81,6 +81,7 @@ interface Notice {
 interface AgentItem {
   _id: string;
   agentName: string;
+  displayName?: string;
   role: 'super_admin' | 'admin' | 'agent';
   permissions: string[];
   isActive: boolean;
@@ -143,6 +144,7 @@ const AceadminDashboard: React.FC = () => {
   const [editingAgent, setEditingAgent] = useState<AgentItem | null>(null);
   const [agentForm, setAgentForm] = useState({
     agentName: '',
+    displayName: '',
     password: '',
     role: 'agent' as 'super_admin' | 'admin' | 'agent',
     permissions: [...ALL_PERMISSIONS] as string[],
@@ -607,6 +609,7 @@ const AceadminDashboard: React.FC = () => {
       setEditingAgent(agent);
       setAgentForm({
         agentName: agent.agentName,
+        displayName: agent.displayName || '',
         password: '',
         role: agent.role,
         permissions: [...agent.permissions],
@@ -615,6 +618,7 @@ const AceadminDashboard: React.FC = () => {
       setEditingAgent(null);
       setAgentForm({
         agentName: '',
+        displayName: '',
         password: '',
         role: 'agent',
         permissions: [...ALL_PERMISSIONS],
@@ -643,6 +647,7 @@ const AceadminDashboard: React.FC = () => {
         // Update
         const payload: any = {
           agentName: agentForm.agentName,
+          displayName: agentForm.displayName.trim() || undefined,
           role: agentForm.role,
           permissions: agentForm.permissions,
         };
@@ -654,6 +659,7 @@ const AceadminDashboard: React.FC = () => {
         // Create
         await axios.post(`${API_BASE_URL}/agent-auth/agents`, {
           agentName: agentForm.agentName,
+          displayName: agentForm.displayName.trim() || undefined,
           password: agentForm.password,
           role: agentForm.role,
           permissions: agentForm.permissions,
@@ -1793,6 +1799,9 @@ const AceadminDashboard: React.FC = () => {
                   <tr key={agent._id} className={`hover:bg-gray-50 transition ${!agent.isActive ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3">
                       <span className="font-medium text-gray-900">{agent.agentName}</span>
+                      {agent.displayName && (
+                        <span className="block text-xs text-gray-500">{agent.displayName}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -1871,7 +1880,7 @@ const AceadminDashboard: React.FC = () => {
             <div className="p-6 space-y-5">
               {/* Agent Name */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Agent Name</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Agent Name (login)</label>
                 <input
                   type="text"
                   value={agentForm.agentName}
@@ -1879,6 +1888,19 @@ const AceadminDashboard: React.FC = () => {
                   placeholder="e.g. john_agent"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
                 />
+              </div>
+
+              {/* Display Name */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Display Name</label>
+                <input
+                  type="text"
+                  value={agentForm.displayName}
+                  onChange={(e) => setAgentForm((f) => ({ ...f, displayName: e.target.value }))}
+                  placeholder="e.g. Harry"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
+                />
+                <p className="text-xs text-gray-500 mt-1">Shown in emails and customer-facing replies (e.g. &quot;Harry - Support Team&quot;)</p>
               </div>
 
               {/* Password */}
