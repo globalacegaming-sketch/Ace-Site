@@ -6,7 +6,6 @@ import { useAuthStore } from '../stores/authStore';
 import toast from 'react-hot-toast';
 import { trackFeature } from '../services/analyticsTracker';
 import { PageMeta } from '../components/PageMeta';
-import { trackFeature } from '../services/analyticsTracker';
 
 interface FAQ {
   _id: string;

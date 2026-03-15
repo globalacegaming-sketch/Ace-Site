@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loanApi, type LoanSummary } from '../services/loanApi';
-import { trackFeature } from '../services/analyticsTracker';
 
 export default function LoansPage() {
   const [data, setData] = useState<LoanSummary | null>(null);

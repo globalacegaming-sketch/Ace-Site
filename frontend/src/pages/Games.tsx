@@ -13,7 +13,6 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
 import { triggerHaptic } from '../utils/haptic';
 import { trackFeature } from '../services/analyticsTracker';
-import { trackFeature } from '../services/analyticsTracker';
 
 /* ── Game-type card data (visible above the fold) ── */
 const GAME_TYPE_CARDS = [
@@ -104,7 +103,7 @@ const Games = () => {
       }
 
       try {
-        trackFeature('game_launch', 'feature_opened', { gameId: game.kindId, gameName: game.name });
+        trackFeature('game_launch', 'feature_opened', { gameId: game.kindId, gameName: game.gameName });
         triggerHaptic('medium');
         stopMusic();
         setPlayingGame(game.kindId);
@@ -147,7 +146,7 @@ const Games = () => {
             return;
           }
 
-          trackFeature('game_launch', 'feature_used', { gameId: game.kindId, gameName: game.name });
+          trackFeature('game_launch', 'feature_used', { gameId: game.kindId, gameName: game.gameName });
           triggerHaptic('success');
           try {
             const MAX_RECENT = 10;
