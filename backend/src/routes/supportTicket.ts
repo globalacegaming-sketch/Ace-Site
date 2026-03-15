@@ -612,6 +612,103 @@ router.post('/:id/reply', requireAgentAuth, async (req: Request, res: Response) 
   }
 });
 
+// Create ticket on behalf of a user (agent/admin only)
+router.post('/create-for-user', requireAgentAuth, async (req: Request, res: Response) => {
+  try {
+    const { userId, category, description, name, email, phone } = req.body;
+
+    const validCategories: SupportTicketCategory[] = [
+      'payment_related_queries', 'game_issue', 'complaint', 'feedback', 'business_queries'
+    ];
+
+    if (!category || !validCategories.includes(category as SupportTicketCategory)) {
+      return res.status(400).json({ success: false, message: 'Valid category is required' });
+    }
+    if (!description || description.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'Description is required' });
+    }
+
+    let ticketName = name;
+    let ticketEmail = email;
+    let ticketPhone = phone;
+    let ticketUserId: string | undefined;
+
+    if (userId) {
+      const user = await User.findById(userId).select('username email firstName lastName phone');
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+      ticketUserId = user._id.toString();
+      ticketName = ticketName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || 'User';
+      ticketEmail = ticketEmail || user.email;
+      ticketPhone = ticketPhone || user.phone;
+    }
+
+    if (!ticketName || !ticketEmail) {
+      return res.status(400).json({ success: false, message: 'Name and email are required' });
+    }
+
+    const agentName = (req as any).agentSession?.displayName || (req as any).agentSession?.username || 'Agent';
+
+    const ticket = await SupportTicket.create({
+      userId: ticketUserId,
+      category,
+      description: description.trim(),
+      name: ticketName,
+      email: ticketEmail,
+      phone: ticketPhone,
+      status: 'pending',
+      statusHistory: [{
+        status: 'pending',
+        changedAt: new Date(),
+        changedByName: agentName,
+        note: `Ticket created by ${agentName} on behalf of user`,
+        notifyUser: false,
+      }],
+    });
+
+    const populated = await SupportTicket.findById(ticket._id)
+      .populate('userId', 'username email firstName lastName')
+      .lean();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Ticket created successfully',
+      data: populated,
+    });
+  } catch (error: any) {
+    console.error('Error creating ticket for user:', error);
+    return res.status(500).json({ success: false, message: 'Failed to create ticket', error: error.message });
+  }
+});
+
+// Search users for ticket creation (agent/admin only)
+router.get('/search-users', requireAgentAuth, async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string' || q.trim().length < 2) {
+      return res.json({ success: true, data: [] });
+    }
+    const regex = new RegExp(q.trim(), 'i');
+    const users = await User.find({
+      $or: [
+        { username: regex },
+        { email: regex },
+        { firstName: regex },
+        { lastName: regex },
+      ],
+    })
+      .select('username email firstName lastName phone')
+      .limit(10)
+      .lean();
+
+    return res.json({ success: true, data: users });
+  } catch (error: any) {
+    console.error('Error searching users:', error);
+    return res.status(500).json({ success: false, message: 'Search failed' });
+  }
+});
+
 // Get single ticket (agent/admin only)
 router.get('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {

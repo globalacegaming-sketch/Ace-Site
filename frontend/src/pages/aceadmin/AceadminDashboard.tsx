@@ -5,7 +5,7 @@ import {
   ChevronDown, FileText,
   Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2,
   ToggleLeft, ToggleRight, Tag, LayoutDashboard,
-  LifeBuoy, Disc3, MonitorPlay, Banknote} from 'lucide-react';
+  LifeBuoy, Disc3, MonitorPlay, Banknote, Activity} from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,11 @@ import { useMusic } from '../../contexts/MusicContext';
 import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
 import SupportTicketSection from '../../components/support/SupportTicketSection';
 import AgentLoanPanel from '../../components/admin/AgentLoanPanel';
+import AnalyticsDashboard from '../../components/admin/AnalyticsDashboard';
+import {
+  LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 import type { LabelData } from '../../components/admin/LabelBadge';
 
 // Types
@@ -92,7 +97,7 @@ interface AgentItem {
 
 const ALL_PERMISSIONS = ['chat', 'users', 'referrals', 'loans'] as const;
 
-type ActiveSection = 'dashboard' | 'platforms' | 'users' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents' | 'labels' | 'loans';
+type ActiveSection = 'dashboard' | 'platforms' | 'users' | 'email-promotions' | 'faqs' | 'bonuses' | 'notifications' | 'support-tickets' | 'wheel' | 'agents' | 'labels' | 'loans' | 'analytics';
 
 const SECTION_TITLES: Record<ActiveSection, string> = {
   dashboard: 'Dashboard',
@@ -107,6 +112,7 @@ const SECTION_TITLES: Record<ActiveSection, string> = {
   agents: 'Agent Management',
   labels: 'Label Management',
   loans: 'Loan Management',
+  analytics: 'Analytics',
 };
 
 const AceadminDashboard: React.FC = () => {
@@ -134,6 +140,10 @@ const AceadminDashboard: React.FC = () => {
   const [ticketSearchQuery, setTicketSearchQuery] = useState<string>('');
   const [ticketSortOrder, setTicketSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [loanStats, setLoanStats] = useState<{ activeLoans: number; repaymentRate: string } | null>(null);
+  const [analyticsTraffic, setAnalyticsTraffic] = useState<{ date: string; pageViews: number; uniqueUsers: number; sessions: number }[]>([]);
+  const [analyticsOverview, setAnalyticsOverview] = useState<{ uniqueUsers: number; pageViews: number; uniqueSessions: number; avgSessionDuration: number } | null>(null);
+  const [analyticsDevices, setAnalyticsDevices] = useState<{ name: string; count: number }[]>([]);
+  const [analyticsPages, setAnalyticsPages] = useState<{ page: string; views: number; uniqueUsers: number }[]>([]);
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
@@ -445,6 +455,27 @@ const AceadminDashboard: React.FC = () => {
     } catch { /* silent */ }
   };
 
+  const loadAnalyticsPreview = async () => {
+    try {
+      const token = getAgentToken();
+      const headers = { Authorization: `Bearer ${token}` };
+      const end = new Date();
+      const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const params = { startDate: start.toISOString(), endDate: end.toISOString() };
+
+      const [ovRes, trRes, dvRes, pgRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/analytics/overview`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/api/analytics/traffic`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/api/analytics/devices`, { headers, params }).catch(() => null),
+        axios.get(`${API_BASE_URL}/api/analytics/pages`, { headers, params }).catch(() => null),
+      ]);
+      if (ovRes?.data?.data) setAnalyticsOverview(ovRes.data.data);
+      if (trRes?.data?.data) setAnalyticsTraffic(trRes.data.data);
+      if (dvRes?.data?.data?.devices) setAnalyticsDevices(dvRes.data.data.devices);
+      if (pgRes?.data?.data) setAnalyticsPages(pgRes.data.data.slice(0, 5));
+    } catch { /* silent */ }
+  };
+
   const loadAllData = async () => {
     await Promise.all([
       loadPlatforms(),
@@ -454,7 +485,8 @@ const AceadminDashboard: React.FC = () => {
       loadNotices(),
       loadLabels(),
       loadTicketCounts(),
-      loadLoanStats()
+      loadLoanStats(),
+      loadAnalyticsPreview()
     ]);
   };
 
@@ -800,6 +832,113 @@ const AceadminDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Analytics Preview */}
+      {(analyticsTraffic.length > 0 || analyticsOverview) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Site Analytics (Last 30 days)</h3>
+            <button
+              onClick={() => setActiveSection('analytics')}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              View Full Dashboard →
+            </button>
+          </div>
+
+          {/* Analytics stat row */}
+          {analyticsOverview && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Unique Users', value: analyticsOverview.uniqueUsers, color: 'text-indigo-600' },
+                { label: 'Page Views', value: analyticsOverview.pageViews, color: 'text-blue-600' },
+                { label: 'Sessions', value: analyticsOverview.uniqueSessions, color: 'text-purple-600' },
+                { label: 'Avg Duration', value: analyticsOverview.avgSessionDuration > 0 ? `${Math.floor(analyticsOverview.avgSessionDuration / 60)}m ${analyticsOverview.avgSessionDuration % 60}s` : '0s', color: 'text-amber-600' },
+              ].map((s) => (
+                <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-3">
+                  <p className={`text-xl font-bold ${s.color}`}>{typeof s.value === 'number' ? (s.value >= 1000 ? `${(s.value / 1000).toFixed(1)}K` : s.value) : s.value}</p>
+                  <p className="text-xs text-gray-500">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Traffic chart + Device breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {analyticsTraffic.length > 0 && (
+              <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Traffic Over Time</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={analyticsTraffic}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
+                    <YAxis tick={{ fontSize: 10 }} />
+                    <Tooltip contentStyle={{ fontSize: 12 }} />
+                    <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="pageViews" name="Views" stroke="#6366f1" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="uniqueUsers" name="Users" stroke="#10b981" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {analyticsDevices.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Devices</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie data={analyticsDevices} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      {analyticsDevices.map((_, i) => (
+                        <Cell key={i} fill={['#6366f1', '#ec4899', '#f59e0b', '#10b981'][i % 4]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Top pages */}
+          {analyticsPages.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-gray-700">Top Pages</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="text-left px-4 py-2 font-semibold">Page</th>
+                      <th className="text-right px-4 py-2 font-semibold">Views</th>
+                      <th className="text-right px-4 py-2 font-semibold">Users</th>
+                      <th className="px-4 py-2 font-semibold w-28"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {analyticsPages.map((p, i) => {
+                      const maxV = analyticsPages[0]?.views || 1;
+                      const pageName = p.page === '/' ? 'Home' : p.page.replace(/^\//, '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                      return (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 font-medium text-gray-800">{pageName}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-600">{p.views}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-600">{p.uniqueUsers}</td>
+                          <td className="px-4 py-2.5">
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(p.views / maxV) * 100}%` }} />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -1650,6 +1789,7 @@ const AceadminDashboard: React.FC = () => {
       onSortChange={setTicketSortOrder}
       onUpdateStatus={updateTicketStatus}
       onTicketUpdated={handleTicketUpdated}
+      onTicketCreated={loadSupportTickets}
     />
   );
 
@@ -2181,6 +2321,8 @@ const AceadminDashboard: React.FC = () => {
         return renderLabels();
       case 'loans':
         return <AgentLoanPanel />;
+      case 'analytics':
+        return <AnalyticsDashboard />;
       default:
         return renderDashboard();
     }
@@ -2421,6 +2563,19 @@ const AceadminDashboard: React.FC = () => {
             >
               <Shield className="w-5 h-5 flex-shrink-0" />
               <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Agents</span>
+            </button>
+            <button
+              title="Analytics"
+              onClick={() => {
+                setActiveSection('analytics');
+                if (isMobile) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                activeSection === 'analytics' ? 'bg-blue-600' : 'hover:bg-gray-700'
+              }`}
+            >
+              <Activity className="w-5 h-5 flex-shrink-0" />
+              <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Analytics</span>
             </button>
           </div>
         </nav>

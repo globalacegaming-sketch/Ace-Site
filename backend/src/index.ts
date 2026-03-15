@@ -47,6 +47,7 @@ import labelRoutes from './routes/labels';
 import userNoteRoutes from './routes/userNotes';
 import loanRoutes from './routes/loan';
 import agentLoanRoutes from './routes/agentLoan';
+import analyticsRoutes from './routes/analytics';
 import loanCronService from './services/loanCronService';
 
 // Import Agent model for seeding
@@ -469,6 +470,7 @@ app.use('/api/agent/referrals', agentReferralRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/loan', loanRoutes);
 app.use('/api/agent/loan', agentLoanRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ── Share session with Socket.io ──
 // Wrap the Express session middleware so it runs on the Socket.io handshake
