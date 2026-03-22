@@ -9,7 +9,7 @@ interface ReferralData {
   referralCode: string | null;
   referralCount: number;
   pendingCount: number;
-  referredUsers: { username: string; joinedAt: string; verified: boolean }[];
+  referredUsers: { name?: string; username: string; joinedAt: string; verified: boolean }[];
 }
 
 export default function ReferralsPage() {
@@ -231,9 +231,9 @@ export default function ReferralsPage() {
                       className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
                       style={{ background: 'linear-gradient(135deg, #6A1B9A, #00B0FF)', color: '#fff' }}
                     >
-                      {user.username.charAt(0).toUpperCase()}
+                      {(user.name || user.username).charAt(0).toUpperCase()}
                     </div>
-                    <span className="text-sm casino-text-primary font-medium">{user.username}</span>
+                    <span className="text-sm casino-text-primary font-medium">{user.name || user.username}</span>
                   </div>
                   <span className="text-xs casino-text-secondary">
                     {new Date(user.joinedAt).toLocaleDateString()}

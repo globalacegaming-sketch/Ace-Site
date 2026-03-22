@@ -604,7 +604,7 @@ class LoanService {
     const skip = (page - 1) * limit;
     const [entries, total] = await Promise.all([
       LoanLedger.find(filter)
-        .populate('userId', 'username email')
+        .populate('userId', 'username email firstName lastName')
         .populate('loanId', 'principalAmount status')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -716,7 +716,7 @@ class LoanService {
     const skip = (page - 1) * limit;
     const [logs, total] = await Promise.all([
       LoanAgentLog.find(filter)
-        .populate('targetUserId', 'username email')
+        .populate('targetUserId', 'username email firstName lastName')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

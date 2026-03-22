@@ -1078,7 +1078,7 @@ const AceadminDashboard: React.FC = () => {
             <tbody className="divide-y divide-gray-200">
               {filtered.map((contact) => (
                 <tr key={contact._id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{contact.username}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{`${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.username}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.fpName}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.email}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.phone}</td>
@@ -1116,7 +1116,7 @@ const AceadminDashboard: React.FC = () => {
         {filtered.map((contact) => (
           <div key={contact._id} className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <p className="font-medium text-gray-900">{contact.username}</p>
+              <p className="font-medium text-gray-900">{`${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.username}</p>
               <button
                 onClick={() => fixFortunePandaAccount(contact._id)}
                 disabled={fixingFpAccount === contact._id}

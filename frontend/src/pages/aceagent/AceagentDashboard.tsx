@@ -1017,7 +1017,7 @@ const AceagentDashboard: React.FC = () => {
                               <td className="px-4 py-3">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <button onClick={() => navigateToUserChat(u._id)} className="text-sm font-semibold text-gray-900 hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left truncate">{u.username}</button>
+                                    <button onClick={() => navigateToUserChat(u._id)} className="text-sm font-semibold text-gray-900 hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left truncate">{`${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username}</button>
                                     {u.isEmailVerified ? (
                                       <div title="Email Verified"><CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" /></div>
                                     ) : (
@@ -1120,7 +1120,7 @@ const AceagentDashboard: React.FC = () => {
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5">
-                                <button onClick={() => navigateToUserChat(u._id)} className="text-sm font-bold text-gray-900 hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left truncate">{u.username}</button>
+                                <button onClick={() => navigateToUserChat(u._id)} className="text-sm font-bold text-gray-900 hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left truncate">{`${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username}</button>
                                 {u.isEmailVerified ? (
                                   <span title="Email Verified"><CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" /></span>
                                 ) : (
@@ -1315,7 +1315,7 @@ const AceagentDashboard: React.FC = () => {
                           <div className="text-sm text-gray-900 font-medium">
                             {ref.referredBy ? (
                               <button onClick={() => navigateToUserChat(ref.referredBy!._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                                @{ref.referredBy.username}
+                                {`${ref.referredBy.firstName || ''} ${ref.referredBy.lastName || ''}`.trim() || ref.referredBy.username}
                               </button>
                             ) : '—'}
                           </div>
@@ -1387,7 +1387,7 @@ const AceagentDashboard: React.FC = () => {
               {/* Modal Header */}
               <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white px-4 py-4 rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
                 <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white drop-shadow-md truncate pr-2">
-                  Update: <span className="text-blue-100">{selectedUser.username}</span>
+                  Update: <span className="text-blue-100">{`${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim() || selectedUser.username}</span>
                 </h3>
                 <button
                   onClick={() => {

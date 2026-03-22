@@ -588,7 +588,7 @@ router.get('/referrals', authenticate, async (req: Request, res: Response) => {
       referredBy: user._id,
       status: 'verified',
     })
-      .populate('referredUser', 'username createdAt')
+      .populate('referredUser', 'username firstName lastName createdAt')
       .sort({ verifiedAt: -1 })
       .limit(50)
       .lean();
@@ -600,13 +600,17 @@ router.get('/referrals', authenticate, async (req: Request, res: Response) => {
     });
 
     const referralCount = verifiedReferrals.length;
-    const referredUsers = verifiedReferrals.map((ref: any) => ({
-      username: ref.referredUser
-        ? ref.referredUser.username.charAt(0) + '***' + ref.referredUser.username.slice(-1)
-        : '???',
-      joinedAt: ref.referredUser?.createdAt || ref.createdAt,
-      verified: true,
-    }));
+    const referredUsers = verifiedReferrals.map((ref: any) => {
+      const u = ref.referredUser;
+      const fullName = u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '';
+      const maskedUsername = u ? u.username.charAt(0) + '***' + u.username.slice(-1) : '???';
+      return {
+        name: fullName || maskedUsername,
+        username: maskedUsername,
+        joinedAt: u?.createdAt || ref.createdAt,
+        verified: true,
+      };
+    });
 
     return sendSuccess(res, 'Referral stats', {
       referralCode: referralCode || null,

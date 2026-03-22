@@ -22,6 +22,12 @@ import { agentLoanApi } from '../../services/loanApi';
 import { getApiBaseUrl } from '../../utils/api';
 
 const API_BASE_URL = getApiBaseUrl();
+
+const displayName = (user: any): string => {
+  if (!user) return 'Unknown';
+  const full = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+  return full || user.username || 'Unknown';
+};
 const getAdminToken = () => {
   for (const key of ['agent_session', 'admin_session']) {
     const raw = localStorage.getItem(key);
@@ -220,6 +226,8 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
     return (
       u.username?.toLowerCase().includes(q) ||
       u.email?.toLowerCase().includes(q) ||
+      u.firstName?.toLowerCase().includes(q) ||
+      u.lastName?.toLowerCase().includes(q) ||
       u.fortunePandaUsername?.toLowerCase().includes(q) ||
       u._id?.toLowerCase().includes(q)
     );
@@ -235,6 +243,8 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
     const results = manageUsers.filter(u =>
       u.username?.toLowerCase().includes(q) ||
       u.email?.toLowerCase().includes(q) ||
+      u.firstName?.toLowerCase().includes(q) ||
+      u.lastName?.toLowerCase().includes(q) ||
       u._id?.toLowerCase().includes(q)
     ).slice(0, 8);
     setLedgerSearchResults(results);
@@ -489,9 +499,9 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                     <p className="font-semibold text-gray-900">
                       {onNavigateToChat && req.userId?._id ? (
                         <button onClick={() => onNavigateToChat(req.userId._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                          {req.userId?.username || 'Unknown User'}
+                          {displayName(req.userId)}
                         </button>
-                      ) : (req.userId?.username || 'Unknown User')}
+                      ) : displayName(req.userId)}
                     </p>
                     <p className="text-xs text-gray-500">{req.userId?.email}</p>
                   </div>
@@ -538,9 +548,9 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                     <p className="font-semibold text-gray-900">
                       {onNavigateToChat && loan.userId?._id ? (
                         <button onClick={() => onNavigateToChat(loan.userId._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                          {loan.userId?.username || 'Unknown'}
+                          {displayName(loan.userId)}
                         </button>
-                      ) : (loan.userId?.username || 'Unknown')}
+                      ) : displayName(loan.userId)}
                     </p>
                     <p className="text-xs text-gray-500">{loan.userId?.email}</p>
                   </div>
@@ -612,9 +622,9 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                     <p className="text-sm font-semibold text-gray-900 truncate">
                       {onNavigateToChat ? (
                         <button onClick={() => onNavigateToChat(u._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                          {u.username}
+                          {displayName(u)}
                         </button>
-                      ) : u.username}
+                      ) : displayName(u)}
                     </p>
                     <p className="text-xs text-gray-500 truncate">{u.email}</p>
                   </div>
@@ -649,7 +659,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md mx-auto border border-gray-200 max-h-[95vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 py-3 rounded-t-2xl sm:rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
               <h3 className="text-base font-bold text-white">
-                {loanModalType === 'limit' ? 'Adjust Loan Limit' : 'Issue Loan'} — {loanModalUser.username}
+                {loanModalType === 'limit' ? 'Adjust Loan Limit' : 'Issue Loan'} — {displayName(loanModalUser)}
               </h3>
               <button onClick={closeLoanModal} disabled={loanActionLoading} className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors">
                 <X className="w-5 h-5" />
@@ -759,11 +769,11 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                   {ledgerSearchResults.map(u => (
                     <button
                       key={u._id}
-                      onClick={() => viewUserLedger(u._id, u.username)}
+                      onClick={() => viewUserLedger(u._id, displayName(u))}
                       className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 transition-colors flex items-center justify-between"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{u.username}</p>
+                        <p className="text-sm font-medium text-gray-900 truncate">{displayName(u)}</p>
                         <p className="text-xs text-gray-500 truncate">{u.email}</p>
                       </div>
                       <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 ml-2" />
@@ -824,12 +834,12 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                         <td className="py-2 pr-2 font-medium text-gray-900">
                           {(e.userId as any)?._id ? (
                             <button
-                              onClick={() => viewUserLedger((e.userId as any)._id, (e.userId as any)?.username || '—')}
+                              onClick={() => viewUserLedger((e.userId as any)._id, displayName(e.userId))}
                               className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left"
                             >
-                              {(e.userId as any)?.username || '—'}
+                              {displayName(e.userId)}
                             </button>
-                          ) : ((e.userId as any)?.username || '—')}
+                          ) : displayName(e.userId)}
                         </td>
                         <td className="py-2 pr-2">
                           <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
@@ -896,9 +906,9 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                         <td className="py-2 pr-2 text-gray-900 text-xs">
                           {onNavigateToChat && (log.targetUserId as any)?._id ? (
                             <button onClick={() => onNavigateToChat((log.targetUserId as any)._id)} className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer text-left">
-                              {(log.targetUserId as any)?.username || '—'}
+                              {displayName(log.targetUserId)}
                             </button>
-                          ) : ((log.targetUserId as any)?.username || '—')}
+                          ) : displayName(log.targetUserId)}
                         </td>
                         <td className="py-2 text-xs text-gray-500 hidden sm:table-cell truncate max-w-[200px]">
                           {log.details?.amount ? `$${log.details.amount.toFixed(2)}` : ''}
@@ -931,7 +941,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
               <>
                 <h3 className="text-lg font-bold text-gray-900 mb-1">Approve Loan Request</h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  Approve <strong>${actionModal.data.requestedAmount.toFixed(2)}</strong> for <strong>{actionModal.data.userId?.username}</strong>?
+                  Approve <strong>${actionModal.data.requestedAmount.toFixed(2)}</strong> for <strong>{displayName(actionModal.data.userId)}</strong>?
                 </p>
                 <textarea
                   value={modalRemarks}
@@ -954,7 +964,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
               <>
                 <h3 className="text-lg font-bold text-gray-900 mb-1">Reject Loan Request</h3>
                 <p className="text-sm text-gray-500 mb-4">
-                  Reject <strong>${actionModal.data.requestedAmount.toFixed(2)}</strong> for <strong>{actionModal.data.userId?.username}</strong>?
+                  Reject <strong>${actionModal.data.requestedAmount.toFixed(2)}</strong> for <strong>{displayName(actionModal.data.userId)}</strong>?
                 </p>
                 <textarea
                   value={modalRemarks}
@@ -981,7 +991,7 @@ const AgentLoanPanel: React.FC<AgentLoanPanelProps> = ({ onNavigateToChat }) => 
                   {actionModal.data.remainingBalance != null && actionModal.data.remainingBalance !== actionModal.data.principalAmount && (
                     <span> (of ${actionModal.data.principalAmount.toFixed(2)} principal)</span>
                   )}
-                  {' — '}{actionModal.data.userId?.username}
+                  {' — '}{displayName(actionModal.data.userId)}
                 </p>
                 <div className="space-y-3 mb-4">
                   <div>
