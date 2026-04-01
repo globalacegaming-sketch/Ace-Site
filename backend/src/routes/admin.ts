@@ -392,7 +392,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
   }
 });
 
-// Sync a single user's balance from FortunePanda
+// Refresh a single user's balance from FortunePanda
 router.post('/users/:userId/sync-balance', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -400,38 +400,11 @@ router.post('/users/:userId/sync-balance', async (req: Request, res: Response) =
     if (!user) return sendError(res, 'User not found', 404);
 
     if (!user.fortunePandaUsername || !user.fortunePandaPassword) {
-      if (!user.firstName) {
-        return sendError(res, 'User has no FortunePanda account and no firstName to link one', 400);
-      }
-
-      const fpUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
-      const fpPassword = user.fortunePandaPassword || fortunePandaService.generateFortunePandaPassword();
-      const passwdMd5 = fortunePandaService.generateMD5(fpPassword);
-
-      // Try to query the existing FP account first (link, not create)
-      const queryResult = await fortunePandaService.queryUserInfo(fpUsername, passwdMd5);
-
-      if (queryResult.success) {
-        user.fortunePandaUsername = fpUsername;
-        user.fortunePandaPassword = fpPassword;
-        await user.save();
-        logger.info(`✅ Linked existing FP account for user ${userId}: ${fpUsername}`);
-      } else {
-        // Account doesn't exist yet — create it
-        const createResult = await fortunePandaService.createFortunePandaUserWithAccount(fpUsername, fpPassword);
-        if (createResult.success) {
-          user.fortunePandaUsername = fpUsername;
-          user.fortunePandaPassword = fpPassword;
-          await user.save();
-          logger.info(`✅ Created FP account for user ${userId}: ${fpUsername}`);
-        } else {
-          return sendError(res, `Could not link or create FortunePanda account: ${createResult.message}`, 400);
-        }
-      }
+      return sendError(res, 'User has no FortunePanda account linked. Use "Fix FP Account" first.', 400);
     }
 
-    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword!);
-    const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername!, passwdMd5);
+    const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
+    const result = await fortunePandaService.queryUserInfo(user.fortunePandaUsername, passwdMd5);
 
     if (result.success && result.data) {
       const userbalance = result.data.userbalance || result.data.userBalance || '0.00';
@@ -1340,7 +1313,7 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
   }
 });
 
-// Fix single user's Fortune Panda account (assign new unique username and create account)
+// Fix single user's Fortune Panda account — creates a brand new FP account and links it, ignoring the old one
 router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -1354,12 +1327,9 @@ router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Respon
       return sendError(res, 'User missing firstName. Cannot generate Fortune Panda username.', 400);
     }
 
-    // Generate password if missing
-    if (!user.fortunePandaPassword) {
-      user.fortunePandaPassword = fortunePandaService.generateFortunePandaPassword();
-    }
+    // Always generate a fresh password for the new account
+    const newPassword = fortunePandaService.generateFortunePandaPassword();
 
-    // Username candidates: try different patterns to find one that works on FP
     const name = user.firstName;
     const rand3 = () => Math.random().toString(36).substring(2, 5).toUpperCase();
     const rand4 = () => Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -1372,7 +1342,6 @@ router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Respon
     ];
 
     for (const candidate of candidates) {
-      // Skip if another local user already has this username
       const localDupe = await User.findOne({
         fortunePandaUsername: candidate,
         _id: { $ne: userId }
@@ -1381,48 +1350,30 @@ router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Respon
 
       const createResult = await fortunePandaService.createFortunePandaUserWithAccount(
         candidate,
-        user.fortunePandaPassword
+        newPassword
       );
 
       if (createResult.success) {
         user.fortunePandaUsername = candidate;
+        user.fortunePandaPassword = newPassword;
+        user.fortunePandaBalance = 0;
         await user.save();
 
         logger.info(`✅ Fixed Fortune Panda account for user ${userId}: ${candidate}`);
 
-        return sendSuccess(res, 'Fortune Panda account fixed successfully', {
+        return sendSuccess(res, 'New Fortune Panda account created and linked', {
           userId: user._id.toString(),
           newUsername: candidate,
-          message: 'Account created and username assigned'
         });
       }
 
       if (createResult.message?.toLowerCase().includes('already exist')) {
-        // Account exists on FP — check if it belongs to this user (password matches)
-        const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword);
-        const verifyResult = await fortunePandaService.queryUserInfo(candidate, passwdMd5);
-
-        if (verifyResult.success) {
-          user.fortunePandaUsername = candidate;
-          await user.save();
-
-          logger.info(`✅ FP account already existed, linked for user ${userId}: ${candidate}`);
-
-          return sendSuccess(res, 'Fortune Panda account linked successfully', {
-            userId: user._id.toString(),
-            newUsername: candidate,
-            message: 'Account already existed on Fortune Panda and has been linked'
-          });
-        }
-
-        // Credentials don't match — try next candidate
-        logger.info(`⏭️ FP account ${candidate} exists with different credentials, trying next pattern...`);
+        logger.info(`⏭️ FP username ${candidate} already taken on FP, trying next...`);
         continue;
       }
 
-      // Some other error (not "already exists") — stop trying
       logger.error(`❌ FP account creation failed for user ${userId}: ${createResult.message}`);
-      return sendError(res, `Fortune Panda account creation failed: ${createResult.message || 'Unknown error'}. The user's existing account was not changed.`, 400);
+      return sendError(res, `Fortune Panda account creation failed: ${createResult.message || 'Unknown error'}`, 400);
     }
 
     return sendError(res, 'Could not create Fortune Panda account — all username patterns were taken. Please try again.', 400);

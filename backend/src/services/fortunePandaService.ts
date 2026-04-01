@@ -17,6 +17,7 @@ class FortunePandaService {
   private agentKeyCache: string | null = null;
   private refreshInterval: NodeJS.Timeout | null = null;
   private isInitialized: boolean = false;
+  private loginPromise: Promise<void> | null = null;
 
   constructor() {
     this.config = {
@@ -98,18 +99,28 @@ class FortunePandaService {
     return this.generateMD5(raw);
   }
 
-  // Login agent and cache agentKey (exact implementation as per specification)
+  // Login agent with mutex to prevent concurrent logins from invalidating each other's keys.
+  // The FP API returns a new agentKey on every login, invalidating the previous one.
+  // Without the mutex, concurrent retries would each trigger loginAgent(), and each new
+  // login would invalidate the key the previous login just obtained.
   private async loginAgent(): Promise<void> {
+    if (this.loginPromise) {
+      return this.loginPromise;
+    }
+    this.loginPromise = this._performLogin();
+    try {
+      await this.loginPromise;
+    } finally {
+      this.loginPromise = null;
+    }
+  }
+
+  private async _performLogin(): Promise<void> {
     try {
       logger.debug('🔐 Logging into Fortune Panda agent...');
       
-      // Generate fresh timestamp (UNIX timestamp in milliseconds)
       const time = Date.now();
-      
-      // Generate MD5 hash of agent password
       const passwdMd5 = this.generateMD5(this.config.agentPasswd);
-      
-      // Agent login request
       
       const response = await axios.post(this.config.baseUrl, null, {
         params: {
@@ -121,8 +132,6 @@ class FortunePandaService {
         timeout: 30000
       });
       
-      // Process agent login response
-      
       if (response.data && response.data.code === '200') {
         const agentKey = response.data.agentKey || response.data.agentkey;
         
@@ -130,9 +139,7 @@ class FortunePandaService {
           throw new Error('No agentKey returned from login');
         }
         
-        // Cache the agentKey (new key each time)
         this.agentKeyCache = agentKey;
-        // Agent login successful
       } else {
         throw new Error(response.data?.msg || 'Agent login failed');
       }
