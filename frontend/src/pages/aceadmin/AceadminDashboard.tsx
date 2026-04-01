@@ -146,6 +146,9 @@ const AceadminDashboard: React.FC = () => {
   const [analyticsPages, setAnalyticsPages] = useState<{ page: string; views: number; uniqueUsers: number }[]>([]);
   const [fixingFpAccount, setFixingFpAccount] = useState<string | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [deletingUser, setDeletingUser] = useState<Contact | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Agent management states
   const [agents, setAgents] = useState<AgentItem[]>([]);
@@ -553,6 +556,33 @@ const AceadminDashboard: React.FC = () => {
       toast.error(errorMsg);
     } finally {
       setFixingFpAccount(null);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser || deleteConfirmInput !== deletingUser.username) return;
+    try {
+      setDeleteLoading(true);
+      const token = getAgentToken();
+      const response = await axios.delete(
+        `${API_BASE_URL}/admin/users/${deletingUser._id}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          data: { confirmUsername: deletingUser.username },
+        }
+      );
+      if (response.data.success) {
+        toast.success(response.data.message || 'Account deleted successfully');
+        setDeletingUser(null);
+        setDeleteConfirmInput('');
+        loadContacts();
+      } else {
+        toast.error(response.data.message || 'Failed to delete account');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete account');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -1085,24 +1115,34 @@ const AceadminDashboard: React.FC = () => {
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.referralCode}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{contact.referredBy || 'N/A'}</td>
                   <td className="px-4 py-3 text-sm">
-                    <button
-                      onClick={() => fixFortunePandaAccount(contact._id)}
-                      disabled={fixingFpAccount === contact._id}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                      title="Assign new unique Fortune Panda username and create account"
-                    >
-                      {fixingFpAccount === contact._id ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Fixing...
-                        </>
-                      ) : (
-                        <>
-                          <Wrench className="w-3 h-3" />
-                          Fix FP Account
-                        </>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => fixFortunePandaAccount(contact._id)}
+                        disabled={fixingFpAccount === contact._id}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                        title="Assign new unique Fortune Panda username and create account"
+                      >
+                        {fixingFpAccount === contact._id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Fixing...
+                          </>
+                        ) : (
+                          <>
+                            <Wrench className="w-3 h-3" />
+                            Fix FP
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => { setDeletingUser(contact); setDeleteConfirmInput(''); }}
+                        className="px-3 py-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700 flex items-center gap-1.5"
+                        title="Delete user account and all data"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1115,19 +1155,27 @@ const AceadminDashboard: React.FC = () => {
       <div className="lg:hidden space-y-3">
         {filtered.map((contact) => (
           <div key={contact._id} className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="font-medium text-gray-900">{`${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.username}</p>
-              <button
-                onClick={() => fixFortunePandaAccount(contact._id)}
-                disabled={fixingFpAccount === contact._id}
-                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                {fixingFpAccount === contact._id ? (
-                  <><Loader2 className="w-3 h-3 animate-spin" /> Fixing...</>
-                ) : (
-                  <><Wrench className="w-3 h-3" /> Fix FP</>
-                )}
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium text-gray-900 truncate">{`${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.username}</p>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => fixFortunePandaAccount(contact._id)}
+                  disabled={fixingFpAccount === contact._id}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {fixingFpAccount === contact._id ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" /> Fixing...</>
+                  ) : (
+                    <><Wrench className="w-3 h-3" /> Fix FP</>
+                  )}
+                </button>
+                <button
+                  onClick={() => { setDeletingUser(contact); setDeleteConfirmInput(''); }}
+                  className="px-2.5 py-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700 flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-1 text-xs text-gray-500">
               <span>FP: {contact.fpName}</span>
@@ -1141,6 +1189,71 @@ const AceadminDashboard: React.FC = () => {
           <p className="text-center text-sm text-gray-500 py-8">No users found</p>
         )}
       </div>
+
+      {/* Delete User Confirmation Modal */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !deleteLoading && setDeletingUser(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-red-600 to-red-700 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Trash2 className="w-5 h-5" />
+                Delete Account
+              </h3>
+              <button onClick={() => setDeletingUser(null)} disabled={deleteLoading} className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-1.5 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm text-red-800 font-semibold mb-2">This action is permanent and cannot be undone.</p>
+                <p className="text-sm text-red-700">
+                  All data for <strong>{deletingUser.firstName && deletingUser.lastName ? `${deletingUser.firstName} ${deletingUser.lastName}` : deletingUser.username}</strong> will be permanently deleted, including:
+                </p>
+                <ul className="text-xs text-red-600 mt-2 space-y-1 ml-4 list-disc">
+                  <li>Account & profile info</li>
+                  <li>Chat messages & support tickets</li>
+                  <li>Loan records & wallet</li>
+                  <li>Referrals, spins & analytics</li>
+                  <li>All other associated data</li>
+                </ul>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Type <strong className="text-red-600">{deletingUser.username}</strong> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  placeholder={deletingUser.username}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-black placeholder:text-gray-300"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setDeletingUser(null)}
+                  disabled={deleteLoading}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteUser}
+                  disabled={deleteLoading || deleteConfirmInput !== deletingUser.username}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {deleteLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Deleting...</>
+                  ) : (
+                    <><Trash2 className="w-4 h-4" /> Delete Permanently</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     );
   };

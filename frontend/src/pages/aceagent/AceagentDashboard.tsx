@@ -402,9 +402,7 @@ const AceagentDashboard: React.FC = () => {
           `Synced ${successful} of ${total} users from FortunePanda${failed > 0 ? ` (${failed} failed)` : ''}`,
           { id: 'sync-users' }
         );
-        // Refresh users list to show updated balances
-        loadUsers();
-        // Refresh agent balance
+        loadUsers(true);
         loadAgentBalance();
       } else {
         toast.error(response.data.message || 'Failed to sync users', { id: 'sync-users' });
@@ -416,7 +414,33 @@ const AceagentDashboard: React.FC = () => {
     }
   };
 
-  const loadUsers = async () => {
+  const autoSyncBalancesFromFP = async () => {
+    try {
+      const token = getAdminToken();
+      if (!token) return;
+
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/users/sync-fortune-panda`,
+        {},
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      if (response.data.success && response.data.data?.synced) {
+        const synced: { userId: string; balance: string }[] = response.data.data.synced;
+        setUsers(prev => prev.map(u => {
+          const match = synced.find(s => s.userId === u._id);
+          return match ? { ...u, fortunePandaBalance: parseFloat(match.balance) } : u;
+        }));
+        if (response.data.data.synced[0]?.agentBalance) {
+          setAgentBalance(response.data.data.synced[0].agentBalance);
+        }
+      }
+    } catch {
+      // Silent background sync — don't show errors to user
+    }
+  };
+
+  const loadUsers = async (skipAutoSync = false) => {
     try {
       setLoading(true);
       const token = getAdminToken();
@@ -432,6 +456,9 @@ const AceagentDashboard: React.FC = () => {
 
       if (response.data.success) {
         setUsers(response.data.data || []);
+        if (!skipAutoSync) {
+          autoSyncBalancesFromFP();
+        }
       } else {
         toast.error(response.data.message || 'Failed to load users');
       }

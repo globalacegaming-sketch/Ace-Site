@@ -13,6 +13,22 @@ import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
 import { banUserIPs, findUsersByIP, unbanUserIPs } from '../utils/ipBanUtils';
+import ChatMessage from '../models/ChatMessage';
+import AnalyticsEvent from '../models/AnalyticsEvent';
+import Notification from '../models/Notification';
+import SupportTicket from '../models/SupportTicket';
+import UserNote from '../models/UserNote';
+import WheelSpin from '../models/WheelSpin';
+import Referral from '../models/Referral';
+import BannedIP from '../models/BannedIP';
+import Bonus from '../models/Bonus';
+import CryptoTransaction from '../models/CryptoTransaction';
+import Loan from '../models/Loan';
+import LoanAccount from '../models/LoanAccount';
+import LoanRequest from '../models/LoanRequest';
+import LoanLedger from '../models/LoanLedger';
+import LoanAgentLog from '../models/LoanAgentLog';
+import LoanLimitHistory from '../models/LoanLimitHistory';
 
 const router = Router();
 
@@ -1358,17 +1374,9 @@ router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Respon
         message: 'Account created and username assigned'
       });
     } else {
-      // Still update username even if creation fails (might already exist)
-      user.fortunePandaUsername = newUsername;
-      await user.save();
+      logger.error(`❌ FP account creation failed for user ${userId}: ${createResult.message}`);
       
-      logger.warn(`⚠️ Updated username but FP creation failed for user ${userId}: ${createResult.message}`);
-      
-      return sendSuccess(res, 'Username updated, but Fortune Panda account creation failed', {
-        userId: user._id.toString(),
-        newUsername,
-        warning: createResult.message
-      }, 200);
+      return sendError(res, `Fortune Panda account creation failed: ${createResult.message || 'Unknown error'}. The user's existing account was not changed.`, 400);
     }
   } catch (error) {
     logger.error('Fix user Fortune Panda account error:', error);
@@ -1570,6 +1578,88 @@ router.put('/users/:userId/unban', async (req: Request, res: Response) => {
       success: false,
       message: errorMessage
     });
+  }
+});
+
+// Delete user account and all associated data
+router.delete('/users/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { confirmUsername } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    if (!confirmUsername || confirmUsername !== user.username) {
+      return sendError(res, 'You must confirm the username to delete this account', 400);
+    }
+
+    const deletedBy = req.adminSession?.agentName || 'admin';
+    const userSnapshot = {
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    };
+
+    logger.info('🗑️ Starting account deletion:', { ...userSnapshot, deletedBy });
+
+    const results = await Promise.allSettled([
+      ChatMessage.deleteMany({ userId: user._id }),
+      AnalyticsEvent.deleteMany({ userId: user._id.toString() }),
+      Notification.deleteMany({ userId: user._id }),
+      SupportTicket.deleteMany({ userId: user._id }),
+      UserNote.deleteMany({ userId: user._id }),
+      WheelSpin.deleteMany({ userId: user._id }),
+      Referral.deleteMany({ $or: [{ referredUser: user._id }, { referredBy: user._id }] }),
+      BannedIP.deleteMany({ userId: user._id.toString() }),
+      Bonus.updateMany(
+        { 'claims.userId': user._id.toString() },
+        { $pull: { claims: { userId: user._id.toString() } } }
+      ),
+      CryptoTransaction.deleteMany({ userId: user._id }),
+      Loan.deleteMany({ userId: user._id }),
+      LoanAccount.deleteMany({ userId: user._id }),
+      LoanRequest.deleteMany({ userId: user._id }),
+      LoanLedger.deleteMany({ userId: user._id }),
+      LoanAgentLog.deleteMany({ targetUserId: user._id }),
+      LoanLimitHistory.deleteMany({ userId: user._id }),
+      Wallet.deleteMany({ userId: user._id }),
+    ]);
+
+    const summary: Record<string, string> = {};
+    const modelNames = [
+      'ChatMessage', 'AnalyticsEvent', 'Notification', 'SupportTicket',
+      'UserNote', 'WheelSpin', 'Referral', 'BannedIP', 'Bonus',
+      'CryptoTransaction', 'Loan', 'LoanAccount', 'LoanRequest',
+      'LoanLedger', 'LoanAgentLog', 'LoanLimitHistory', 'Wallet',
+    ];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        const val = r.value as any;
+        summary[modelNames[i]] = `${val.deletedCount ?? val.modifiedCount ?? 0} removed`;
+      } else {
+        summary[modelNames[i]] = `error: ${r.reason?.message || 'unknown'}`;
+        logger.error(`Failed to clean ${modelNames[i]} for user ${userId}:`, r.reason);
+      }
+    });
+
+    await User.findByIdAndDelete(userId);
+
+    logger.info('✅ Account deleted successfully:', { ...userSnapshot, deletedBy, summary });
+
+    return res.json({
+      success: true,
+      message: `Account "${userSnapshot.username}" and all associated data have been permanently deleted.`,
+      data: { user: userSnapshot, cleanupSummary: summary },
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    logger.error('❌ Error deleting user account:', errorMessage);
+    return res.status(500).json({ success: false, message: errorMessage });
   }
 });
 

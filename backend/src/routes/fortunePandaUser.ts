@@ -159,7 +159,23 @@ router.post('/games/enter', async (req: Request, res: Response) => {
     // Use stored FortunePanda username if available, otherwise construct it
     const fortunePandaUsername = user.fortunePandaUsername || `${user.firstName}_Aces9F`;
     const passwdMd5 = fortunePandaService.generateMD5(user.fortunePandaPassword || '');
-    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
+    let result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
+
+    // If account doesn't exist on FP platform, try to create it and retry
+    if (!result.success && (result.message?.toLowerCase().includes('account') || result.message?.toLowerCase().includes('incorrect') || result.message?.toLowerCase().includes('not exist'))) {
+      logger.info('🔄 FP account may not exist on games/enter, attempting to create and retry...');
+      try {
+        const createResult = await fortunePandaService.createFortunePandaUserWithAccount(
+          fortunePandaUsername,
+          user.fortunePandaPassword || ''
+        );
+        if (createResult.success) {
+          result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
+        }
+      } catch {
+        // Creation failed, will return original error below
+      }
+    }
     
     if (result.success) {
       return res.json({
@@ -252,6 +268,14 @@ router.get('/balance', async (req: Request, res: Response) => {
     const result = await fortunePandaService.queryUserInfo(fortunePandaUsername, passwdMd5);
     
     if (result.success) {
+      const fetchedBalance = parseFloat(result.data?.userbalance || result.data?.userBalance || '0');
+      if (!isNaN(fetchedBalance)) {
+        User.updateOne(
+          { _id: user._id },
+          { $set: { fortunePandaBalance: fetchedBalance, fortunePandaLastSync: new Date() } }
+        ).exec().catch(err => logger.warn('Non-critical: failed to persist FP balance', err));
+      }
+
       return res.json({
         success: true,
         message: 'Balance retrieved successfully',
@@ -448,7 +472,7 @@ router.post('/enter-game', async (req: Request, res: Response) => {
     });
     
     // Service will append _GAGame automatically
-    const result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
+    let result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
     
     logger.debug('🎮 Fortune Panda enterGame result:', {
       success: result.success,
@@ -456,6 +480,25 @@ router.post('/enter-game', async (req: Request, res: Response) => {
       hasData: !!result.data,
       hasWebLoginUrl: !!result.data?.webLoginUrl
     });
+
+    // If account doesn't exist on FP platform, try to create it and retry
+    if (!result.success && (result.message?.toLowerCase().includes('account') || result.message?.toLowerCase().includes('incorrect') || result.message?.toLowerCase().includes('not exist'))) {
+      logger.info('🔄 FP account may not exist, attempting to create and retry...');
+      try {
+        const createResult = await fortunePandaService.createFortunePandaUserWithAccount(
+          fortunePandaUsername,
+          user.fortunePandaPassword || ''
+        );
+        if (createResult.success) {
+          logger.info('✅ FP account created on retry, entering game again...');
+          result = await fortunePandaService.enterGame(fortunePandaUsername, passwdMd5, trimmedKindId);
+        } else {
+          logger.warn('⚠️ FP account creation failed on retry:', createResult.message);
+        }
+      } catch (createErr) {
+        logger.error('❌ FP account creation error on retry:', createErr);
+      }
+    }
     
     if (result.success) {
       if (!result.data?.webLoginUrl) {
