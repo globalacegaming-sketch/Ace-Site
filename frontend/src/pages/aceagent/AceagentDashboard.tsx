@@ -1002,7 +1002,7 @@ const AceagentDashboard: React.FC = () => {
                     <span className="sm:hidden">Sync</span>
                   </button>
                   <button
-                    onClick={loadUsers}
+                    onClick={() => loadUsers()}
                     className="flex-1 sm:flex-none px-4 py-3 sm:py-2.5 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg hover:from-gray-700 hover:to-gray-800 active:from-gray-800 active:to-gray-900 transition-all duration-200 flex items-center justify-center gap-2 text-sm font-semibold shadow-md min-h-[44px] sm:min-h-0"
                   >
                     <RefreshCw className="w-4 h-4" />

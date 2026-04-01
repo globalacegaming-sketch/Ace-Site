@@ -269,16 +269,14 @@ class FortunePandaService {
           action: 'registerUser',
           account,
           passwd: passwdMd5,
-        agentName: this.config.agentName,
-        time,
-        sign
+          agentName: this.config.agentName,
+          time,
+          sign
         },
         timeout: 30000
       });
 
-      // Process user creation response
-      
-      if (response.data && response.data.code === '200') {
+      if (response.data && (response.data.code === '200' || response.data.code === 200)) {
         return {
           success: true,
           message: 'Fortune Panda user created successfully',
@@ -288,6 +286,44 @@ class FortunePandaService {
             ...response.data
           }
         };
+      } else if (response.data && (response.data.code === '201' || response.data.code === 201 || response.data.msg?.toLowerCase().includes('sign'))) {
+        await this.loginAgent();
+
+        const retryTime = Date.now();
+        const retrySign = this.generateSignature(
+          this.config.agentName,
+          retryTime,
+          this.agentKeyCache!
+        );
+
+        const retryResponse = await axios.post(this.config.baseUrl, null, {
+          params: {
+            action: 'registerUser',
+            account,
+            passwd: passwdMd5,
+            agentName: this.config.agentName,
+            time: retryTime,
+            sign: retrySign
+          },
+          timeout: 30000
+        });
+
+        if (retryResponse.data && (retryResponse.data.code === '200' || retryResponse.data.code === 200)) {
+          return {
+            success: true,
+            message: 'Fortune Panda user created successfully',
+            data: {
+              account,
+              password,
+              ...retryResponse.data
+            }
+          };
+        } else {
+          return {
+            success: false,
+            message: retryResponse.data?.msg || 'Failed to create Fortune Panda user after retry'
+          };
+        }
       } else {
         return {
           success: false,
