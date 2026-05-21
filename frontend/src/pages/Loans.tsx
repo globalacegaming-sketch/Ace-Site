@@ -17,7 +17,6 @@ import {
   ScrollText,
   MessageCircle,
   ChevronRight,
-  Wallet,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loanApi, type LoanSummary } from '../services/loanApi';
@@ -204,8 +203,7 @@ export default function LoansPage() {
       accent: '#B0B0B0',
     },
   };
-  const showStatusBanner = statusKind !== 'ready';
-  const status = showStatusBanner ? statusCopy[statusKind] : null;
+  const status = statusKind !== 'ready' ? statusCopy[statusKind] : null;
 
   const tabs: { key: LoanTab; label: string; icon: React.ReactNode }[] = [
     { key: 'requests', label: 'Requests', icon: <Send className="h-4 w-4" /> },
