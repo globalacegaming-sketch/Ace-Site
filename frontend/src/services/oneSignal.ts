@@ -107,7 +107,7 @@ export async function oneSignalRequestPermission(force = false): Promise<boolean
     }
     if (OneSignal.Notifications?.requestPermission) {
       await OneSignal.Notifications.requestPermission();
-      const perm: NotificationPermission = Notification.permission;
+      const perm = Notification.permission as NotificationPermission;
       if (perm === 'granted') {
         await OneSignal.User?.PushSubscription?.optIn?.();
       }

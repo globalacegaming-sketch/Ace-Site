@@ -333,7 +333,7 @@ export default function LoansPage() {
           </CosmicCard>
         )}
 
-        {showStatusBanner && status && (
+        {status && (
           <CosmicCard
             variant="glass"
             padding="md"
