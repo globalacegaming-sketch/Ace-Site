@@ -1,7 +1,6 @@
 /**
  * Sends push notifications via OneSignal REST API.
- * Used when an admin sends a support message so the user gets a push
- * when they're inactive or logged out.
+ * Targets users by external_id (OneSignal.login(userId) on the client).
  */
 
 const ONESIGNAL_URL = 'https://api.onesignal.com/notifications';
@@ -10,36 +9,43 @@ const REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 
 export interface SendChatPushOptions {
   userId: string;
-  /** Plain text preview; will be truncated. Use "Support sent an attachment" if no text. */
+  /** Plain text preview; will be truncated. */
   body: string;
-  /** Optional. Site base URL to open /chat when the user taps the notification. */
+  /** Site base URL — opens /chat when the notification is tapped. */
   webUrl?: string;
+}
+
+function buildChatUrl(webUrl?: string): string | undefined {
+  if (!webUrl) return undefined;
+  const base = webUrl.replace(/\/$/, '');
+  return `${base}/chat`;
 }
 
 /**
  * Send a push for a new support message. No-op if ONESIGNAL_REST_API_KEY is not set.
- * Targets the user via external_id (set by OneSignal.login(userId) in the frontend).
  */
 export async function sendChatMessagePush(options: SendChatPushOptions): Promise<void> {
   if (!REST_API_KEY || REST_API_KEY.length < 10) {
+    console.warn('[OneSignal] ONESIGNAL_REST_API_KEY not configured — push skipped');
     return;
   }
 
-  const { userId, body, webUrl } = options;
-  const text = (body || 'Support sent an attachment').slice(0, 120);
+  const userId = String(options.userId).trim();
+  const text = (options.body || 'Support sent an attachment').slice(0, 120);
+  const chatUrl = buildChatUrl(options.webUrl);
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     app_id: APP_ID,
-    target_channel: 'push' as const,
+    target_channel: 'push',
     include_aliases: { external_id: [userId] },
     contents: { en: text },
     headings: { en: 'New message from Support' },
-    ...(webUrl ? { web_url: webUrl.endsWith('/') ? `${webUrl}chat` : `${webUrl}/chat` } : {}),
-    // Prefer web only if we only have web subscribers; otherwise OneSignal will route to any subscription
-    isAnyWeb: true,
-    isIos: true,
-    isAndroid: true,
   };
+
+  if (chatUrl) {
+    payload.web_url = chatUrl;
+    payload.app_url = chatUrl;
+  }
 
   try {
     const res = await fetch(`${ONESIGNAL_URL}?c=push`, {
@@ -51,9 +57,21 @@ export async function sendChatMessagePush(options: SendChatPushOptions): Promise
       body: JSON.stringify(payload),
     });
 
+    const raw = await res.text();
     if (!res.ok) {
-      const t = await res.text();
-      console.warn('[OneSignal] push failed:', res.status, t);
+      console.warn('[OneSignal] push failed:', res.status, raw);
+      return;
+    }
+
+    try {
+      const data = JSON.parse(raw) as { id?: string; errors?: unknown };
+      if (data.errors) {
+        console.warn('[OneSignal] push API errors for user', userId, data.errors);
+      } else if (data.id) {
+        console.info('[OneSignal] push queued:', data.id, 'user:', userId);
+      }
+    } catch {
+      console.info('[OneSignal] push sent for user:', userId);
     }
   } catch (e) {
     console.warn('[OneSignal] push request error:', e);

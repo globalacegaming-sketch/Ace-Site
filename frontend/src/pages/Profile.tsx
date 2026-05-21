@@ -18,6 +18,8 @@ import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
 import AchievementBadges from '../components/AchievementBadges';
+import { PageMeta } from '../components/PageMeta';
+import { CosmicCard, PageShell } from '../components/cosmic';
 
 const ProfilePage = () => {
   const { user, setUser, token } = useAuthStore();
@@ -66,7 +68,8 @@ const ProfilePage = () => {
   const handleProfileUpdate = async () => {
     setIsLoading(true);
     try {
-      const response = await axios.put(`${getApiBaseUrl()}/user/profile`, profileData, {
+      const { username: _username, ...updatable } = profileData;
+      const response = await axios.put(`${getApiBaseUrl()}/user/profile`, updatable, {
         headers: {
           'Authorization': `Bearer ${useAuthStore.getState().token}`,
           'Content-Type': 'application/json'
@@ -244,19 +247,10 @@ const ProfilePage = () => {
   };
 
   return (
-    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{ 
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-    }}>
-      {/* Decorative glowing orbs */}
-      <div className="absolute inset-0 -z-10">
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-30 animate-pulse" style={{ backgroundColor: '#6A1B9A' }}></div>
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-25 animate-ping" style={{ backgroundColor: '#00B0FF' }}></div>
-        <div className="absolute top-1/2 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: '#FFD700' }}></div>
-      </div>
-      
-      <div className="relative z-10 max-w-4xl mx-auto px-3 sm:px-4 lg:px-6">
-        {/* Header with Profile Picture and Edit Button */}
-        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 casino-border shadow-lg">
+    <>
+      <PageMeta title="My Profile | Global Ace Gaming" description="Manage your Global Ace Gaming profile, avatar, and account information." noIndex />
+      <PageShell width="4xl" background="subtle">
+        <CosmicCard variant="solid" padding="lg" className="mb-4 sm:mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
             <div className="flex items-center space-x-4 sm:space-x-6">
               {/* Profile Picture */}
@@ -317,7 +311,7 @@ const ProfilePage = () => {
               </div>
             )}
           </div>
-        </div>
+        </CosmicCard>
 
         {/* Avatar Selection Dropdown */}
         {showAvatarOptions && (
@@ -384,11 +378,14 @@ const ProfilePage = () => {
                 <input
                   type="text"
                   value={profileData.username}
-                  onChange={(e) => setProfileData({ ...profileData, username: e.target.value })}
-                  disabled={!isEditing}
-                  placeholder="Your Username"
-                  className="input-casino w-full px-3 sm:px-4 py-2 sm:py-3 rounded-lg text-sm sm:text-base"
+                  readOnly
+                  disabled
+                  placeholder="Auto-generated"
+                  className="input-casino w-full px-3 sm:px-4 py-2 sm:py-3 rounded-lg text-sm sm:text-base opacity-80"
                 />
+                <p className="mt-1 text-xs casino-text-secondary">
+                  Created from your first name when you signed up.
+                </p>
               </div>
               
               <div>
@@ -594,8 +591,8 @@ const ProfilePage = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </PageShell>
+    </>
   );
 };
 

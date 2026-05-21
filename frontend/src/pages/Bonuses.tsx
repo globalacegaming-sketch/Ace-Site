@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getAttachmentUrl } from '../utils/api';
 import { PageMeta } from '../components/PageMeta';
+import { PageShell } from '../components/cosmic';
 import BonusCountdown from '../components/BonusCountdown';
 import BonusProgressBar from '../components/BonusProgressBar';
 
@@ -195,37 +196,23 @@ const Offers = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--casino-primary-dark)' }}>
-        <Loader2 className="w-12 h-12 animate-spin" style={{ color: 'var(--casino-highlight-gold)' }} />
-      </div>
+      <PageShell width="7xl" background="subtle" contentClassName="flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin" style={{ color: 'var(--casino-highlight-gold)' }} />
+      </PageShell>
     );
   }
 
   const filteredBonuses = getFilteredBonuses();
 
   return (
-    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-    }}>
+    <>
       <PageMeta title="Bonuses & Promotions | Global Ace Gaming" description="Discover bonuses and promotions. Use them across our online slots, fish, and table games. See current offers." />
-
-      {/* Decorative orbs */}
-      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: 'var(--casino-accent-purple)' }} />
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ backgroundColor: 'var(--casino-accent-blue)' }} />
-      </div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-8">
-        {/* Header */}
-        <div className="text-center mb-8 sm:mb-12">
-          <h1 className="text-2xl sm:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
-            Exclusive Bonuses
-          </h1>
-          <p className="text-sm sm:text-xl casino-text-secondary max-w-3xl mx-auto">
-            Discover amazing bonuses and promotions designed to enhance your gaming experience
-          </p>
-        </div>
-
+      <PageShell
+        title="Claim Your Bonus"
+        subtitle="Active offers refresh regularly. Tap any card to claim — most are one-tap."
+        width="7xl"
+        background="subtle"
+      >
         {/* Tab Navigation */}
         <div className="flex justify-center mb-6 sm:mb-8">
           <div className="casino-bg-secondary rounded-xl p-1 casino-border border" style={{ boxShadow: '0 0 15px rgba(0,0,0,0.3)' }}>
@@ -260,6 +247,86 @@ const Offers = () => {
             })}
           </div>
         </div>
+
+        {/* ── Featured Bonus — promotes the single most important active offer ── */}
+        {activeTab === 'current' && (() => {
+          const featured = filteredBonuses[0];
+          if (!featured) return null;
+          const fState = getClaimState(featured);
+          const fClaimed = isClaimed(featured);
+          return (
+            <div
+              className="relative rounded-2xl sm:rounded-3xl overflow-hidden mb-6 sm:mb-8 casino-border border"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255,215,0,0.16) 0%, rgba(106,27,154,0.18) 50%, rgba(0,176,255,0.14) 100%)',
+                boxShadow: '0 8px 40px rgba(255,215,0,0.18)',
+                borderColor: 'rgba(255,215,0,0.35)',
+              }}
+            >
+              <div
+                className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold tracking-wider uppercase z-10"
+                style={{ background: '#FFD700', color: '#0A0A0F', boxShadow: '0 0 12px rgba(255,215,0,0.45)' }}
+              >
+                <Star className="w-3 h-3" /> Top Offer
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                {featured.image && (
+                  <div className="aspect-[16/10] md:aspect-auto md:h-full overflow-hidden">
+                    <img
+                      src={getAttachmentUrl(featured.image)}
+                      alt={featured.title}
+                      className="w-full h-full object-cover"
+                      loading="eager"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/800x500?text=' + encodeURIComponent(featured.title);
+                      }}
+                    />
+                  </div>
+                )}
+                <div className="p-5 sm:p-7 md:p-8 flex flex-col justify-center">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold casino-text-primary mb-2 sm:mb-3">
+                    {featured.title}
+                  </h2>
+                  <p className="text-sm sm:text-base casino-text-secondary mb-3 sm:mb-4 leading-relaxed">
+                    {featured.description}
+                  </p>
+                  {featured.bonusValue && (
+                    <div className="mb-4 sm:mb-5">
+                      <span
+                        className="inline-block text-3xl sm:text-4xl md:text-5xl font-black"
+                        style={{ color: '#FFD700', textShadow: '0 0 18px rgba(255,215,0,0.4)' }}
+                      >
+                        {featured.bonusValue}
+                      </span>
+                      <span className="ml-2 text-xs sm:text-sm casino-text-secondary capitalize">
+                        {featured.bonusType.replace('_', ' ')}
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => handleClaimBonus(featured)}
+                    disabled={!featured.isActive || !fState.canClaim || claiming === featured._id}
+                    className="self-start py-3 sm:py-3.5 px-6 sm:px-8 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 min-h-[48px]"
+                    style={{
+                      background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                      color: '#0A0A0F',
+                      boxShadow: '0 0 22px rgba(255,215,0,0.4)',
+                    }}
+                  >
+                    {claiming === featured._id ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> Claiming...</>
+                    ) : fClaimed ? (
+                      <><CheckCircle className="w-5 h-5" /> Already Claimed</>
+                    ) : (
+                      <><Gift className="w-5 h-5" /> Claim Now</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Offers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -319,7 +386,9 @@ const Offers = () => {
             </div>
           )}
 
-          {filteredBonuses.map((bonus) => {
+          {/* On the 'current' tab the first bonus is rendered as the featured hero card above,
+              so skip it here to avoid duplicating the same offer. */}
+          {(activeTab === 'current' ? filteredBonuses.slice(1) : filteredBonuses).map((bonus) => {
             const claimed = isClaimed(bonus);
             const claimState = getClaimState(bonus);
             const isRepeatable = (bonus.cooldownHours ?? 0) > 0;
@@ -650,8 +719,8 @@ const Offers = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </PageShell>
+    </>
   );
 };
 

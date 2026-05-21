@@ -1,183 +1,185 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Lock, ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react';
-import axios from 'axios';
-import { getApiBaseUrl } from '../utils/api';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import toast from 'react-hot-toast';
+import { Loader2 } from 'lucide-react';
+import { PageMeta } from '../components/PageMeta';
+import { AuthScreenShell } from '../components/auth/AuthScreenShell';
+import { AuthFormCard } from '../components/auth/AuthFormCard';
+import { AuthPasswordField } from '../components/auth/AuthFields';
+import { LoginError, resetPasswordWithToken } from '../services/authApi';
+import { shouldAuthAutoFocus } from '../utils/authMobile';
+
+const schema = z
+  .object({
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
+
+type FormValues = z.infer<typeof schema>;
+
+const btnPrimary =
+  'btn-casino-primary flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-base font-bold disabled:cursor-not-allowed disabled:opacity-50';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
 
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { password: '', confirmPassword: '' },
+  });
+
+  // Invalid links land back on the request page rather than rendering a broken form.
   useEffect(() => {
     if (!token) {
       toast.error('Invalid reset link');
-      navigate('/forgot-password');
+      navigate('/forgot-password', { replace: true });
     }
   }, [token, navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!password || !confirmPassword) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters long');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
-      return;
-    }
-
-    setIsLoading(true);
+  const onSubmit = handleSubmit(async ({ password }) => {
+    if (!token) return;
+    setFormError(null);
     try {
-      const response = await axios.post(`${getApiBaseUrl()}/auth/reset-password`, {
-        token,
-        password
-      });
-
-      if (response.data.success) {
-        setIsSuccess(true);
-        toast.success('Password reset successfully!');
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to reset password');
-    } finally {
-      setIsLoading(false);
+      await resetPasswordWithToken({ token, password });
+      setIsSuccess(true);
+      toast.success('Password reset successfully!');
+      setTimeout(() => navigate('/login', { replace: true }), 1500);
+    } catch (e) {
+      const msg =
+        e instanceof LoginError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Failed to reset password';
+      setFormError(msg);
+      toast.error(msg);
     }
-  };
+  });
 
   if (!token) {
     return null;
   }
 
   return (
-    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16 flex items-center justify-center">
-      {/* Casino-themed background elements */}
-      <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-      <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-
-      <div className="relative z-10 w-full max-w-md mx-auto px-4">
-        <div className="casino-bg-secondary rounded-2xl shadow-2xl p-8 casino-border">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-4">
-              <Lock className="w-8 h-8 text-black" />
-            </div>
-            <h1 className="text-2xl font-bold casino-text-primary mb-2">
-              {isSuccess ? 'Password Reset Successful!' : 'Reset Your Password'}
-            </h1>
-            <p className="casino-text-secondary">
-              {isSuccess 
-                ? 'Your password has been reset. Redirecting to login...'
-                : 'Enter your new password below'}
-            </p>
-          </div>
-
+    <>
+      <PageMeta
+        title="Reset Password | Global Ace Gaming"
+        description="Choose a new password for your Global Ace Gaming account."
+        noIndex
+      />
+      <AuthScreenShell
+        showBack
+        title={isSuccess ? 'Password reset' : 'Reset your password'}
+        subtitle={
+          isSuccess
+            ? 'You can now sign in with your new password. Redirecting…'
+            : 'Pick a new password (at least 6 characters).'
+        }
+        backTo="/login"
+      >
+        <AuthFormCard>
           {!isSuccess ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium casino-text-secondary mb-2">
-                  New Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter new password"
-                    className="input-casino w-full px-4 py-3 pr-10 rounded-lg"
-                    required
-                    minLength={6}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 casino-text-secondary hover:casino-text-primary"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
+            <form
+              onSubmit={onSubmit}
+              className="flex flex-col gap-5 sm:gap-4"
+              noValidate
+            >
+              {formError ? (
+                <p
+                  className="rounded-xl border px-3 py-3 text-sm leading-snug"
+                  style={{
+                    borderColor: 'rgba(229, 57, 53, 0.3)',
+                    backgroundColor: 'rgba(229, 57, 53, 0.1)',
+                    color: '#fecaca',
+                  }}
+                  role="alert"
+                >
+                  {formError}
+                </p>
+              ) : null}
 
-              <div>
-                <label className="block text-sm font-medium casino-text-secondary mb-2">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    className="input-casino w-full px-4 py-3 pr-10 rounded-lg"
-                    required
-                    minLength={6}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 casino-text-secondary hover:casino-text-primary"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
+              <AuthPasswordField
+                id="password"
+                label="New password"
+                registration={register('password')}
+                autoComplete="new-password"
+                enterKeyHint="next"
+                placeholder="At least 6 characters"
+                autoFocus={shouldAuthAutoFocus()}
+                error={errors.password?.message}
+              />
+
+              <AuthPasswordField
+                id="confirmPassword"
+                label="Confirm password"
+                registration={register('confirmPassword')}
+                autoComplete="new-password"
+                enterKeyHint="done"
+                placeholder="Re-enter password"
+                error={errors.confirmPassword?.message}
+              />
 
               <button
                 type="submit"
-                disabled={isLoading}
-                className="btn-casino-primary w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={isSubmitting}
+                className={btnPrimary}
               >
-                {isLoading ? (
+                {isSubmitting ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Resetting...
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Resetting…
                   </>
                 ) : (
-                  'Reset Password'
+                  'Reset password'
                 )}
               </button>
             </form>
           ) : (
-            <div className="text-center">
-              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg mb-4">
-                <p className="text-sm casino-text-secondary">
-                  Your password has been successfully reset. You can now login with your new password.
-                </p>
-              </div>
+            <div
+              className="rounded-xl border p-4 text-center text-sm leading-relaxed"
+              style={{
+                borderColor: 'rgba(0, 200, 83, 0.25)',
+                backgroundColor: 'rgba(0, 200, 83, 0.08)',
+                color: 'var(--casino-text-secondary)',
+              }}
+            >
+              Your password has been successfully reset. Taking you to sign in…
             </div>
           )}
 
-          <div className="mt-6 text-center">
+          <p
+            className="mt-6 text-center text-sm"
+            style={{ color: 'var(--casino-text-secondary)' }}
+          >
+            Wrong account?{' '}
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-sm casino-text-secondary hover:casino-text-primary transition-colors"
+              className="font-semibold underline-offset-2 hover:underline"
+              style={{ color: 'var(--casino-highlight-gold)' }}
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Login
+              Back to sign in
             </Link>
-          </div>
-        </div>
-      </div>
-    </div>
+          </p>
+        </AuthFormCard>
+      </AuthScreenShell>
+    </>
   );
 };
 
 export default ResetPassword;
-

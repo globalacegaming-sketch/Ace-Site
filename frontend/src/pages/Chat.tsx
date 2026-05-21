@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Send, Loader2, FileText, MessageCircle, X, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
+import { Send, Loader2, FileText, X, Reply, SmilePlus, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../utils/api';
 import { linkify } from '../utils/linkify';
-import { oneSignalRequestPermission } from '../services/oneSignal';
+import { oneSignalEnsurePushSetup, oneSignalRequestPermission } from '../services/oneSignal';
+import { ChatSignInPrompt } from '../components/chat/ChatSignInPrompt';
+import { ChatSupportNotice } from '../components/chat/ChatSupportNotice';
 
 interface ChatMessage {
   id: string;
@@ -69,7 +71,6 @@ const Chat = () => {
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
@@ -81,33 +82,20 @@ const Chat = () => {
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const [newMsgCount, setNewMsgCount] = useState(0);
   const [isAdminTyping, setIsAdminTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef(0);
-  const initialLoadRef = useRef(true); // Track first message load to force-scroll
 
   const API_BASE_URL = useMemo(() => getApiBaseUrl(), []);
   const WS_BASE_URL = useMemo(() => getWsBaseUrl(), []);
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Check if mobile
+  // Link device + request push when opening chat (critical for offline support alerts)
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  // Request push permission when on Chat page (contextual; no-op if already granted)
-  useEffect(() => {
-    if (isAuthenticated) {
-      oneSignalRequestPermission().catch(() => {});
-    }
-  }, [isAuthenticated]);
+    if (!isAuthenticated || !user?.id) return;
+    const id = String(user.id);
+    void oneSignalEnsurePushSetup(id).then(() => oneSignalRequestPermission(true));
+  }, [isAuthenticated, user?.id]);
 
   // Initialize audio context on user interaction
   useEffect(() => {
@@ -172,24 +160,12 @@ const Chat = () => {
   }, []);
 
 
-  // Check if user is scrolled near the bottom
-  const isNearBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollContainerRef.current;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (!el) return;
+    const run = () => el.scrollTo({ top: el.scrollHeight, behavior });
+    requestAnimationFrame(() => requestAnimationFrame(run));
   }, []);
-
-  // Scroll to bottom of messages
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    setNewMsgCount(0);
-    setShowScrollBottom(false);
-  }, []);
-
-  // Track scroll position
-  const handleScroll = useCallback(() => {
-    setShowScrollBottom(!isNearBottom());
-  }, [isNearBottom]);
 
   // Decode HTML entities (like &#x27; for apostrophe) for display
   // This safely decodes entities that were escaped by the backend sanitization
@@ -250,24 +226,14 @@ const Chat = () => {
 
   useEffect(() => {
     if (messages.length === 0) return;
-    // On initial load, always jump to the latest message
-    if (initialLoadRef.current) {
-      initialLoadRef.current = false;
-      // Use setTimeout to let the DOM render the messages first
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-        setNewMsgCount(0);
-        setShowScrollBottom(false);
-      }, 50);
-      return;
+    scrollToBottom('auto');
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      scrollToBottom('auto');
     }
-    if (isNearBottom()) {
-      scrollToBottom();
-    } else {
-      // If scrolled up and new messages come in, increment the badge
-      setNewMsgCount((c) => c + 1);
-    }
-  }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLoading, messages.length, scrollToBottom]);
 
   // Socket connection
   useEffect(() => {
@@ -462,37 +428,19 @@ const Chat = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center" style={{ 
-        background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-      }}>
-        <div className="text-center px-4">
-          <MessageCircle className="w-16 h-16 mx-auto mb-4 casino-text-secondary" />
-          <h2 className="text-2xl font-bold casino-text-primary mb-2">Please Sign In</h2>
-          <p className="casino-text-secondary">You need to be signed in to use the chat.</p>
-        </div>
+      <div className="cosmic-page-bg flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden">
+        <ChatSignInPrompt />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ 
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-      width: '100%',
-      position: 'absolute',
-      top: '50px',
-      left: 0,
-      right: 0,
-      bottom: isMobile ? 'calc(56px + env(safe-area-inset-bottom, 0px))' : '0'
-    }}>
-      {/* Decorative glowing orbs - static to prevent blinking */}
-      <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-8" style={{ backgroundColor: '#6A1B9A' }}></div>
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-8" style={{ backgroundColor: '#00B0FF' }}></div>
-        <div className="absolute top-1/2 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-6" style={{ backgroundColor: '#FFD700' }}></div>
-      </div>
-
+    <div className="cosmic-page-bg flex h-full min-h-0 w-full flex-col overflow-hidden">
       {/* Scrollable Messages Container */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 relative min-h-0">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-none px-4 py-4 relative"
+      >
         <div className="max-w-4xl mx-auto">
           {isLoading ? (
             <div className="space-y-4 py-4">
@@ -510,9 +458,11 @@ const Chat = () => {
               ))}
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <MessageCircle className="w-16 h-16 casino-text-secondary mb-4 opacity-50" />
-              <p className="casino-text-secondary">No messages yet. Start a conversation!</p>
+            <div className="flex flex-col items-center justify-center py-12 sm:py-16">
+              <ChatSupportNotice />
+              <p className="mt-6 text-center text-sm casino-text-secondary">
+                Send a message below when you are ready — our team will reply as soon as we can.
+              </p>
             </div>
           ) : (
             <>
@@ -806,26 +756,10 @@ const Chat = () => {
             </>
           )}
         </div>
-        {/* Scroll-to-bottom floating button */}
-        <button
-          onClick={scrollToBottom}
-          className={`absolute bottom-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-full shadow-lg transition-all duration-200 hover:opacity-100 hover:scale-105 active:scale-95 ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          style={{ backgroundColor: '#1B1B2F', border: '1px solid #2C2C3A' }}
-          title="Scroll to latest"
-        >
-          <ChevronDown className="w-5 h-5" style={{ color: '#FFD700' }} />
-          {newMsgCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold animate-bounce-gentle">
-              {newMsgCount > 9 ? '9+' : newMsgCount}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* Input Area at Bottom — stays in flex flow, no position:fixed needed */}
-      <div className="casino-bg-secondary border-t casino-border px-4 py-3 flex-shrink-0" style={{ 
-        zIndex: 55
-      }}>
+      <div className="casino-bg-secondary border-t casino-border px-4 py-3 flex-shrink-0">
         {/* Reply preview bar */}
         {replyingTo && (
           <div className={`mb-2 flex items-center gap-2 p-2 rounded-lg border-l-2 ${closingReply ? 'animate-slide-out-right' : 'animate-slide-up'}`} style={{ backgroundColor: 'rgba(255,215,0,0.1)', borderColor: '#FFD700' }}>

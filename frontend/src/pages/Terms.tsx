@@ -1,33 +1,33 @@
 import { Link } from 'react-router-dom';
 import { PageMeta } from '../components/PageMeta';
+import { CosmicCard, PageShell } from '../components/cosmic';
 
 const Terms = () => (
-  <div
-    className="min-h-screen pt-20 pb-16"
-    style={{
-      background:
-        'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-    }}
-  >
+  <>
     <PageMeta
       title="Terms of Service | Global Ace Gaming"
       description="Comprehensive Terms of Service and End User License Agreement for Global Ace Gaming."
     />
 
-    <div className="max-w-4xl mx-auto px-4 sm:px-6">
-      <header className="mb-10 border-b border-gray-700 pb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold casino-text-primary mb-4">
-          Terms of Service
-        </h1>
-        <p className="text-sm casino-text-secondary">
-          Last Revised: <span className="casino-text-primary">February 7, 2026</span>
-        </p>
-      </header>
-
-      <div className="space-y-8 text-sm sm:text-base casino-text-secondary leading-relaxed text-justify">
+    <PageShell
+      title="Terms of Service"
+      subtitle={
+        <>
+          Last Revised:{' '}
+          <span className="text-[color:var(--casino-text-primary)]">February 7, 2026</span>
+        </>
+      }
+      width="4xl"
+      background="subtle"
+    >
+      <CosmicCard
+        variant="solid"
+        padding="lg"
+        className="cosmic-body space-y-8 text-justify"
+      >
         
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             1. Contractual Relationship
           </h2>
           <p>
@@ -40,7 +40,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             2. Eligibility and Jurisdiction
           </h2>
           <p className="mb-4">
@@ -55,7 +55,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             3. Account Registration and Security
           </h2>
           <p>
@@ -69,7 +69,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             4. User Conduct and Prohibited Activities
           </h2>
           <p className="mb-4">
@@ -84,7 +84,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             5. Intellectual Property Rights
           </h2>
           <p>
@@ -97,7 +97,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             6. Disclaimers and "As-Is" Provision
           </h2>
           <p>
@@ -110,7 +110,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             7. Limitation of Liability
           </h2>
           <p>
@@ -122,7 +122,7 @@ const Terms = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             8. Termination
           </h2>
           <p>
@@ -143,17 +143,21 @@ const Terms = () => (
             dispute arising out of these Terms shall be resolved through binding arbitration or in a 
             court of competent jurisdiction.
           </p>
-          <p>src/components/chat/UserChatWidget.tsx(75,10): error TS6133: 'isAnimating' is declared but its value is never read.
-          Error: Command "npm run build" exited with 2
+          <p>
             Questions regarding these Terms? Contact our legal department via our{' '}
-            <Link to="/support" className="text-yellow-400 hover:underline font-semibold">
+            <Link
+              to="/support"
+              className="font-semibold hover:underline"
+              style={{ color: 'var(--casino-highlight-gold)' }}
+            >
               Support Page
-            </Link>.
+            </Link>
+            .
           </p>
         </section>
-      </div>
-    </div>
-  </div>
+      </CosmicCard>
+    </PageShell>
+  </>
 );
 
 export default Terms;

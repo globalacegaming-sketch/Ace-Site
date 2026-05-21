@@ -1,8 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Cookie, X } from 'lucide-react';
 
 const CONSENT_KEY = 'gag-cookie-consent';
+
+const AUTH_ROUTES = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/verify-code',
+];
 
 type ConsentValue = 'accepted' | 'declined' | null;
 
@@ -23,8 +32,14 @@ function getStoredConsent(): ConsentValue {
  */
 export default function CookieConsentBanner() {
   const [visible, setVisible] = useState(false);
+  const location = useLocation();
+  const isAuthRoute = AUTH_ROUTES.some((p) => location.pathname.startsWith(p));
 
   useEffect(() => {
+    if (isAuthRoute) {
+      setVisible(false);
+      return;
+    }
     // Show banner only if user hasn't made a choice yet
     if (getStoredConsent() === null) {
       // Small delay so it doesn't flash on mount
@@ -43,7 +58,7 @@ export default function CookieConsentBanner() {
     setVisible(false);
   }, []);
 
-  if (!visible) return null;
+  if (!visible || isAuthRoute) return null;
 
   return (
     <div

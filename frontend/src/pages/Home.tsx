@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Star, Shield, Zap, Users, Crown, Play } from 'lucide-react';
+import { Shield, Zap, Crown, Play } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { getGamesApiUrl } from '../utils/api';
@@ -7,8 +7,12 @@ import { useAuthStore } from '../stores/authStore';
 import { useMusic } from '../contexts/MusicContext';
 import { trackFeature } from '../services/analyticsTracker';
 import { PageMeta } from '../components/PageMeta';
+import { CosmicPageBg } from '../components/cosmic';
 import { LazyImage } from '../components/LazyImage';
 import { GameCardSkeleton } from '../components/skeletons/GameCardSkeleton';
+import { PlayerReviewsSection } from '../components/home/PlayerReviewsSection';
+import { HomePlatformsSection } from '../components/home/HomePlatformsSection';
+import { HomeSection } from '../components/home/HomeSection';
 
 interface Game {
   kindId: number;
@@ -16,6 +20,33 @@ interface Game {
   gameType: string;
   gameLogo: string;
 }
+
+const WHY_CHOOSE = [
+  {
+    id: '1',
+    title: 'Fast Payouts',
+    description: 'Quick deposits and withdrawals with a smooth, hassle-free process.',
+    icon: Zap,
+  },
+  {
+    id: '2',
+    title: 'Responsive Support',
+    description: 'Help with recharges, withdrawals, bonuses, and account questions when we are open.',
+    icon: Shield,
+  },
+  {
+    id: '3',
+    title: 'Top Platforms',
+    description: 'Access recognized gaming platforms through one simple, user-friendly system.',
+    icon: Crown,
+  },
+  {
+    id: '4',
+    title: 'Trusted Since 2019',
+    description: 'Serving players with reliability, fair play, and long-term customer trust.',
+    icon: Shield,
+  },
+] as const;
 
 const Home = () => {
   const [games, setGames] = useState<Game[]>([]);
@@ -25,7 +56,6 @@ const Home = () => {
   const navigate = useNavigate();
   const { stopMusic } = useMusic();
 
-  // Stop music on home page if user is not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       stopMusic();
@@ -40,464 +70,349 @@ const Home = () => {
     try {
       setLoading(true);
       setError(null);
-      const GAMES_API_URL = getGamesApiUrl();
-      const response = await axios.get(GAMES_API_URL);
+      const response = await axios.get(getGamesApiUrl());
       if (response.data.success) {
-        // Handle the nested data structure: response.data.data.data
         const gamesData = response.data.data?.data || response.data.data;
         setGames(Array.isArray(gamesData) ? gamesData : []);
       } else {
         setError(response.data.message || 'Failed to fetch games');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load games. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Get first 3 games as popular games
   const popularGames = Array.isArray(games) ? games.slice(0, 3) : [];
 
-  // Handler functions
   const handleGetStartedClick = () => {
-    if (isAuthenticated) {
-      navigate('/dashboard');
-    } else {
-      navigate('/register');
-    }
-  };
-
-  const handleLearnMoreClick = () => {
-    navigate('/about-us');
+    navigate(isAuthenticated ? '/dashboard' : '/register');
   };
 
   const handlePlayGame = () => {
     trackFeature('game_launch', 'feature_opened');
     if (isAuthenticated) {
       navigate('/dashboard');
-    } else {
-      const shouldLogin = window.confirm('Please login to play games. Would you like to login now?');
-      if (shouldLogin) {
-        navigate('/login');
-      }
+      return;
+    }
+    if (window.confirm('Please login to play games. Would you like to login now?')) {
+      navigate('/login');
     }
   };
 
-  const features = [
-    {
-      id: '1',
-      title: 'Instant Payouts',
-      description: 'Get your winnings instantly with our lightning-fast payment system',
-      icon: Zap,
-      color: 'text-yellow-500'
-    },
-    {
-      id: '2',
-      title: 'Instant Support',
-      description: 'Our dedicated team is available round the clock to assist you during our Operating Hours',
-      icon: Shield,
-      color: 'text-blue-500'
-    },
-    {
-      id: '3',
-      title: 'Exclusive Games',
-      description: 'Access to premium games not available anywhere else',
-      icon: Crown,
-      color: 'text-purple-500'
-    },
-    {
-      id: '4',
-      title: 'Secure Platform',
-      description: 'Bank-grade security to protect your data and transactions',
-      icon: Shield,
-      color: 'text-green-500'
-    }
-  ];
-
   return (
-    <div className="min-h-screen">
+    <>
       <PageMeta
         title="Online Slots, Fish & Table Games | Play in One Place | Global Ace Gaming"
-        description="Play online slots, online fish games, and online table games in one platform. Global Ace Gaming offers bonuses and support. Desktop and mobile."
+        description="Play online slots, fish, and table games on trusted platforms. Global Ace Gaming — trusted since 2019."
       />
-      {/* Hero Header Section */}
-      <section className="py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 relative overflow-hidden min-h-[70vh] flex items-center justify-center" style={{ 
-        background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 50%, #8B5CF6 100%)'
-      }}>
-        {/* Decorative Circular Elements */}
-        <div className="absolute top-4 right-4 w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 rounded-full opacity-20" style={{ 
-          background: 'radial-gradient(circle, rgba(34, 197, 94, 0.3) 0%, transparent 70%)',
-          filter: 'blur(20px)'
-        }}></div>
-        <div className="absolute bottom-4 left-4 w-24 h-24 sm:w-32 sm:h-32 lg:w-40 lg:h-40 rounded-full opacity-20" style={{ 
-          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.3) 0%, transparent 70%)',
-          filter: 'blur(20px)'
-        }}></div>
-        <div className="absolute top-1/2 right-1/4 w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-full opacity-15" style={{ 
-          background: 'radial-gradient(circle, rgba(34, 197, 94, 0.2) 0%, transparent 70%)',
-          filter: 'blur(15px)'
-        }}></div>
-        <div className="absolute bottom-1/4 left-1/3 w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 rounded-full opacity-15" style={{ 
-          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%)',
-          filter: 'blur(15px)'
-        }}></div>
-        
-        {/* Subtle Bubbles */}
-        <div className="absolute top-20 left-10 sm:top-24 sm:left-16 lg:top-32 lg:left-20 w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-full" style={{ 
-          backgroundColor: 'rgba(255, 255, 255, 0.35)',
-          filter: 'blur(6px)',
-          boxShadow: '0 0 30px rgba(255, 255, 255, 0.25)'
-        }}></div>
-        <div className="absolute top-32 right-12 sm:top-40 sm:right-20 lg:top-48 lg:right-32 w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 rounded-full" style={{ 
-          backgroundColor: 'rgba(147, 197, 253, 0.4)',
-          filter: 'blur(6px)',
-          boxShadow: '0 0 25px rgba(147, 197, 253, 0.3)'
-        }}></div>
-        <div className="absolute bottom-24 right-16 sm:bottom-32 sm:right-24 lg:bottom-40 lg:right-40 w-18 h-18 sm:w-22 sm:h-22 lg:w-28 lg:h-28 rounded-full" style={{ 
-          backgroundColor: 'rgba(196, 181, 253, 0.35)',
-          filter: 'blur(6px)',
-          boxShadow: '0 0 30px rgba(196, 181, 253, 0.25)'
-        }}></div>
-        <div className="absolute bottom-20 left-12 sm:bottom-28 sm:left-20 lg:bottom-36 lg:left-32 w-14 h-14 sm:w-18 sm:h-18 lg:w-22 lg:h-22 rounded-full" style={{ 
-          backgroundColor: 'rgba(255, 255, 255, 0.3)',
-          filter: 'blur(6px)',
-          boxShadow: '0 0 25px rgba(255, 255, 255, 0.2)'
-        }}></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-10 h-10 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full" style={{ 
-          backgroundColor: 'rgba(165, 243, 252, 0.3)',
-          filter: 'blur(6px)',
-          boxShadow: '0 0 20px rgba(165, 243, 252, 0.2)'
-        }}></div>
-        
-        {/* Logo as Background */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-          <img 
-            src="/logo.png" 
-            alt="Global Ace Gaming Logo" 
-            className="w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-[500px] lg:h-[500px] object-contain"
-            style={{
-              opacity: 0.2,
-              filter: 'blur(3px)',
-              maxWidth: '100%',
-              maxHeight: '100%',
-            }}
-            onError={(e) => {
-              // Fallback if logo doesn't load
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-        </div>
-        
-        <div className="max-w-7xl mx-auto relative z-10 w-full">
-          <div className="text-center">
-            {/* Welcome Text with Decorative Line */}
-            <div className="flex items-center justify-center mb-4 sm:mb-6">
-              <div className="h-px w-12 sm:w-20 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent"></div>
-              <p className="mx-4 sm:mx-6 text-base sm:text-lg md:text-xl lg:text-2xl font-light tracking-wider uppercase casino-text-primary" style={{ letterSpacing: '0.2em' }}>
-              Welcome to
-            </p>
-              <div className="h-px w-12 sm:w-20 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent"></div>
+      <div className="w-full min-w-0 bg-[#0A0A0F]">
+        {/* 1 — Full-viewport hero (RSG-style) */}
+        <section className="relative min-h-[min(88dvh,820px)] w-full overflow-hidden sm:min-h-[min(92dvh,880px)]">
+          <CosmicPageBg variant="hero" />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
+            <img
+              src="/logo.png"
+              alt=""
+              aria-hidden="true"
+              width={500}
+              height={500}
+              decoding="async"
+              fetchPriority="high"
+              className="h-64 w-64 max-h-full max-w-full object-contain sm:h-80 sm:w-80 md:h-96 md:w-96 lg:h-[500px] lg:w-[500px]"
+              style={{ opacity: 0.2, filter: 'blur(3px)' }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+
+          <div className="relative z-10 mx-auto flex min-h-[min(88dvh,820px)] w-full max-w-6xl flex-col items-center justify-center px-4 pb-24 pt-16 text-center text-white sm:min-h-[min(92dvh,880px)] sm:px-6 sm:pb-28 sm:pt-20">
+            <div className="mb-4 flex items-center justify-center sm:mb-6">
+              <div className="h-px w-12 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent sm:w-20" />
+              <p className="mx-4 text-base font-light uppercase tracking-[0.2em] text-white/90 sm:mx-6 sm:text-lg md:text-xl lg:text-2xl">
+                Welcome to
+              </p>
+              <div className="h-px w-12 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent sm:w-20" />
             </div>
-            
-            {/* Main Heading - Global Ace Gaming */}
-            <h1 
-              className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-black mb-4 sm:mb-6 md:mb-8 leading-tight"
-              style={{ 
-                color: '#FFD700',
-                fontFamily: 'Inter, system-ui, sans-serif',
-                fontWeight: 900,
+
+            <h1
+              className="max-w-4xl text-[clamp(2.5rem,8vw,5.5rem)] font-black leading-[1.05] text-[#FFD700]"
+              style={{
                 letterSpacing: '-0.02em',
-                textShadow: '3px 3px 6px rgba(0, 0, 0, 0.8)',
+                textShadow: '0 2px 8px rgba(0, 0, 0, 0.85), 0 0 40px rgba(255, 215, 0, 0.15)',
               }}
             >
-              <span className="block" style={{ color: '#FFD700' }}>Global Ace</span>
-              <span className="block bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 bg-clip-text" style={{
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                color: 'transparent',
-                textShadow: 'none',
-                filter: 'drop-shadow(3px 3px 6px rgba(0, 0, 0, 0.8))',
-              }}>Gaming</span>
+              <span className="block">Global Ace</span>
+              <span className="block text-[#FFC107]">Gaming</span>
             </h1>
-            
-            {/* Subtitle with Enhanced Styling */}
-            <div className="inline-block px-6 sm:px-8 py-2 sm:py-3 rounded-full border" style={{
-              background: 'rgba(255, 215, 0, 0.05)',
-              borderColor: 'rgba(255, 215, 0, 0.3)',
-              backdropFilter: 'blur(10px)',
-            }}>
-              <h2 className="text-sm sm:text-base md:text-lg lg:text-xl font-semibold tracking-wider uppercase" style={{ 
-                color: '#FFD700',
-                letterSpacing: '0.15em',
-              }}>
-                America's Ace Gaming
-              </h2>
-            </div>
-            
-            {/* Decorative Bottom Line */}
-            <div className="flex items-center justify-center mt-6 sm:mt-8">
-              <div className="h-px w-24 sm:w-32 md:w-40 bg-gradient-to-r from-transparent via-yellow-500/30 to-transparent"></div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Main content wrapper — consistent dark background */}
-      <div style={{ background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)' }}>
-
-        {/* Decorative orbs */}
-        <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
-          <div className="absolute top-[80vh] left-10 w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: 'var(--casino-accent-purple)' }} />
-          <div className="absolute top-[160vh] right-10 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ backgroundColor: 'var(--casino-accent-blue)' }} />
-        </div>
-
-        {/* 1. Popular Games Section */}
-        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-6 sm:mb-10">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
-                Popular Games
-              </h2>
-              <p className="text-sm sm:text-base casino-text-secondary">
-                Join thousands of players enjoying our most popular titles
+            <div
+              className="mt-5 inline-block rounded-full border px-6 py-2 sm:mt-6 sm:px-8 sm:py-3"
+              style={{
+                background: 'rgba(255, 215, 0, 0.05)',
+                borderColor: 'rgba(255, 215, 0, 0.3)',
+                backdropFilter: 'blur(10px)',
+              }}
+            >
+              <p
+                className="text-sm font-semibold uppercase tracking-[0.15em] sm:text-base md:text-lg"
+                style={{ color: '#FFD700' }}
+              >
+                America&apos;s Ace Gaming
               </p>
             </div>
 
-            {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {Array.from({ length: 3 }, (_, i) => (
-                  <GameCardSkeleton key={i} />
-                ))}
-              </div>
-            ) : error ? (
-              <div className="text-center py-10 sm:py-14">
-                <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-6 sm:p-8 max-w-md mx-auto casino-border border" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
-                  <p className="mb-4 sm:mb-6 text-sm sm:text-base font-semibold" style={{ color: '#E53935' }}>{error}</p>
-                  <button
-                    onClick={fetchGames}
-                    className="py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
-                    style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F' }}
-                  >
-                    Try Again
-                  </button>
-                </div>
-              </div>
-            ) : popularGames.length === 0 ? (
-              <div className="text-center py-10 sm:py-14">
-                <p className="text-sm sm:text-base casino-text-secondary">No games available right now</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {popularGames.map((game) => (
-                  <div
-                    key={game.kindId}
-                    className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border overflow-hidden group transition-all duration-300 hover:border-[#FFD700]/40 hover:scale-[1.03]"
-                    style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-                  >
-                    <div className="relative h-40 sm:h-48 lg:h-52">
-                      <LazyImage src={game.gameLogo} alt={game.gameName} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                        <button
-                          onClick={handlePlayGame}
-                          className="py-2.5 px-5 rounded-lg font-bold text-sm transition-all duration-200 hover:scale-110 active:scale-95 touch-manipulation flex items-center gap-2"
-                          style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F', boxShadow: '0 0 15px rgba(255,215,0,0.3)' }}
-                        >
-                          <Play className="w-4 h-4" />
-                          {isAuthenticated ? 'Play Now' : 'Login to Play'}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="p-3 sm:p-4 lg:p-5">
-                      <h3 className="text-sm sm:text-base font-bold casino-text-primary mb-1">{game.gameName}</h3>
-                      <p className="text-xs casino-text-secondary mb-2 sm:mb-3">{game.gameType}</p>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <Star className="w-3.5 h-3.5 fill-current" style={{ color: '#FFD700' }} />
-                          <span className="font-semibold text-xs casino-text-primary">4.8</span>
-                        </div>
-                        <div className="flex items-center gap-1 casino-text-secondary">
-                          <Users className="w-3.5 h-3.5" />
-                          <span className="text-xs">Live</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="text-center mt-6 sm:mt-8">
-              <Link
-                to="/games"
-                className="inline-block py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
-                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F', boxShadow: '0 0 15px rgba(255,215,0,0.25)' }}
+            <div className="mt-8 flex w-full max-w-md flex-col items-stretch gap-3 sm:mt-10 sm:max-w-none sm:flex-row sm:items-center sm:justify-center sm:gap-4">
+              <button
+                type="button"
+                onClick={handleGetStartedClick}
+                className="min-h-[48px] rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wide transition active:scale-95 sm:text-base"
+                style={{
+                  background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                  color: '#0A0A0F',
+                  boxShadow: '0 0 15px rgba(255,215,0,0.25)',
+                }}
               >
-                View All Games
-              </Link>
+                Get Started
+              </button>
+              <a
+                href="#platforms"
+                className="inline-flex min-h-[48px] items-center justify-center rounded-full border-2 border-[#FFD700]/40 bg-white/5 px-8 py-3.5 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-white/10 active:scale-95 sm:text-base"
+              >
+                See Platforms
+              </a>
+            </div>
+
+            <a
+              href="#reviews"
+              className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-white/50 transition hover:text-white/80 sm:bottom-8"
+              aria-label="Scroll to reviews"
+            >
+              <span className="text-[10px] uppercase tracking-widest">Scroll</span>
+              <span className="inline-block animate-bounce text-lg leading-none" aria-hidden>
+                ↓
+              </span>
+            </a>
+          </div>
+
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-12 bg-gradient-to-t from-[#0A0A0F] to-transparent sm:h-16"
+            aria-hidden
+          />
+        </section>
+        {/* 2 — Player reviews (RSG-style carousel) */}
+        <PlayerReviewsSection />
+
+        {/* 3 — Operating hours */}
+        <HomeSection
+          id="hours"
+          title="Operating Hours"
+          subtitle="Live support and play availability (CST)"
+        >
+          <div className="mx-auto grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+            <div
+              className="flex items-center gap-3 rounded-xl border p-4 sm:gap-4 sm:rounded-2xl sm:p-6"
+              style={{ borderColor: 'rgba(34,197,94,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+            >
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-12 sm:w-12"
+                style={{ background: 'rgba(34,197,94,0.15)' }}
+              >
+                <div className="h-3 w-3 rounded-full bg-green-500 sm:h-3.5 sm:w-3.5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold casino-text-primary sm:text-base">Open</p>
+                <p className="text-xs casino-text-secondary sm:text-sm">
+                  6:00 PM – 12:00 PM (CST) next day
+                </p>
+              </div>
+            </div>
+            <div
+              className="flex items-center gap-3 rounded-xl border p-4 sm:gap-4 sm:rounded-2xl sm:p-6"
+              style={{ borderColor: 'rgba(239,68,68,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+            >
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-12 sm:w-12"
+                style={{ background: 'rgba(239,68,68,0.15)' }}
+              >
+                <div className="h-3 w-3 rounded-full bg-red-500 sm:h-3.5 sm:w-3.5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold casino-text-primary sm:text-base">Closed</p>
+                <p className="text-xs casino-text-secondary sm:text-sm">12:00 PM – 6:00 PM (CST)</p>
+              </div>
             </div>
           </div>
-        </section>
+          <p className="mx-auto mt-5 max-w-xl text-center text-xs italic leading-relaxed casino-text-secondary sm:text-sm">
+            Chat and support are available during open hours. We appreciate your patience during
+            closed hours.
+          </p>
+        </HomeSection>
 
-        {/* 2. CTA Section — Ready to Start */}
-        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
-          <div className="max-w-4xl mx-auto">
-            <div
-              className="rounded-xl sm:rounded-2xl p-6 sm:p-10 text-center"
+        {/* 4 — Platforms */}
+        <HomePlatformsSection />
+
+        {/* 5 — Popular games */}
+        <HomeSection
+          title="Popular Games"
+          subtitle="Try our most played titles—sign up to play for real"
+        >
+          {loading ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+              {Array.from({ length: 3 }, (_, i) => (
+                <GameCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="py-10 text-center">
+              <p className="mb-4 text-sm font-semibold sm:text-base" style={{ color: '#E53935' }}>
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={fetchGames}
+                className="rounded-lg px-6 py-2.5 text-sm font-bold"
+                style={{
+                  background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                  color: '#0A0A0F',
+                }}
+              >
+                Try Again
+              </button>
+            </div>
+          ) : popularGames.length === 0 ? (
+            <p className="text-center text-sm casino-text-secondary">No games available right now.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+              {popularGames.map((game) => (
+                <div
+                  key={game.kindId}
+                  className="group overflow-hidden rounded-xl border casino-border transition hover:border-[#FFD700]/40 sm:rounded-2xl"
+                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden sm:h-48">
+                    <LazyImage src={game.gameLogo} alt={game.gameName} />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/40">
+                      <button
+                        type="button"
+                        onClick={handlePlayGame}
+                        className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold opacity-0 transition group-hover:opacity-100"
+                        style={{
+                          background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                          color: '#0A0A0F',
+                        }}
+                      >
+                        <Play className="h-4 w-4" />
+                        {isAuthenticated ? 'Play' : 'Login to Play'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-3 sm:p-4">
+                    <h3 className="text-sm font-bold casino-text-primary sm:text-base">{game.gameName}</h3>
+                    <p className="text-xs casino-text-secondary">{game.gameType}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-6 text-center sm:mt-8">
+            <Link
+              to="/games"
+              className="inline-block rounded-lg px-6 py-2.5 text-sm font-bold transition active:scale-95 sm:py-3 sm:text-base"
               style={{
-                background: 'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(139,0,0,0.2) 50%, rgba(255,215,0,0.1) 100%)',
+                background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                color: '#0A0A0F',
+                boxShadow: '0 0 15px rgba(255,215,0,0.25)',
+              }}
+            >
+              View All Games
+            </Link>
+          </div>
+        </HomeSection>
+
+        {/* 6 — Why choose us */}
+        <HomeSection
+          title="Why Choose Global Ace Gaming?"
+          subtitle="Fast, secure, and built around our player community"
+        >
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 lg:gap-6">
+            {WHY_CHOOSE.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <div
+                  key={feature.id}
+                  className="rounded-xl border casino-border p-4 text-center sm:rounded-2xl sm:p-6"
+                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                >
+                  <div
+                    className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full sm:mb-4 sm:h-14 sm:w-14"
+                    style={{
+                      background:
+                        'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))',
+                      border: '1px solid rgba(255,215,0,0.2)',
+                    }}
+                  >
+                    <Icon className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: '#FFD700' }} />
+                  </div>
+                  <h3 className="mb-1 text-sm font-bold casino-text-primary sm:mb-2 sm:text-base">
+                    {feature.title}
+                  </h3>
+                  <p className="text-[11px] leading-relaxed casino-text-secondary sm:text-xs">
+                    {feature.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </HomeSection>
+
+        {/* 7 — Final CTA */}
+        <section className="relative z-10 border-t border-white/[0.06] px-3 py-12 sm:px-4 sm:py-16 lg:px-8 lg:py-20">
+          <div className="mx-auto max-w-4xl">
+            <div
+              className="rounded-2xl p-6 text-center sm:rounded-3xl sm:p-10"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(139,0,0,0.2) 50%, rgba(255,215,0,0.1) 100%)',
                 border: '1px solid rgba(255,215,0,0.2)',
                 boxShadow: '0 4px 30px rgba(0,0,0,0.3)',
               }}
             >
-              <h2 className="text-xl sm:text-3xl font-bold casino-text-primary mb-3 sm:mb-4">
+              <h2 className="text-xl font-bold casino-text-primary sm:text-3xl">
                 Ready to Start Your Gaming Journey?
               </h2>
-              <p className="text-sm sm:text-base casino-text-secondary mb-5 sm:mb-8 max-w-2xl mx-auto">
-                Join thousands of players and experience the ultimate gaming platform
+              <p className="mx-auto mt-3 max-w-xl text-sm casino-text-secondary sm:mt-4 sm:text-base">
+                Create your free account, pick a platform, and join players who trust Global Ace
+                Gaming since 2019.
               </p>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+              <div className="mt-6 flex flex-col justify-center gap-3 sm:mt-8 sm:flex-row">
                 <button
+                  type="button"
                   onClick={handleGetStartedClick}
-                  className="py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
-                  style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F', boxShadow: '0 0 15px rgba(255,215,0,0.25)' }}
+                  className="min-h-[48px] rounded-lg px-8 py-3 text-sm font-bold transition active:scale-95 sm:text-base"
+                  style={{
+                    background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                    color: '#0A0A0F',
+                    boxShadow: '0 0 15px rgba(255,215,0,0.25)',
+                  }}
                 >
-                  {isAuthenticated ? 'Go to Dashboard' : 'Get Started Now'}
+                  Get Started Now
                 </button>
-                <button
-                  onClick={handleLearnMoreClick}
-                  className="py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation casino-text-primary"
-                  style={{ border: '2px solid rgba(255,215,0,0.4)', background: 'rgba(255,255,255,0.04)' }}
-                >
-                  Learn More
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 3. Operating Hours Section */}
-        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-6 sm:mb-8">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
-                Operating Hours
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
-              {/* Open */}
-              <div
-                className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 flex items-center gap-3 sm:gap-4"
-                style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)', borderColor: 'rgba(34,197,94,0.25)' }}
-              >
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.15)' }}>
-                  <div className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-green-500" />
-                </div>
-                <div>
-                  <p className="text-sm sm:text-base font-semibold casino-text-primary">Open Hours</p>
-                  <p className="text-xs sm:text-sm casino-text-secondary">6:00 PM – 12:00 PM (CST) next day</p>
-                </div>
-              </div>
-
-              {/* Closed */}
-              <div
-                className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 flex items-center gap-3 sm:gap-4"
-                style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)', borderColor: 'rgba(239,68,68,0.25)' }}
-              >
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.15)' }}>
-                  <div className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-red-500" />
-                </div>
-                <div>
-                  <p className="text-sm sm:text-base font-semibold casino-text-primary">Closed Hours</p>
-                  <p className="text-xs sm:text-sm casino-text-secondary">12:00 PM – 6:00 PM (CST)</p>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-center text-xs sm:text-sm casino-text-secondary italic max-w-xl mx-auto leading-relaxed">
-              We sincerely apologize for any inconvenience this may cause and truly appreciate your patience, understanding, and continued support.
-            </p>
-          </div>
-        </section>
-
-        {/* 4. Why Choose — Features Section */}
-        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-6 sm:mb-10">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
-                Why Choose Global Ace Gaming?
-              </h2>
-              <p className="text-sm sm:text-base casino-text-secondary max-w-3xl mx-auto">
-                Experience gaming excellence with our cutting-edge platform designed for champions
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-              {features.map((feature) => (
-                <div
-                  key={feature.id}
-                  className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 text-center transition-all duration-300 hover:border-[#FFD700]/40"
-                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-                >
-                  <div
-                    className="w-11 h-11 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
-                    style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))', border: '1px solid rgba(255,215,0,0.2)' }}
-                  >
-                    <feature.icon className="w-5 h-5 sm:w-7 sm:h-7" style={{ color: '#FFD700' }} />
-                  </div>
-                  <h3 className="text-sm sm:text-base font-bold casino-text-primary mb-1 sm:mb-2">{feature.title}</h3>
-                  <p className="text-[11px] sm:text-xs casino-text-secondary leading-relaxed">{feature.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* 5. Game Categories — SEO block (last) */}
-        <section className="relative z-10 py-10 sm:py-14 lg:py-16 px-3 sm:px-4 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-6 sm:mb-10">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
-                Play Online Slots, Fish & Table Games in One Place
-              </h2>
-              <p className="text-sm sm:text-base casino-text-secondary max-w-3xl mx-auto">
-                Global Ace Gaming gives you slots, fish-style games, table games, and sports in a single platform. Create an account, pick a category, and start playing.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-              {[
-                { title: 'Online Slots', desc: 'Video slot-style games, multiple themes and features.', icon: '🎰' },
-                { title: 'Fish Games', desc: 'Arcade-style games similar to Milkyway, Orionstars, Juwa & more.', icon: '🐟' },
-                { title: 'Table Games', desc: 'Live and table-style games for classic casino fans.', icon: '🃏' },
-                { title: 'Sports', desc: 'Sports-themed options in the same lobby.', icon: '🏆' },
-              ].map((cat, i) => (
                 <Link
-                  key={i}
-                  to="/games"
-                  className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-5 text-center transition-all duration-300 hover:border-[#FFD700]/40 hover:scale-[1.03] group"
-                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                  to="/about-us"
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-lg border-2 px-8 py-3 text-sm font-semibold casino-text-primary transition active:scale-95 sm:text-base"
+                  style={{ borderColor: 'rgba(255,215,0,0.4)', background: 'rgba(255,255,255,0.04)' }}
                 >
-                  <div className="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform duration-300">{cat.icon}</div>
-                  <h3 className="text-sm sm:text-base font-bold casino-text-primary mb-1">{cat.title}</h3>
-                  <p className="text-[11px] sm:text-xs casino-text-secondary leading-relaxed">{cat.desc}</p>
+                  About Us
                 </Link>
-              ))}
-            </div>
-
-            <div className="flex justify-center gap-3 mt-6 sm:mt-8 text-xs sm:text-sm casino-text-secondary">
-              <span>See <Link to="/games" className="font-semibold hover:underline" style={{ color: '#FFD700' }}>Games</Link></span>
-              <span className="opacity-30">|</span>
-              <span>Check <Link to="/bonuses" className="font-semibold hover:underline" style={{ color: '#FFD700' }}>Bonuses</Link></span>
-              <span className="opacity-30">|</span>
-              <span>Need help? <Link to="/support" className="font-semibold hover:underline" style={{ color: '#FFD700' }}>Support</Link></span>
+              </div>
             </div>
           </div>
         </section>
-
       </div>
-    </div>
+    </>
   );
 };
 

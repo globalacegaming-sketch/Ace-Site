@@ -15,7 +15,13 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    if (req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads')) return true;
+    if (
+      req.path === '/health' ||
+      req.path === '/api/health' ||
+      req.path === '/api/health/integrations' ||
+      req.path === '/' ||
+      req.path.startsWith('/uploads')
+    ) return true;
     // Authenticated API calls (chat, loan, admin) have their own per-user limiters;
     // skip the per-IP general limiter for them to prevent shared-IP exhaustion.
     const hasAuth = !!req.headers.authorization;
@@ -41,7 +47,13 @@ export const speedLimiter = slowDown({
   delayAfter: DELAY_AFTER,
   delayMs: (used) => Math.min(MAX_DELAY_MS, Math.max(0, (used - DELAY_AFTER) * DELAY_MS_PER_HIT)),
   skip: (req) => {
-    if (req.path === '/health' || req.path === '/' || req.path.startsWith('/uploads')) return true;
+    if (
+      req.path === '/health' ||
+      req.path === '/api/health' ||
+      req.path === '/api/health/integrations' ||
+      req.path === '/' ||
+      req.path.startsWith('/uploads')
+    ) return true;
     const hasAuth = !!req.headers.authorization;
     if (hasAuth && (
       req.path.startsWith('/api/chat') ||

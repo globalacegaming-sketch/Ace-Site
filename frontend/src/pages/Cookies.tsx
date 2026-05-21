@@ -1,33 +1,29 @@
 import { Link } from 'react-router-dom';
 import { PageMeta } from '../components/PageMeta';
+import { CosmicCard, PageShell } from '../components/cosmic';
 
 const Cookies = () => (
-  <div
-    className="min-h-screen pt-20 pb-16"
-    style={{
-      background:
-        'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-    }}
-  >
+  <>
     <PageMeta
       title="Cookie Policy | Global Ace Gaming"
       description="Detailed Cookie Policy and Tracking Technologies Disclosure for Global Ace Gaming."
     />
 
-    <div className="max-w-4xl mx-auto px-4 sm:px-6">
-      <header className="mb-10 border-b border-gray-700 pb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold casino-text-primary mb-4">
-          Cookie Policy
-        </h1>
-        <p className="text-sm casino-text-secondary">
-          Effective Date: <span className="casino-text-primary">February 7, 2026</span>
-        </p>
-      </header>
-
-      <div className="space-y-8 text-sm sm:text-base casino-text-secondary leading-relaxed text-justify">
+    <PageShell
+      title="Cookie Policy"
+      subtitle={
+        <>
+          Effective Date:{' '}
+          <span className="text-[color:var(--casino-text-primary)]">February 7, 2026</span>
+        </>
+      }
+      width="4xl"
+      background="subtle"
+    >
+      <CosmicCard variant="solid" padding="lg" className="cosmic-body space-y-8 text-justify">
         
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             1. Introduction and Scope
           </h2>
           <p>
@@ -40,7 +36,7 @@ const Cookies = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             2. Definition of Cookies
           </h2>
           <p>
@@ -53,7 +49,7 @@ const Cookies = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             3. Categories of Cookies Used
           </h2>
           <div className="space-y-4">
@@ -61,7 +57,7 @@ const Cookies = () => (
               <h3 className="font-semibold casino-text-primary">3.1 Strictly Necessary Cookies</h3>
               <p>
                 These are essential for the technical operation of our Platform. Without these, services you 
-                have requested (such as secure login, gameplay persistence, and wallet transactions) cannot 
+                have requested (such as secure login, gameplay persistence, and account features) cannot 
                 be provided. These cookies do not require user consent under most data protection laws.
               </p>
             </div>
@@ -87,7 +83,7 @@ const Cookies = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             4. Third-Party Tracking
           </h2>
           <p>
@@ -99,7 +95,7 @@ const Cookies = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             5. Consent and User Control
           </h2>
           <p className="mb-4">
@@ -120,7 +116,7 @@ const Cookies = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             6. Data Retention
           </h2>
           <p>
@@ -132,7 +128,7 @@ const Cookies = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             7. Amendments to This Policy
           </h2>
           <p>
@@ -149,15 +145,19 @@ const Cookies = () => (
           <p className="text-sm">
             For further information regarding our use of cookies or to exercise your data rights, 
             please reach out to our Compliance Team via our{' '}
-            <Link to="/support" className="text-yellow-400 hover:underline font-semibold">
+            <Link
+              to="/support"
+              className="font-semibold hover:underline"
+              style={{ color: 'var(--casino-highlight-gold)' }}
+            >
               Support Center
             </Link> 
             .
           </p>
         </section>
-      </div>
-    </div>
-  </div>
+      </CosmicCard>
+    </PageShell>
+  </>
 );
 
 export default Cookies;

@@ -48,6 +48,7 @@ import userNoteRoutes from './routes/userNotes';
 import loanRoutes from './routes/loan';
 import agentLoanRoutes from './routes/agentLoan';
 import analyticsRoutes from './routes/analytics';
+import healthRoutes from './routes/health';
 import loanCronService from './services/loanCronService';
 
 // Import Agent model for seeding
@@ -286,6 +287,10 @@ app.use(requestIdMiddleware);
 // Webhooks must be mounted before express.json so NowPayments IPN gets raw body for signature verification
 app.use('/api/webhooks', webhooksRoutes);
 
+// Health endpoints are mounted early so they bypass the JSON parser, session
+// middleware, and rate limiters — keeping uptime probes fast and side-effect free.
+app.use('/api', healthRoutes);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -294,7 +299,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // For paths that never use sessions (health checks, static files, root),
 // we skip it entirely to avoid the MongoDB round-trip.
 app.use((req, res, next) => {
-  if (req.path === '/' || req.path === '/health' || req.path.startsWith('/uploads')) {
+  if (
+    req.path === '/' ||
+    req.path === '/health' ||
+    req.path === '/api/health' ||
+    req.path === '/api/health/integrations' ||
+    req.path.startsWith('/uploads')
+  ) {
     return next();
   }
   return sessionMiddleware(req, res, next);

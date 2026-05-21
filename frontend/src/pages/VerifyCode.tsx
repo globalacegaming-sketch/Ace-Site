@@ -1,40 +1,61 @@
-import { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
-import axios from 'axios';
-import { getApiBaseUrl } from '../utils/api';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Loader2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { trackOnboarding } from '../services/analyticsTracker';
+import { PageMeta } from '../components/PageMeta';
+import {
+  scrollAuthFieldIntoView,
+  shouldAuthAutoFocus,
+} from '../utils/authMobile';
+import { AuthScreenShell } from '../components/auth/AuthScreenShell';
+import { AuthFormCard } from '../components/auth/AuthFormCard';
+import {
+  LoginError,
+  fetchMe,
+  resendVerificationCode,
+  verifyEmailWithCode,
+} from '../services/authApi';
 
 const RESEND_COOLDOWN = 60; // seconds
+
+const btnPrimary =
+  'btn-casino-primary flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-base font-bold disabled:cursor-not-allowed disabled:opacity-50';
 
 const VerifyCode = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, setUser, token } = useAuthStore();
-  
-  // Get email from location state or user store
-  const email = (location.state?.email as string) || user?.email || '';
-  
+
+  // Resolve the email we're verifying, with fallback chain:
+  // navigation state -> currently signed-in user.
+  const email =
+    (location.state as { email?: string } | null)?.email ?? user?.email ?? '';
+
   const [codes, setCodes] = useState(['', '', '', '', '', '']);
+  const [formError, setFormError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // First-input autofocus + analytics on mount.
   useEffect(() => {
-    if (inputRefs.current[0]) {
-      inputRefs.current[0].focus();
+    if (shouldAuthAutoFocus()) {
+      inputRefs.current[0]?.focus();
     }
     trackOnboarding('onboarding_step_viewed', { step: 'email_verification' });
     return () => {
       if (!window.location.pathname.includes('dashboard')) {
-        trackOnboarding('onboarding_abandoned', { step: 'email_verification' });
+        trackOnboarding('onboarding_abandoned', {
+          step: 'email_verification',
+        });
       }
     };
   }, []);
 
+  // No email -> nothing to verify; bounce back to register.
   useEffect(() => {
     if (!email) {
       toast.error('Email not found. Please register again.');
@@ -42,35 +63,32 @@ const VerifyCode = () => {
     }
   }, [email, navigate]);
 
-  // Countdown timer
+  // Resend cooldown countdown.
   useEffect(() => {
     if (cooldown <= 0) return;
-    const id = setInterval(() => setCooldown((c) => c - 1), 1000);
-    return () => clearInterval(id);
+    const id = window.setInterval(() => setCooldown((c) => c - 1), 1000);
+    return () => window.clearInterval(id);
   }, [cooldown]);
 
   const handleCodeChange = (index: number, value: string) => {
-    // Only allow numbers
-    if (value && !/^\d+$/.test(value)) {
-      return;
-    }
+    if (value && !/^\d+$/.test(value)) return;
 
-    const newCodes = [...codes];
-    newCodes[index] = value.slice(-1); // Only take the last character
-    setCodes(newCodes);
+    const next = [...codes];
+    next[index] = value.slice(-1);
+    setCodes(next);
 
-    // Auto-focus next input
     if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
-
-    // Auto-submit when all 6 digits are entered
-    if (newCodes.every(code => code !== '') && value) {
-      handleVerify(newCodes.join(''));
+    if (next.every((c) => c !== '') && value) {
+      void handleVerify(next.join(''));
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
     if (e.key === 'Backspace' && !codes[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
@@ -78,70 +96,55 @@ const VerifyCode = () => {
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').slice(0, 6);
-    
-    if (/^\d+$/.test(pastedData)) {
-      const newCodes = pastedData.split('').slice(0, 6);
-      const updatedCodes = [...codes];
-      
-      for (let i = 0; i < 6; i++) {
-        updatedCodes[i] = newCodes[i] || '';
-      }
-      
-      setCodes(updatedCodes);
-      
-      // Focus the last filled input or submit if all filled
-      const lastFilledIndex = updatedCodes.findIndex(code => !code);
-      if (lastFilledIndex === -1) {
-        handleVerify(updatedCodes.join(''));
-      } else {
-        inputRefs.current[lastFilledIndex]?.focus();
-      }
+    const pasted = e.clipboardData.getData('text').slice(0, 6);
+    if (!/^\d+$/.test(pasted)) return;
+
+    const next = [...codes];
+    const digits = pasted.split('').slice(0, 6);
+    for (let i = 0; i < 6; i++) next[i] = digits[i] ?? '';
+    setCodes(next);
+
+    const firstEmpty = next.findIndex((c) => !c);
+    if (firstEmpty === -1) {
+      void handleVerify(next.join(''));
+    } else {
+      inputRefs.current[firstEmpty]?.focus();
     }
   };
 
-  const handleVerify = async (code?: string) => {
-    const verificationCode = code || codes.join('');
-    
-    if (verificationCode.length !== 6) {
-      toast.error('Please enter the complete 6-digit code');
+  const handleVerify = async (codeOverride?: string) => {
+    const code = codeOverride ?? codes.join('');
+    if (code.length !== 6) {
+      const msg = 'Please enter the complete 6-digit code';
+      setFormError(msg);
+      toast.error(msg);
       return;
     }
-
+    setFormError(null);
     setIsLoading(true);
     try {
-      const response = await axios.post(`${getApiBaseUrl()}/auth/verify-email`, {
-        code: verificationCode,
-        email: email
-      });
+      await verifyEmailWithCode({ email, code });
+      trackOnboarding('onboarding_completed', { step: 'email_verification' });
+      toast.success('Email verified successfully!');
 
-      if (response.data.success) {
-        trackOnboarding('onboarding_completed', { step: 'email_verification' });
-        toast.success('Email verified successfully!');
-        
-        // Update user in store if logged in
-        if (token) {
-          try {
-            const userResponse = await axios.get(`${getApiBaseUrl()}/auth/me`, {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            if (userResponse.data.success) {
-              setUser(userResponse.data.data.user);
-            }
-          } catch (e) {
-            // User might not be logged in, that's okay
-          }
+      if (token) {
+        try {
+          const fresh = await fetchMe(token);
+          setUser(fresh);
+        } catch {
+          /* token might have expired — that's okay */
         }
-        
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 1000);
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Invalid verification code');
-      // Clear codes on error
+      setTimeout(() => navigate('/dashboard'), 800);
+    } catch (e) {
+      const msg =
+        e instanceof LoginError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Invalid verification code';
+      setFormError(msg);
+      toast.error(msg);
       setCodes(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -153,32 +156,21 @@ const VerifyCode = () => {
     if (cooldown > 0) return;
     setIsResending(true);
     try {
-      if (token) {
-        const response = await axios.post(
-          `${getApiBaseUrl()}/auth/resend-verification`,
-          {},
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        );
-        if (response.data.success) {
-          toast.success('Verification code sent! Please check your email.');
-          setCodes(['', '', '', '', '', '']);
-          inputRefs.current[0]?.focus();
-          setCooldown(RESEND_COOLDOWN);
-        }
-      } else {
-        const response = await axios.post(
-          `${getApiBaseUrl()}/auth/resend-verification-code`,
-          { email }
-        );
-        if (response.data.success) {
-          toast.success('Verification code sent! Please check your email.');
-          setCodes(['', '', '', '', '', '']);
-          inputRefs.current[0]?.focus();
-          setCooldown(RESEND_COOLDOWN);
-        }
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to resend code');
+      await resendVerificationCode(
+        token ? { token } : { email },
+      );
+      toast.success('Verification code sent! Check your inbox.');
+      setCodes(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
+      setCooldown(RESEND_COOLDOWN);
+    } catch (e) {
+      const msg =
+        e instanceof LoginError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Failed to resend code';
+      toast.error(msg);
     } finally {
       setIsResending(false);
     }
@@ -189,91 +181,127 @@ const VerifyCode = () => {
   }
 
   return (
-    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16 flex items-center justify-center">
-      {/* Casino-themed background elements */}
-      <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-      <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
+    <>
+      <PageMeta
+        title="Verify Code | Global Ace Gaming"
+        description="Enter the 6-digit verification code we emailed you to activate your Global Ace Gaming account."
+        noIndex
+      />
+      <AuthScreenShell
+        showBack
+        title="Verify your email"
+        subtitle={
+          <>
+            We sent a 6-digit code to{' '}
+            <span
+              className="font-semibold"
+              style={{ color: 'var(--casino-text-primary)' }}
+            >
+              {email}
+            </span>
+            . Enter it below to finish setting up.
+          </>
+        }
+        backTo="/login"
+      >
+        <AuthFormCard>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleVerify();
+            }}
+            className="flex flex-col gap-6"
+          >
+            {formError ? (
+              <p
+                className="rounded-xl border px-3 py-3 text-sm leading-snug"
+                style={{
+                  borderColor: 'rgba(229, 57, 53, 0.3)',
+                  backgroundColor: 'rgba(229, 57, 53, 0.1)',
+                  color: '#fecaca',
+                }}
+                role="alert"
+              >
+                {formError}
+              </p>
+            ) : null}
 
-      <div className="relative z-10 w-full max-w-md mx-auto px-4">
-        <div className="casino-bg-secondary rounded-2xl shadow-2xl p-8 casino-border">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-4">
-              <Mail className="w-8 h-8 text-black" />
-            </div>
-            <h1 className="text-2xl font-bold casino-text-primary mb-2">Verify Your Email</h1>
-            <p className="casino-text-secondary text-sm mb-2">
-              We've sent a 6-digit verification code to
-            </p>
-            <p className="font-semibold casino-text-primary">{email}</p>
-            <p className="casino-text-secondary text-xs mt-2">
-              Please enter the code below
-            </p>
-          </div>
-
-          <form onSubmit={(e) => { e.preventDefault(); handleVerify(); }} className="space-y-6">
-            <div className="flex justify-center gap-2 sm:gap-3">
+            <div
+              className="flex justify-center gap-2 sm:gap-3"
+              onPaste={handlePaste}
+            >
               {codes.map((code, index) => (
                 <input
                   key={index}
-                  ref={(el) => { inputRefs.current[index] = el; }}
+                  ref={(el) => {
+                    inputRefs.current[index] = el;
+                  }}
                   type="text"
                   inputMode="numeric"
+                  pattern="\d*"
+                  autoComplete={index === 0 ? 'one-time-code' : 'off'}
                   maxLength={1}
                   value={code}
                   onChange={(e) => handleCodeChange(index, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(index, e)}
-                  onPaste={index === 0 ? handlePaste : undefined}
-                  className="w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold casino-bg-primary casino-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 casino-text-primary"
+                  className="h-14 w-12 rounded-xl border bg-black/35 text-center text-base font-bold outline-none transition focus:ring-2 sm:h-16 sm:w-14 sm:text-2xl"
+                  onFocus={(e) => scrollAuthFieldIntoView(e.currentTarget)}
+                  style={{
+                    borderColor: 'rgba(255, 255, 255, 0.12)',
+                    color: 'var(--casino-text-primary)',
+                  }}
                   disabled={isLoading}
+                  aria-label={`Digit ${index + 1}`}
                 />
               ))}
             </div>
 
             <button
               type="submit"
-              disabled={isLoading || codes.some(code => !code)}
-              className="btn-casino-primary w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={isLoading || codes.some((c) => !c)}
+              className={btnPrimary}
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Verifying...
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Verifying…
                 </>
               ) : (
-                'Verify Email'
+                'Verify email'
               )}
             </button>
           </form>
 
-          <div className="mt-6 text-center space-y-3">
+          <div className="mt-6 flex flex-col items-center gap-3 text-center">
             <button
+              type="button"
               onClick={handleResend}
               disabled={isResending || cooldown > 0}
-              className="text-sm casino-text-secondary hover:casino-text-primary transition-colors flex items-center justify-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+              className="inline-flex items-center justify-center gap-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ color: 'var(--casino-text-secondary)' }}
             >
-              <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`h-4 w-4 ${isResending ? 'animate-spin' : ''}`}
+              />
               {isResending
-                ? 'Sending...'
+                ? 'Sending…'
                 : cooldown > 0
                   ? `Resend in ${cooldown}s`
-                  : "Didn't receive code? Resend"}
+                  : "Didn't receive a code? Resend"}
             </button>
-
-            <div className="pt-4 border-t casino-border">
-              <button
-                onClick={() => navigate('/login')}
-                className="inline-flex items-center gap-2 text-sm casino-text-secondary hover:casino-text-primary transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Login
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="text-sm underline-offset-2 hover:underline"
+              style={{ color: 'var(--casino-highlight-gold)' }}
+            >
+              Back to sign in
+            </button>
           </div>
-        </div>
-      </div>
-    </div>
+        </AuthFormCard>
+      </AuthScreenShell>
+    </>
   );
 };
 
 export default VerifyCode;
-

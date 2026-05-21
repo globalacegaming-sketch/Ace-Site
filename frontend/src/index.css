@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Inter font is loaded asynchronously from index.html (preload + non-blocking <link>).
+   Importing it from CSS would block first paint, so we no longer @import it here. */
 /* stylelint-disable-next-line at-rule-no-unknown */
 @tailwind base;
 /* stylelint-disable-next-line at-rule-no-unknown */
@@ -11,17 +12,38 @@
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    height: 100%;
-    height: -webkit-fill-available;
+    overflow-x: clip;
+    overflow-y: scroll;
   }
-  
+
   body {
     background-color: var(--casino-primary-dark);
     color: var(--casino-text-primary);
     min-height: 100%;
     min-height: 100dvh;
     min-height: -webkit-fill-available;
-    overscroll-behavior-y: none;
+    overflow-x: clip;
+    /* Do not set overflow-y here — let the document scroll on html (Chrome-safe). */
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  /* Inputs at <16px trigger iOS Safari auto-zoom on focus, which makes the
+     viewport jump and the keyboard cover the field. 16px is the safe minimum. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  @media (min-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: 14px;
+    }
   }
 }
 
@@ -39,9 +61,134 @@
   --casino-card-border: #2C2C3A;
   --casino-shadow-glow: rgba(255, 215, 0, 0.3);
   --casino-glass-overlay: rgba(255, 255, 255, 0.08);
+
+  /* Cosmic design system layout tokens */
+  --cosmic-content-max: 80rem;
+  /* Gap below layout header only (header is in document flow, not overlaid) */
+  --cosmic-page-pt: 1rem;
+  --cosmic-section-gap: 2.5rem;
+  --cosmic-header-glow: 0 4px 24px rgba(106, 27, 154, 0.15), 0 1px 0 rgba(255, 215, 0, 0.12);
+
+  /* Mobile bottom tab bar: 48px row + pt-1.5 + top border (matches Layout nav) */
+  --mobile-tab-bar-height: calc(3rem + 0.375rem + 1px);
+  --layout-header-height: 3.5rem;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --cosmic-section-gap: 3.5rem;
+  }
 }
 
 @layer components {
+  /* ── Cosmic typography ── */
+  .cosmic-h1 {
+    @apply text-2xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-4xl;
+    color: var(--casino-text-primary);
+  }
+
+  .cosmic-h2 {
+    @apply text-xl font-bold sm:text-2xl;
+    color: var(--casino-text-primary);
+  }
+
+  .cosmic-h3 {
+    @apply text-lg font-semibold sm:text-xl;
+    color: var(--casino-text-primary);
+  }
+
+  .cosmic-body {
+    @apply text-sm leading-relaxed sm:text-base;
+    color: var(--casino-text-secondary);
+  }
+
+  .cosmic-label {
+    @apply text-xs font-medium uppercase tracking-wide;
+    color: var(--casino-text-secondary);
+  }
+
+  .cosmic-btn-text {
+    @apply text-base font-bold;
+  }
+
+  /* ── Cosmic surfaces ── */
+  .cosmic-page-bg {
+    background: linear-gradient(
+      135deg,
+      var(--casino-primary-dark) 0%,
+      var(--casino-secondary-dark) 50%,
+      #2c2c3a 100%
+    );
+  }
+
+  .cosmic-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: rgba(0, 0, 0, 0.35);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  .cosmic-card-solid {
+    border-radius: 1rem;
+    border: 1px solid var(--casino-card-border);
+    background-color: var(--casino-secondary-dark);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+
+  .cosmic-glow-border {
+    box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.2);
+  }
+
+  .cosmic-glow-border:focus-within,
+  .cosmic-glow-border:hover {
+    box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.35), 0 0 20px rgba(255, 215, 0, 0.12);
+  }
+
+  .cosmic-content-width {
+    width: 100%;
+    max-width: var(--cosmic-content-max);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .cosmic-page-pt {
+    padding-top: var(--cosmic-page-pt);
+  }
+  @media (min-width: 640px) {
+    .cosmic-page-pt {
+      padding-top: 1.25rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .cosmic-page-pt {
+      padding-top: 1.5rem;
+    }
+  }
+
+  .cosmic-section-gap {
+    gap: var(--cosmic-section-gap);
+  }
+
+  .cosmic-nav-link {
+    @apply whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors lg:px-3 lg:text-sm;
+  }
+
+  .cosmic-nav-link-active {
+    background-color: rgba(255, 215, 0, 0.1);
+    color: var(--casino-highlight-gold);
+  }
+
+  .cosmic-nav-link-inactive {
+    color: var(--casino-text-secondary);
+  }
+
+  .cosmic-nav-link-inactive:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--casino-text-primary);
+  }
+
   /* Casino Button Styles */
   .btn-casino-primary {
     background: linear-gradient(135deg, var(--casino-highlight-gold) 0%, #FFA000 100%);
@@ -50,7 +197,7 @@
     box-shadow: 0 0 20px var(--casino-shadow-glow);
     font-weight: bold;
     padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     transition: all 0.3s ease;
   }
   
@@ -570,6 +717,43 @@
   overscroll-behavior: none;
 }
 
+/* /chat page: prevent document scroll bleed (common on Windows Chrome/Edge) */
+html.chat-page-lock,
+html.chat-page-lock body {
+  overflow: hidden;
+  height: 100%;
+}
+
+.h-chat-viewport {
+  height: calc(
+    100vh - var(--layout-header-height) - env(safe-area-inset-top, 0px)
+  );
+  max-height: calc(
+    100vh - var(--layout-header-height) - env(safe-area-inset-top, 0px)
+  );
+}
+@supports (height: 100dvh) {
+  .h-chat-viewport {
+    height: calc(
+      100dvh - var(--layout-header-height) - env(safe-area-inset-top, 0px)
+    );
+    max-height: calc(
+      100dvh - var(--layout-header-height) - env(safe-area-inset-top, 0px)
+    );
+  }
+}
+
+.h-chat-widget-panel {
+  height: min(32rem, calc(100vh - 6rem));
+  max-height: min(32rem, calc(100vh - 6rem));
+}
+@supports (height: 100dvh) {
+  .h-chat-widget-panel {
+    height: min(32rem, calc(100dvh - 6rem));
+    max-height: min(32rem, calc(100dvh - 6rem));
+  }
+}
+
 /* Smooth momentum scrolling on iOS */
 .scroll-ios {
   -webkit-overflow-scrolling: touch;
@@ -612,4 +796,65 @@ details > summary ~ * {
 }
 .animate-slide-up {
   animation: slideUp 0.35s ease-out forwards;
+}
+
+/* ═══════════════════════════════════════════════════
+   COSMIC HERO ATMOSPHERE (ported from RSG, recolored)
+   Used by AuthHeroBg + the homepage hero. Heavy on
+   transform/opacity so it stays GPU-friendly on mobile.
+   ═══════════════════════════════════════════════════ */
+@keyframes hero-aurora {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes hero-cosmic-pulse {
+  0%, 100% {
+    opacity: 0.42;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.58;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+@keyframes hero-dust {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    opacity: 0.55;
+    transform: translate(3%, -8%) scale(1.05);
+  }
+  66% {
+    opacity: 0.4;
+    transform: translate(-4%, -14%) scale(0.95);
+  }
+}
+.animate-hero-aurora {
+  animation: hero-aurora 160s linear infinite;
+}
+.animate-hero-cosmic-pulse {
+  animation: hero-cosmic-pulse 18s ease-in-out infinite;
+}
+.animate-hero-dust {
+  animation: hero-dust 22s ease-in-out infinite;
+}
+.animate-hero-dust-delayed {
+  animation: hero-dust 26s ease-in-out infinite;
+  animation-delay: -8s;
+}
+.animate-hero-dust-slow {
+  animation: hero-dust 30s ease-in-out infinite;
+  animation-delay: -14s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-aurora,
+  .animate-hero-cosmic-pulse,
+  .animate-hero-dust,
+  .animate-hero-dust-delayed,
+  .animate-hero-dust-slow {
+    animation: none;
+  }
 }

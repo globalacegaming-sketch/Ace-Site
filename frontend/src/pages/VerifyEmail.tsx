@@ -1,15 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react';
-import axios from 'axios';
-import { getApiBaseUrl } from '../utils/api';
+import { CheckCircle, Loader2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
+import { PageMeta } from '../components/PageMeta';
+import { AuthScreenShell } from '../components/auth/AuthScreenShell';
+import { AuthFormCard } from '../components/auth/AuthFormCard';
+import {
+  LoginError,
+  fetchMe,
+  verifyEmailWithToken,
+} from '../services/authApi';
+
+const btnPrimary =
+  'btn-casino-primary flex min-h-12 w-full touch-manipulation items-center justify-center rounded-2xl px-4 py-3.5 text-base font-bold disabled:cursor-not-allowed disabled:opacity-50';
 
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
-  const { setUser } = useAuthStore();
   const token = searchParams.get('token');
+  const { setUser } = useAuthStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
@@ -22,104 +31,129 @@ const VerifyEmail = () => {
       return;
     }
 
-    const verifyEmail = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        const response = await axios.post(`${getApiBaseUrl()}/auth/verify-email`, { token });
+        await verifyEmailWithToken(token);
+        if (cancelled) return;
+        setIsVerified(true);
+        toast.success('Email verified successfully!');
 
-        if (response.data.success) {
-          setIsVerified(true);
-          toast.success('Email verified successfully!');
-          
-          // Update user in store if logged in
+        // Refresh user in the auth store if a session exists.
+        const currentToken = useAuthStore.getState().token;
+        if (currentToken) {
           try {
-            const userResponse = await axios.get(`${getApiBaseUrl()}/auth/me`, {
-              headers: {
-                'Authorization': `Bearer ${useAuthStore.getState().token}`
-              }
-            });
-            if (userResponse.data.success) {
-              setUser(userResponse.data.data.user);
-            }
-          } catch (e) {
-            // User might not be logged in, that's okay
+            const user = await fetchMe(currentToken);
+            if (!cancelled) setUser(user);
+          } catch {
+            /* user not signed in or token expired — ignore */
           }
         }
-      } catch (error: any) {
-        setError(error.response?.data?.message || 'Failed to verify email');
-        toast.error(error.response?.data?.message || 'Failed to verify email');
+      } catch (e) {
+        if (cancelled) return;
+        const msg =
+          e instanceof LoginError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : 'Failed to verify email';
+        setError(msg);
+        toast.error(msg);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    };
+    })();
 
-    verifyEmail();
+    return () => {
+      cancelled = true;
+    };
   }, [token, setUser]);
 
   return (
-    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16 flex items-center justify-center">
-      {/* Casino-themed background elements */}
-      <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-      <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
+    <>
+      <PageMeta
+        title="Verify Email | Global Ace Gaming"
+        description="Confirm your email address to finish setting up your Global Ace Gaming account."
+        noIndex
+      />
+      <AuthScreenShell
+        showBack
+        title={
+          isLoading
+            ? 'Verifying email'
+            : isVerified
+              ? 'Email verified'
+              : 'Verification failed'
+        }
+        subtitle={
+          isLoading
+            ? 'Hold tight — confirming your email address.'
+            : isVerified
+              ? 'Your email is confirmed. Jump back into your account.'
+              : 'The verification link is invalid or has expired. Request a new code from your profile.'
+        }
+        backTo="/login"
+      >
+        <AuthFormCard>
+          <div className="flex flex-col items-center gap-5 text-center">
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full"
+              style={{
+                background: isLoading
+                  ? 'linear-gradient(135deg, var(--casino-highlight-gold), #FFA000)'
+                  : isVerified
+                    ? 'linear-gradient(135deg, #34d399, #059669)'
+                    : 'linear-gradient(135deg, #f87171, #b91c1c)',
+              }}
+            >
+              {isLoading ? (
+                <Loader2 className="h-8 w-8 animate-spin text-black" />
+              ) : isVerified ? (
+                <CheckCircle className="h-8 w-8 text-white" />
+              ) : (
+                <XCircle className="h-8 w-8 text-white" />
+              )}
+            </div>
 
-      <div className="relative z-10 w-full max-w-md mx-auto px-4">
-        <div className="casino-bg-secondary rounded-2xl shadow-2xl p-8 casino-border">
-          <div className="text-center">
-            {isLoading ? (
-              <>
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-4">
-                  <Loader2 className="w-8 h-8 text-black animate-spin" />
-                </div>
-                <h1 className="text-2xl font-bold casino-text-primary mb-2">Verifying Email...</h1>
-                <p className="casino-text-secondary">Please wait while we verify your email address</p>
-              </>
-            ) : isVerified ? (
-              <>
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-full mb-4">
-                  <CheckCircle className="w-8 h-8 text-white" />
-                </div>
-                <h1 className="text-2xl font-bold casino-text-primary mb-2">Email Verified!</h1>
-                <p className="casino-text-secondary mb-6">
-                  Your email address has been successfully verified. You can now access all features of your account.
-                </p>
+            {error && !isVerified ? (
+              <p
+                className="w-full rounded-xl border px-3 py-3 text-sm leading-snug"
+                style={{
+                  borderColor: 'rgba(229, 57, 53, 0.3)',
+                  backgroundColor: 'rgba(229, 57, 53, 0.1)',
+                  color: '#fecaca',
+                }}
+                role="alert"
+              >
+                {error}
+              </p>
+            ) : null}
+
+            {!isLoading ? (
+              <div className="flex w-full flex-col gap-3">
+                {isVerified ? (
+                  <Link to="/dashboard" className={btnPrimary}>
+                    Go to dashboard
+                  </Link>
+                ) : (
+                  <Link to="/profile" className={btnPrimary}>
+                    Go to profile
+                  </Link>
+                )}
                 <Link
-                  to="/dashboard"
-                  className="btn-casino-primary px-6 py-3 rounded-lg font-semibold inline-block"
+                  to="/login"
+                  className="text-center text-sm underline-offset-2 hover:underline"
+                  style={{ color: 'var(--casino-text-secondary)' }}
                 >
-                  Go to Dashboard
+                  Back to sign in
                 </Link>
-              </>
-            ) : (
-              <>
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-red-400 to-red-600 rounded-full mb-4">
-                  <XCircle className="w-8 h-8 text-white" />
-                </div>
-                <h1 className="text-2xl font-bold casino-text-primary mb-2">Verification Failed</h1>
-                <p className="casino-text-secondary mb-6">
-                  {error || 'The verification link is invalid or has expired. Please request a new verification email.'}
-                </p>
-                <div className="space-y-3">
-                  <Link
-                    to="/profile"
-                    className="btn-casino-primary px-6 py-3 rounded-lg font-semibold inline-block w-full text-center"
-                  >
-                    Go to Profile
-                  </Link>
-                  <Link
-                    to="/login"
-                    className="inline-flex items-center gap-2 text-sm casino-text-secondary hover:casino-text-primary transition-colors justify-center w-full"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to Login
-                  </Link>
-                </div>
-              </>
-            )}
+              </div>
+            ) : null}
           </div>
-        </div>
-      </div>
-    </div>
+        </AuthFormCard>
+      </AuthScreenShell>
+    </>
   );
 };
 
 export default VerifyEmail;
-

@@ -1,10 +1,10 @@
 import { type ReactNode, useState, useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   Gamepad2,
   Menu,
-  Search,
   Home,
+  Layers,
   Settings,
   Headphones,
   Bell,
@@ -18,14 +18,15 @@ import {
   CheckCircle,
   AlertCircle,
   AlertTriangle,
-  Info
+  Info,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useBalancePolling } from '../../hooks/useBalancePolling';
 import { triggerHaptic } from '../../utils/haptic';
 import axios from 'axios';
 import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
-import { io, Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
+import Footer from './Footer';
 
 interface LayoutProps {
   children: ReactNode;
@@ -41,10 +42,44 @@ interface Notification {
   createdAt: string;
 }
 
+const NAV_ITEMS: { name: string; href: string; icon: typeof Home }[] = [
+  { name: 'Home', href: '/', icon: Home },
+  { name: 'Games', href: '/games', icon: Gamepad2 },
+  { name: 'Platforms', href: '/platforms', icon: Layers },
+  { name: 'Bonuses', href: '/bonuses', icon: Gift },
+  { name: 'About Us', href: '/about-us', icon: User },
+  { name: 'Support', href: '/support', icon: Headphones },
+];
+
+const MOBILE_TABS: { name: string; href: string; icon: typeof Home }[] = [
+  { name: 'Home', href: '/', icon: Home },
+  { name: 'Games', href: '/games', icon: Gamepad2 },
+  { name: 'Bonuses', href: '/bonuses', icon: Gift },
+  { name: 'Chat', href: '/chat', icon: MessageCircle },
+];
+
+const AUTH_LAYOUT_ROUTES = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/verify-code',
+];
+
+const HIDE_HEADER_ROUTES = AUTH_LAYOUT_ROUTES;
+
+const HIDE_FOOTER_ROUTES = ['/chat', ...AUTH_LAYOUT_ROUTES];
+
+/** Auth flows that stay focused (no tab bar); login/register/forgot keep mobile nav. */
+const HIDE_BOTTOM_NAV_ROUTES = [
+  '/reset-password',
+  '/verify-email',
+  '/verify-code',
+];
+
 const Layout = ({ children }: LayoutProps) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -52,198 +87,133 @@ const Layout = ({ children }: LayoutProps) => {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   const { isAuthenticated, user, logout, token } = useAuthStore();
-  const { balance, isLoading: balanceLoading, fetchBalance } = useBalancePolling(30000);
+  const { balance, isLoading: balanceLoading, fetchBalance } =
+    useBalancePolling(30000);
   const location = useLocation();
-  const navigate = useNavigate();
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
 
-  // Check if mobile
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
-      if (window.innerWidth < 1024) {
-        setSidebarCollapsed(false);
-      } else {
-        setSidebarCollapsed(true);
-      }
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  const homeHref = isAuthenticated ? '/dashboard' : '/';
 
-  // Initialize notification sound
+  /* --------------------------------------------------------------------- */
+  /* Notification sound                                                     */
+  /* --------------------------------------------------------------------- */
+
   useEffect(() => {
     notificationSoundRef.current = new Audio('/sounds/notification.mp3');
     notificationSoundRef.current.volume = 0.5;
-    
-    // Fallback: create a simple beep sound if file doesn't exist
-    if (!notificationSoundRef.current) {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.1);
-    }
   }, []);
 
-  // Load notifications
+  /* --------------------------------------------------------------------- */
+  /* Notification fetching                                                  */
+  /* --------------------------------------------------------------------- */
+
   const loadNotifications = async () => {
     if (!isAuthenticated || !token) return;
-    
     try {
       setLoadingNotifications(true);
       const API_BASE_URL = getApiBaseUrl();
-      const [notificationsRes, countRes] = await Promise.all([
+      const [listRes, countRes] = await Promise.all([
         axios.get(`${API_BASE_URL}/notifications?limit=20`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         }),
         axios.get(`${API_BASE_URL}/notifications/unread-count`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
-
-      if (notificationsRes.data.success) {
-        setNotifications(notificationsRes.data.data || []);
-      }
-      if (countRes.data.success) {
-        setUnreadCount(countRes.data.count || 0);
-      }
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
+      if (listRes.data.success) setNotifications(listRes.data.data || []);
+      if (countRes.data.success) setUnreadCount(countRes.data.count || 0);
+    } catch (err) {
+      // Non-fatal — notifications panel will simply show empty state.
+      console.error('Failed to load notifications:', err);
     } finally {
       setLoadingNotifications(false);
     }
   };
 
-  // Mark notification as read
   const markAsRead = async (notificationId: string) => {
     if (!isAuthenticated || !token) return;
-    
     try {
       const API_BASE_URL = getApiBaseUrl();
-      await axios.put(`${API_BASE_URL}/notifications/${notificationId}/read`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setNotifications(prev => 
-        prev.map(n => n._id === notificationId ? { ...n, isRead: true } : n)
+      await axios.put(
+        `${API_BASE_URL}/notifications/${notificationId}/read`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Failed to mark notification as read:', error);
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === notificationId ? { ...n, isRead: true } : n)),
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
     }
   };
 
-  // Mark all as read
   const markAllAsRead = async () => {
     if (!isAuthenticated || !token) return;
-    
     try {
       const API_BASE_URL = getApiBaseUrl();
-      await axios.put(`${API_BASE_URL}/notifications/read-all`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      await axios.put(
+        `${API_BASE_URL}/notifications/read-all`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
-    } catch (error) {
-      console.error('Failed to mark all as read:', error);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
     }
   };
 
-  // Load notifications on mount and when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      loadNotifications();
+      void loadNotifications();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, token]);
 
-  // Setup Socket.IO for real-time notifications
+  /* --------------------------------------------------------------------- */
+  /* Socket.IO real-time notifications + ban broadcast                      */
+  /* --------------------------------------------------------------------- */
+
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    const WS_BASE_URL = getWsBaseUrl();
-    // withCredentials: true sends the session cookie during the WebSocket
-    // handshake, so the server can identify the user from the shared session.
-    // auth.token is kept as a fallback for backward compatibility.
-    const socket = io(WS_BASE_URL, {
+    const socket = io(getWsBaseUrl(), {
       auth: { token },
       withCredentials: true,
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
     });
-
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      // Connected to notification socket
-    });
-
-    socket.on('notification:new', (data: any) => {
-      const newNotification: Notification = {
-        _id: data._id || `temp-${Date.now()}`,
-        title: data.title,
-        message: data.message,
-        type: data.type || 'info',
+    socket.on('notification:new', (data: Partial<Notification>) => {
+      const next: Notification = {
+        _id: data._id ?? `temp-${Date.now()}`,
+        title: data.title ?? 'New notification',
+        message: data.message ?? '',
+        type: data.type ?? 'info',
         isRead: false,
-        link: data.link || undefined,
-        createdAt: data.createdAt || new Date().toISOString()
+        link: data.link ?? undefined,
+        createdAt: data.createdAt ?? new Date().toISOString(),
       };
-
-      setNotifications(prev => [newNotification, ...prev]);
-      setUnreadCount(prev => prev + 1);
-
-      // Play notification sound
-      if (notificationSoundRef.current) {
-        notificationSoundRef.current.play().catch(() => {
-          // Fallback beep
-          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          oscillator.frequency.value = 800;
-          oscillator.type = 'sine';
-          
-          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-          
-          oscillator.start(audioContext.currentTime);
-          oscillator.stop(audioContext.currentTime + 0.1);
-        });
-      }
+      setNotifications((prev) => [next, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+      notificationSoundRef.current?.play().catch(() => {
+        /* autoplay may be blocked — that's fine */
+      });
     });
 
     socket.on('account:banned', (data: { reason?: string }) => {
-      // Server says this account was banned — force logout immediately
       socket.disconnect();
       useAuthStore.getState().logout();
       window.alert(
         data?.reason
           ? `Your account has been suspended: ${data.reason}`
-          : 'Your account has been suspended. Please contact support if you believe this is an error.'
+          : 'Your account has been suspended. Please contact support if you believe this is an error.',
       );
       window.location.href = '/login';
-    });
-
-    socket.on('disconnect', () => {
-      // Disconnected from notification socket
     });
 
     return () => {
@@ -251,314 +221,368 @@ const Layout = ({ children }: LayoutProps) => {
     };
   }, [isAuthenticated, token]);
 
-  // Close menus when clicking outside (supports both mouse and touch)
+  /* --------------------------------------------------------------------- */
+  /* Close menus on outside click / touch                                   */
+  /* --------------------------------------------------------------------- */
+
   useEffect(() => {
     if (!isNotificationOpen && !isUserMenuOpen) return;
 
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+    const handler = (event: MouseEvent | TouchEvent) => {
       const target = event.target as Node;
-      
-      // Don't close if clicking on the notification button itself
-      const notificationButton = notificationRef.current?.querySelector('button');
-      if (notificationButton && (notificationButton === target || notificationButton.contains(target))) {
-        return;
-      }
-      
-      // Don't close if clicking on the notification dropdown (it's rendered outside notificationRef)
-      const notificationDropdown = document.querySelector('[data-notification-dropdown]');
-      if (notificationDropdown && (notificationDropdown === target || notificationDropdown.contains(target))) {
-        return;
-      }
-      
+
+      const notificationBtn = notificationRef.current?.querySelector('button');
+      if (notificationBtn && notificationBtn.contains(target)) return;
+
+      const dropdown = document.querySelector('[data-notification-dropdown]');
+      if (dropdown && dropdown.contains(target)) return;
+
       if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setIsUserMenuOpen(false);
       }
-      if (notificationRef.current && !notificationRef.current.contains(target)) {
+      if (
+        notificationRef.current &&
+        !notificationRef.current.contains(target)
+      ) {
         setIsNotificationOpen(false);
       }
     };
 
-    // Use a small delay to prevent immediate closing when opening
-    const timeoutId = setTimeout(() => {
-      // Support both mouse and touch events for better mobile compatibility
-      document.addEventListener('mousedown', handleClickOutside, { passive: true });
-      document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    const id = window.setTimeout(() => {
+      document.addEventListener('mousedown', handler, { passive: true });
+      document.addEventListener('touchstart', handler, { passive: true });
     }, 200);
 
     return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
+      window.clearTimeout(id);
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
     };
   }, [isUserMenuOpen, isNotificationOpen]);
 
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      // Call the server logout endpoint with credentials to destroy the
-      // MongoDB session and clear the session cookie on the browser.
-      try {
-        const API_BASE_URL = getApiBaseUrl();
-        await fetch(`${API_BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          credentials: 'include',
-        });
-      } catch {
-        // Best-effort – even if the server call fails, we still clear local state
-      }
+  /* Lock document scroll on /chat so only the message list scrolls (Windows-safe). */
+  useEffect(() => {
+    const onChat = location.pathname === '/chat';
+    if (!onChat) return;
 
-      logout();
-      setIsUserMenuOpen(false);
-      // Navigate to home page after logout
-      window.location.href = '/';
+    const html = document.documentElement;
+    html.classList.add('chat-page-lock');
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    html.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      html.classList.remove('chat-page-lock');
+      html.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [location.pathname]);
+
+  /* --------------------------------------------------------------------- */
+  /* Logout                                                                 */
+  /* --------------------------------------------------------------------- */
+
+  const handleLogout = async () => {
+    if (!window.confirm('Are you sure you want to logout?')) return;
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
+    } catch {
+      // best-effort
     }
+    logout();
+    setIsUserMenuOpen(false);
+    setMenuOpen(false);
+    window.location.href = '/';
   };
 
-  const sidebarItems = [
-    { name: 'Home', href: isAuthenticated ? '/dashboard' : '/', icon: Home },
-    { name: 'Games', href: '/games', icon: Gamepad2 },
-    { name: 'Platforms', href: '/platforms', icon: Settings },
-    { name: 'Bonuses', href: '/bonuses', icon: Gift },
-    { name: 'About Us', href: '/about-us', icon: User },
-    { name: 'Support', href: '/support', icon: Headphones },
-  ];
+  /* --------------------------------------------------------------------- */
+  /* NavLink class helpers                                                  */
+  /* --------------------------------------------------------------------- */
 
-  const mobileNavItems = [
-    { name: 'Home', href: isAuthenticated ? '/dashboard' : '/', icon: Home },
-    { name: 'Games', href: '/games', icon: Gamepad2 },
-    { name: 'Platforms', href: '/platforms', icon: Settings },
-    { name: 'Chat', href: '/chat', icon: MessageCircle },
-  ];
+  const desktopNavClass = ({ isActive }: { isActive: boolean }) =>
+    ['cosmic-nav-link', isActive ? 'cosmic-nav-link-active' : 'cosmic-nav-link-inactive'].join(
+      ' ',
+    );
+
+  const drawerNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+    [
+      'block rounded-lg px-4 py-3 text-sm font-semibold transition touch-manipulation',
+      isActive
+        ? 'border-l-2 border-[color:var(--casino-highlight-gold)] cosmic-nav-link-active'
+        : 'cosmic-nav-link-inactive hover:bg-white/[0.06]',
+    ].join(' ');
+
+  const isHomeActive = location.pathname === homeHref;
+  const hideHeader = HIDE_HEADER_ROUTES.some((p) =>
+    location.pathname.startsWith(p),
+  );
+  const hideFooter = HIDE_FOOTER_ROUTES.some((p) =>
+    location.pathname.startsWith(p),
+  );
+  const hideBottomNav = HIDE_BOTTOM_NAV_ROUTES.some((p) =>
+    location.pathname.startsWith(p),
+  );
+  const isChatPage = location.pathname === '/chat';
+  const isGuestHome = location.pathname === '/' && !isAuthenticated;
+
+  /* --------------------------------------------------------------------- */
+  /* Render                                                                 */
+  /* --------------------------------------------------------------------- */
 
   return (
-    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: 'var(--casino-primary-dark)' }}>
-      {/* Full Width Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-[100] backdrop-blur-sm border-b px-3 sm:px-4 pb-2 sm:pb-1.5 w-full" 
-              style={{ 
-                backgroundColor: 'rgba(27, 27, 47, 0.95)', 
-                borderBottomColor: 'var(--casino-card-border)',
-                paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))'
-              }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            {isMobile && (
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="mr-2 transition-colors duration-300 p-2 rounded-lg hover:bg-opacity-20"
-                style={{ color: 'var(--casino-text-secondary)', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+    <div
+      className={`overflow-x-clip ${
+        isChatPage || isGuestHome
+          ? 'flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden'
+          : 'cosmic-page-bg min-h-screen'
+      } ${isGuestHome ? 'bg-[#0A0A0F]' : ''}`}
+    >
+      {/* ---------------- Sticky Header ---------------- */}
+      {!hideHeader && (
+      <header
+        className="sticky top-0 z-40 border-b backdrop-blur-md"
+        style={{
+          backgroundColor: 'rgba(10, 10, 15, 0.92)',
+          borderBottomColor: 'var(--casino-card-border)',
+          boxShadow: 'var(--cosmic-header-glow)',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+        }}
+      >
+        <div className="cosmic-content-width grid grid-cols-[auto_1fr_auto] items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 lg:gap-4">
+          {/* Left: hamburger (mobile) + brand */}
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg lg:hidden"
+              aria-label="Open menu"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                color: 'var(--casino-text-primary)',
+              }}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link
+              to={homeHref}
+              className="flex min-w-0 items-center gap-2"
+              aria-label="Global Ace Gaming home"
+            >
+              <img
+                src="/logo.png"
+                alt=""
+                className="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9"
+              />
+              <span
+                className="hidden truncate text-base font-extrabold tracking-tight sm:inline lg:text-lg"
+                style={{ color: 'var(--casino-text-primary)' }}
               >
-                {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
-            )}
-            <div className="flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-14 lg:h-14 mr-2 flex items-center justify-center">
-                <img 
-                  src="/logo.png" 
-                  alt="Global Ace Gaming" 
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <span className="font-bold text-xs sm:text-sm lg:text-lg xl:text-xl hidden sm:block" style={{ color: 'var(--casino-text-primary)' }}>GLOBAL ACE GAMING</span>
-              <span className="font-bold text-xs sm:hidden" style={{ color: 'var(--casino-text-primary)' }}>GAG</span>
-            </div>
+                Global Ace Gaming
+              </span>
+              <span
+                className="text-base font-extrabold tracking-tight sm:hidden"
+                style={{ color: 'var(--casino-text-primary)' }}
+              >
+                GAG
+              </span>
+            </Link>
           </div>
-          
-          <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4">
-            {/* Search Bar - Hidden on mobile */}
-            <div className="hidden lg:flex items-center">
-              <div className="relative group">
-                <Search 
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors duration-200" 
-                  style={{ color: 'var(--casino-text-secondary)' }} 
-                />
-                <input
-                  type="text"
-                  placeholder="Search Games"
-                  className="w-44 xl:w-56 pl-10 pr-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
-                    bg-white/10 border border-white/20 text-[#F5F5F5] placeholder-[#B0B0B0]
-                    focus:outline-none focus:border-[#FFD700] focus:ring-2 focus:ring-[#FFD700]/30 focus:bg-white/15
-                    hover:border-white/30 hover:bg-white/12"
-                  aria-label="Search games"
-                />
-              </div>
-            </div>
-            
-            {/* Notification Bell - Optimized for mobile */}
+
+          {/* Center: desktop horizontal nav */}
+          <nav
+            className="hidden min-w-0 items-center justify-center gap-1 lg:flex"
+            aria-label="Primary"
+          >
+            {NAV_ITEMS.map((item) => {
+              const isActive =
+                item.name === 'Home' ? isHomeActive : location.pathname === item.href;
+              const to = item.name === 'Home' ? homeHref : item.href;
+              return (
+                <NavLink
+                  key={item.name}
+                  to={to}
+                  className={() => desktopNavClass({ isActive })}
+                  end={item.name === 'Home'}
+                >
+                  {item.name}
+                </NavLink>
+              );
+            })}
+          </nav>
+
+          {/* Right: notifications, balance, avatar / auth CTAs */}
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2">
             {isAuthenticated && (
-              <div className="relative" ref={notificationRef} style={{ zIndex: 100, position: 'relative' }}>
-                <button 
+              <div
+                className="relative"
+                ref={notificationRef}
+                style={{ zIndex: 100 }}
+              >
+                <button
+                  type="button"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const newState = !isNotificationOpen;
-                    setIsNotificationOpen(newState);
-                    if (newState) {
-                      loadNotifications();
-                    }
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                  }}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const newState = !isNotificationOpen;
-                    setIsNotificationOpen(newState);
-                    if (newState) {
-                      loadNotifications();
-                    }
-                  }}
-                  className="transition-all duration-300 p-1.5 sm:p-2 rounded-lg hover:bg-opacity-20 active:scale-95 touch-manipulation relative" 
-                  style={{ 
-                    color: 'var(--casino-text-secondary)', 
-                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    WebkitTapHighlightColor: 'transparent',
-                    touchAction: 'manipulation',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    WebkitUserSelect: 'none',
-                    zIndex: 100,
-                    position: 'relative',
-                    minWidth: '44px',
-                    minHeight: '44px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: 'none',
-                    outline: 'none'
+                    const next = !isNotificationOpen;
+                    setIsNotificationOpen(next);
+                    if (next) void loadNotifications();
                   }}
                   aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
-                  type="button"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-lg transition active:scale-95"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    color: 'var(--casino-text-secondary)',
+                  }}
                 >
-                  <Bell className="w-4 h-4 sm:w-5 sm:h-5 pointer-events-none" />
+                  <Bell className="h-5 w-5" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 text-white text-[10px] sm:text-xs rounded-full min-w-[16px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center font-semibold animate-pulse pointer-events-none" 
-                          style={{ backgroundColor: 'var(--casino-accent-red)' }}>
+                    <span
+                      className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                      style={{
+                        backgroundColor: 'var(--casino-accent-red)',
+                        color: '#fff',
+                      }}
+                    >
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
                 </button>
-                
               </div>
             )}
-            
-            {/* Enhanced Balance Display - Responsive */}
+
             {isAuthenticated && (
-              <div className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full shadow-lg border-2" 
-                   style={{ 
-                     background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-                     color: 'var(--casino-primary-dark)',
-                     borderColor: 'var(--casino-highlight-gold)',
-                     boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)'
-                   }}>
-                <div className="flex items-center space-x-1">
-                  <Coins className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span className="font-bold text-xs sm:text-sm">
-                    ${balance || '0.00'}
-                  </span>
-                </div>
+              <div
+                className="hidden items-center gap-1 rounded-full border-2 px-2 py-1.5 shadow-lg sm:flex sm:px-3 sm:py-2"
+                style={{
+                  background:
+                    'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                  color: 'var(--casino-primary-dark)',
+                  borderColor: 'var(--casino-highlight-gold)',
+                  boxShadow: '0 0 16px rgba(255, 215, 0, 0.28)',
+                }}
+              >
+                <Coins className="h-4 w-4" />
+                <span className="text-xs font-bold sm:text-sm">
+                  ${balance || '0.00'}
+                </span>
                 <button
+                  type="button"
                   onClick={() => fetchBalance(true)}
                   disabled={balanceLoading}
-                  className={`p-0.5 sm:p-1 rounded-full transition-all duration-200 ${
-                    balanceLoading 
-                      ? 'opacity-50 cursor-not-allowed' 
-                      : 'hover:scale-110 active:scale-95'
-                  }`}
-                  style={{ backgroundColor: balanceLoading ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}
-                  title="Refresh Balance"
+                  className="rounded-full p-0.5 transition active:scale-95"
+                  style={{
+                    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                    opacity: balanceLoading ? 0.5 : 1,
+                  }}
+                  title="Refresh balance"
+                  aria-label="Refresh balance"
                 >
-                  <RefreshCw className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${balanceLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`h-3 w-3 ${balanceLoading ? 'animate-spin' : ''}`}
+                  />
                 </button>
-                <div className="text-xs font-medium hidden sm:block" style={{ color: 'var(--casino-primary-dark)' }}>
-                  {user?.firstName ? `${user.firstName}_Aces9F` : 'Player'}
-                </div>
               </div>
             )}
-            
+
             {isAuthenticated ? (
-              <div className="flex items-center space-x-1 sm:space-x-2 relative" ref={userMenuRef} style={{ zIndex: 100, position: 'relative' }}>
-                <button 
-                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                  className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-transform duration-300 hover:scale-110 text-sm sm:text-lg border-2"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+              <div className="relative" ref={userMenuRef} style={{ zIndex: 100 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsUserMenuOpen((o) => !o)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-bold transition hover:scale-105"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
                     borderColor: 'var(--casino-highlight-gold)',
-                    boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)'
+                    color: 'var(--casino-primary-dark)',
+                    boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)',
                   }}
+                  aria-label="Open account menu"
                 >
-                  {user?.avatar ? (
-                    (() => {
-                      const avatarMap: { [key: string]: string } = {
-                        'gorilla': '🦍',
-                        'lion': '🦁',
-                        'tiger': '🐅',
-                        'eagle': '🦅',
-                        'shark': '🦈',
-                        'wolf': '🐺',
-                        'bear': '🐻',
-                        'dragon': '🐉'
-                      };
-                      return avatarMap[user.avatar] || '👤';
-                    })()
-                  ) : (
-                    <span className="font-bold text-xs sm:text-sm" style={{ color: 'var(--casino-primary-dark)' }}>
-                      {user?.email?.charAt(0).toUpperCase()}
-                    </span>
-                  )}
+                  {user?.avatar
+                    ? (
+                        {
+                          gorilla: '🦍',
+                          lion: '🦁',
+                          tiger: '🐅',
+                          eagle: '🦅',
+                          shark: '🦈',
+                          wolf: '🐺',
+                          bear: '🐻',
+                          dragon: '🐉',
+                        } as Record<string, string>
+                      )[user.avatar] || '👤'
+                    : user?.email?.charAt(0).toUpperCase() ?? '👤'}
                 </button>
-                
-                {/* Simplified User Dropdown Menu */}
                 {isUserMenuOpen && (
-                  <div className="absolute right-0 top-8 sm:top-10 w-40 sm:w-48 rounded-md shadow-lg border z-[100]" 
-                       style={{ 
-                         backgroundColor: 'var(--casino-secondary-dark)', 
-                         borderColor: 'var(--casino-card-border)',
-                         boxShadow: '0 0 20px rgba(0, 0, 0, 0.5)'
-                       }}>
-                    <div className="py-1">
-                      <Link
-                        to="/profile"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors duration-200 hover:bg-opacity-20"
-                        style={{ color: 'var(--casino-text-primary)', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
-                      >
-                        <User className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3" />
-                        My Account
-                      </Link>
-                      <Link
-                        to="/settings"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors duration-200 hover:bg-opacity-20"
-                        style={{ color: 'var(--casino-text-primary)', backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
-                      >
-                        <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3" />
-                        Settings
-                      </Link>
-                      <div className="my-1" style={{ borderTop: '1px solid var(--casino-card-border)' }}></div>
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center w-full px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors duration-200 hover:bg-opacity-20"
-                        style={{ color: 'var(--casino-accent-red)', backgroundColor: 'rgba(229, 57, 53, 0.1)' }}
-                      >
-                        <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3" />
-                        Logout
-                      </button>
-                    </div>
+                  <div
+                    className="absolute right-0 top-11 w-44 overflow-hidden rounded-md border shadow-lg"
+                    style={{
+                      backgroundColor: 'var(--casino-secondary-dark)',
+                      borderColor: 'var(--casino-card-border)',
+                      boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)',
+                    }}
+                  >
+                    <Link
+                      to="/profile"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/[0.06]"
+                      style={{ color: 'var(--casino-text-primary)' }}
+                    >
+                      <User className="h-4 w-4" />
+                      My Account
+                    </Link>
+                    <Link
+                      to="/settings"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/[0.06]"
+                      style={{ color: 'var(--casino-text-primary)' }}
+                    >
+                      <Settings className="h-4 w-4" />
+                      Settings
+                    </Link>
+                    <div
+                      className="my-1"
+                      style={{
+                        borderTop: '1px solid var(--casino-card-border)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm"
+                      style={{
+                        color: 'var(--casino-accent-red)',
+                        backgroundColor: 'rgba(229, 57, 53, 0.08)',
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </button>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="flex items-center space-x-1 sm:space-x-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <Link
                   to="/login"
-                  className="btn-casino-primary text-xs sm:text-sm px-2 sm:px-4 py-1.5 sm:py-2"
+                  className="btn-casino-primary cosmic-btn-text inline-flex min-h-10 items-center justify-center rounded-xl px-3 py-2 text-xs sm:px-4 sm:text-sm"
                 >
                   Login
                 </Link>
                 <Link
                   to="/register"
-                  className="btn-casino-primary text-xs sm:text-sm px-2 sm:px-4 py-1.5 sm:py-2"
+                  className="inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold sm:px-4 sm:text-sm"
+                  style={{
+                    borderColor: 'var(--casino-highlight-gold)',
+                    color: 'var(--casino-highlight-gold)',
+                  }}
                 >
                   Sign up
                 </Link>
@@ -567,357 +591,389 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
         </div>
       </header>
+      )}
 
-      {/* Notification Dropdown - Rendered outside header to avoid clipping */}
+      {/* ---------------- Notification panel (rendered outside header) ---------------- */}
       {isNotificationOpen && (
         <>
-          {/* Mobile Overlay */}
-          {isMobile && (
-            <div 
-              className="fixed inset-0 bg-black bg-opacity-50"
-              onClick={() => {
-                setIsNotificationOpen(false);
-              }}
-              style={{ 
-                top: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
-                zIndex: 9998
-              }}
-            />
-          )}
-          <div 
+          <button
+            type="button"
+            className="fixed inset-0 z-[9998] bg-black/50 lg:hidden"
+            onClick={() => setIsNotificationOpen(false)}
+            aria-label="Close notifications"
+          />
+          <div
             data-notification-dropdown
-            className={`${
-              isMobile 
-                ? 'fixed left-0 right-0 w-full max-w-none rounded-t-2xl rounded-b-none' 
-                : 'fixed right-4 w-80 sm:w-96 max-h-[calc(100vh-100px)] rounded-lg'
-            } overflow-hidden shadow-2xl border flex flex-col`}
-            onClick={(e) => e.stopPropagation()}
-            style={{ 
-              backgroundColor: 'var(--casino-secondary-dark)', 
+            className="fixed z-[9999] flex flex-col overflow-hidden rounded-2xl border shadow-2xl lg:right-4 lg:top-[calc(4rem+env(safe-area-inset-top,0px))] lg:w-96 lg:rounded-lg"
+            style={{
+              backgroundColor: 'var(--casino-secondary-dark)',
               borderColor: 'var(--casino-card-border)',
-              boxShadow: isMobile ? '0 -4px 20px rgba(0, 0, 0, 0.5)' : '0 10px 40px rgba(0, 0, 0, 0.5)',
-              zIndex: 9999,
-              top: isMobile ? 'calc(3.5rem + env(safe-area-inset-top, 0px))' : 'calc(4rem + env(safe-area-inset-top, 0px))',
-              ...(isMobile ? {
-                height: '60vh',
-                maxHeight: '500px',
-                minHeight: '300px'
-              } : {})
+              left: 0,
+              right: 0,
+              top: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+              maxHeight: '60vh',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* Header - Sticky on mobile */}
-            <div className={`sticky top-0 px-3 sm:px-4 py-2.5 sm:py-3 border-b flex items-center justify-between flex-shrink-0 ${
-              isMobile ? 'bg-opacity-95 backdrop-blur-sm' : ''
-            }`}
-               style={{ borderColor: 'var(--casino-card-border)', backgroundColor: 'var(--casino-secondary-dark)' }}>
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <h3 className="font-semibold text-sm sm:text-base truncate" style={{ color: 'var(--casino-text-primary)' }}>
-                  {isMobile ? 'Notifications' : `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
-                </h3>
-                {isMobile && unreadCount > 0 && (
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" 
-                        style={{ backgroundColor: 'var(--casino-accent-red)', color: 'var(--casino-text-primary)' }}>
-                    {unreadCount}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+            <div
+              className="flex items-center justify-between border-b px-4 py-3"
+              style={{ borderColor: 'var(--casino-card-border)' }}
+            >
+              <h3
+                className="text-base font-semibold"
+                style={{ color: 'var(--casino-text-primary)' }}
+              >
+                Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
+              </h3>
+              <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      markAllAsRead();
+                      void markAllAsRead();
                     }}
-                    className="text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 text-blue-400 hover:text-blue-300 active:scale-95 transition-all touch-manipulation rounded"
+                    className="rounded px-3 py-1 text-xs font-medium text-blue-400 hover:text-blue-300"
                     style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)' }}
                   >
-                    {isMobile ? 'Mark all' : 'Mark all read'}
+                    Mark all read
                   </button>
                 )}
-                {isMobile && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsNotificationOpen(false);
-                    }}
-                    className="p-1.5 rounded-lg hover:bg-opacity-20 active:scale-95 transition-all touch-manipulation"
-                    style={{ 
-                      color: 'var(--casino-text-secondary)', 
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      WebkitTapHighlightColor: 'transparent',
-                      touchAction: 'manipulation',
-                      cursor: 'pointer'
-                    }}
-                    aria-label="Close notifications"
-                    type="button"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsNotificationOpen(false);
+                  }}
+                  className="rounded-lg p-1.5 lg:hidden"
+                  style={{
+                    color: 'var(--casino-text-secondary)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                  }}
+                  aria-label="Close notifications"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
             </div>
-            
-            {/* Notifications List - Scrollable */}
-            <div className={`flex-1 overflow-y-auto overscroll-contain ${
-              isMobile ? 'pb-4' : 'max-h-80'
-            }`}
-            style={{
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'thin',
-              scrollbarColor: 'var(--casino-card-border) var(--casino-secondary-dark)'
-            }}>
+
+            <div className="flex-1 overflow-y-auto">
               {loadingNotifications ? (
-                <div className="p-6 sm:p-8 text-center" style={{ color: 'var(--casino-text-secondary)' }}>
-                  <RefreshCw className="w-6 h-6 sm:w-8 sm:h-8 animate-spin mx-auto mb-2 sm:mb-3" />
-                  <p className="text-xs sm:text-sm">Loading notifications...</p>
+                <div
+                  className="flex flex-col items-center gap-2 p-8 text-center"
+                  style={{ color: 'var(--casino-text-secondary)' }}
+                >
+                  <RefreshCw className="h-6 w-6 animate-spin" />
+                  <p className="text-sm">Loading notifications…</p>
                 </div>
               ) : notifications.length === 0 ? (
-                <div className="p-6 sm:p-8 text-center" style={{ color: 'var(--casino-text-secondary)' }}>
-                  <Bell className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 opacity-50" />
-                  <p className="text-xs sm:text-sm">No notifications</p>
-                  <p className="text-[10px] sm:text-xs mt-1 opacity-70">You're all caught up!</p>
+                <div
+                  className="flex flex-col items-center gap-2 p-8 text-center"
+                  style={{ color: 'var(--casino-text-secondary)' }}
+                >
+                  <Bell className="h-10 w-10 opacity-50" />
+                  <p className="text-sm">No notifications</p>
+                  <p className="text-xs opacity-70">You're all caught up!</p>
                 </div>
               ) : (
-                <div className="divide-y" style={{ borderColor: 'var(--casino-card-border)' }}>
-                  {notifications.map((notification) => {
-                    const getIcon = () => {
-                      switch (notification.type) {
-                        case 'info': return <Info className="w-4 h-4 sm:w-5 sm:h-5" />;
-                        case 'warning': return <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />;
-                        case 'success': return <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />;
-                        case 'error': return <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />;
-                        default: return <Info className="w-4 h-4 sm:w-5 sm:h-5" />;
-                      }
-                    };
-                    
-                    const getColor = () => {
-                      switch (notification.type) {
-                        case 'info': return '#3B82F6';
-                        case 'warning': return '#F59E0B';
-                        case 'success': return '#10B981';
-                        case 'error': return '#EF4444';
-                        default: return '#3B82F6';
-                      }
-                    };
-
+                <ul
+                  className="divide-y"
+                  style={{ borderColor: 'var(--casino-card-border)' }}
+                >
+                  {notifications.map((n) => {
+                    const Icon =
+                      n.type === 'warning'
+                        ? AlertTriangle
+                        : n.type === 'success'
+                          ? CheckCircle
+                          : n.type === 'error'
+                            ? AlertCircle
+                            : Info;
+                    const color =
+                      n.type === 'warning'
+                        ? '#F59E0B'
+                        : n.type === 'success'
+                          ? '#10B981'
+                          : n.type === 'error'
+                            ? '#EF4444'
+                            : '#3B82F6';
                     return (
-                      <div
-                        key={notification._id}
-                        onClick={() => {
-                          if (!notification.isRead) {
-                            markAsRead(notification._id);
-                          }
-                          if (notification.link) {
-                            setIsNotificationOpen(false);
-                            navigate(notification.link);
-                          }
-                        }}
-                        className={`p-3 sm:p-4 cursor-pointer transition-colors active:bg-opacity-20 touch-manipulation ${
-                          !notification.isRead ? 'bg-opacity-10' : 'hover:bg-opacity-5'
-                        }`}
-                        style={{
-                          backgroundColor: !notification.isRead 
-                            ? 'rgba(59, 130, 246, 0.1)' 
-                            : 'transparent'
-                        }}
-                      >
-                        <div className="flex items-start gap-2 sm:gap-3">
-                          <div className="flex-shrink-0 mt-0.5 sm:mt-1" style={{ color: getColor() }}>
-                            {getIcon()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <h4 className="font-semibold text-xs sm:text-sm md:text-base break-words" style={{ color: 'var(--casino-text-primary)' }}>
-                                {notification.title}
-                              </h4>
-                              {!notification.isRead && (
-                                <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0 mt-1 sm:mt-1.5" style={{ backgroundColor: getColor() }} />
-                              )}
+                      <li key={n._id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!n.isRead) void markAsRead(n._id);
+                            if (n.link) {
+                              setIsNotificationOpen(false);
+                              window.location.href = n.link;
+                            }
+                          }}
+                          className="w-full p-3 text-left transition hover:bg-white/[0.03]"
+                          style={{
+                            backgroundColor: !n.isRead
+                              ? 'rgba(59, 130, 246, 0.08)'
+                              : 'transparent',
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5" style={{ color }}>
+                              <Icon className="h-5 w-5" />
                             </div>
-                            <p className="text-[11px] sm:text-xs md:text-sm mt-1 sm:mt-1.5 break-words leading-relaxed" style={{ color: 'var(--casino-text-secondary)' }}>
-                              {notification.message}
-                            </p>
-                            <div className="flex items-center justify-between mt-1.5 sm:mt-2">
-                              <p className="text-[10px] sm:text-xs opacity-70" style={{ color: 'var(--casino-text-secondary)' }}>
-                                {new Date(notification.createdAt).toLocaleString(undefined, {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: 'numeric',
-                                  minute: '2-digit',
-                                  ...(isMobile ? {} : { year: 'numeric' })
-                                })}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <h4
+                                  className="text-sm font-semibold break-words"
+                                  style={{
+                                    color: 'var(--casino-text-primary)',
+                                  }}
+                                >
+                                  {n.title}
+                                </h4>
+                                {!n.isRead && (
+                                  <span
+                                    className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                )}
+                              </div>
+                              <p
+                                className="mt-1 text-xs leading-relaxed break-words"
+                                style={{
+                                  color: 'var(--casino-text-secondary)',
+                                }}
+                              >
+                                {n.message}
                               </p>
-                              {notification.link && (
-                                <span className="text-[10px] sm:text-xs font-medium" style={{ color: 'var(--casino-highlight-gold)' }}>
-                                  View &rarr;
-                                </span>
-                              )}
+                              <p
+                                className="mt-1.5 text-[10px] opacity-70"
+                                style={{
+                                  color: 'var(--casino-text-secondary)',
+                                }}
+                              >
+                                {new Date(n.createdAt).toLocaleString(
+                                  undefined,
+                                  {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                  },
+                                )}
+                              </p>
                             </div>
                           </div>
-                        </div>
-                      </div>
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
             </div>
           </div>
         </>
       )}
 
-      <div className="relative z-10 flex w-full max-w-full">
-        {/* Desktop Sidebar */}
-        {!isMobile && (
-          <div 
-            className={`fixed bottom-0 left-0 z-50 backdrop-blur-sm transition-all duration-500 ease-in-out shadow-2xl border-r ${
-              sidebarCollapsed ? 'w-16' : 'w-64'
-            }`}
-            style={{ 
-              backgroundColor: 'var(--casino-secondary-dark)', 
-              borderRightColor: 'var(--casino-card-border)',
-              top: 'calc(4rem + env(safe-area-inset-top, 0px))'
-            }}
-            onMouseEnter={() => setSidebarCollapsed(false)}
-            onMouseLeave={() => setSidebarCollapsed(true)}
-          >
-            {/* Sidebar Navigation */}
-            <nav className="px-4 py-4">
-              <ul className="space-y-1">
-                {sidebarItems.map((item) => {
-                  const isActive = item.name === 'Home' 
-                    ? (isAuthenticated ? location.pathname === '/dashboard' : location.pathname === '/')
-                    : location.pathname === item.href;
-                  return (
-                    <li key={item.name}>
-                       <Link
-                         to={item.href}
-                         className={`casino-sidebar-item ${
-                           sidebarCollapsed ? 'collapsed' : 'expanded'
-                         } ${
-                           isActive ? 'active' : ''
-                         }`}
-                         title={sidebarCollapsed ? item.name : ''}
-                       >
-                        <item.icon className={`w-5 h-5 flex-shrink-0 transition-all duration-300 ease-in-out ${
-                          isActive ? 'scale-105' : 'group-hover:scale-105'
-                        }`} />
-                        {!sidebarCollapsed && (
-                          <span className="sidebar-text">{item.name}</span>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
-          </div>
-        )}
-
-        {/* Mobile Sidebar Overlay */}
-        {isMobile && sidebarOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black bg-opacity-50"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Mobile Sidebar */}
-        {isMobile && (
-          <div className={`fixed bottom-0 left-0 z-50 w-64 backdrop-blur-sm transform transition-transform duration-500 ease-in-out shadow-2xl border-r ${
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-          style={{ 
-            backgroundColor: 'var(--casino-secondary-dark)', 
-            borderRightColor: 'var(--casino-card-border)',
-            top: 'calc(3rem + env(safe-area-inset-top, 0px))'
-          }}>
-            {/* Navigation Menu */}
-            <nav className="px-4 py-4">
-              <ul className="space-y-0.5">
-                {sidebarItems.map((item) => {
-                  const isActive = item.name === 'Home' 
-                    ? (isAuthenticated ? location.pathname === '/dashboard' : location.pathname === '/')
-                    : location.pathname === item.href;
-                  return (
-                    <li key={item.name}>
-                       <Link
-                         to={item.href}
-                         className={`casino-sidebar-item expanded ${
-                           isActive ? 'active' : ''
-                         }`}
-                         onClick={() => setSidebarOpen(false)}
-                       >
-                        <item.icon className={`w-5 h-5 flex-shrink-0 transition-all duration-300 ease-in-out ${
-                          isActive ? 'scale-105' : 'group-hover:scale-105'
-                        }`} />
-                        <span className="sidebar-text">{item.name}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
-          </div>
-        )}
-
-        {/* Main Content */}
-        <div className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-300 ${
-          !isMobile && sidebarCollapsed ? 'ml-16' : !isMobile ? 'ml-64' : 'ml-0'
-        } ${location.pathname === '/chat' ? 'h-screen overflow-hidden' : ''}`}>
-          {/* Main Content Area - pt accounts for fixed header + iOS safe-area */}
-          <main className={`flex-1 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] overflow-x-hidden ${location.pathname === '/chat' ? 'pb-0 h-full overflow-hidden relative' : 'pb-20 sm:pb-24 lg:pb-0'}`}>
-            {children}
-          </main>
-        </div>
-      </div>
-
-      {/* Mobile Bottom Navigation — haptic, 48px+ touch targets, safe-area aware */}
-      {isMobile && (
+      {/* ---------------- Slide-over drawer (mobile / tablet) ---------------- */}
+      {menuOpen && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-[90] border-t shadow-2xl"
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70"
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div
+            className="cosmic-card-solid absolute left-0 top-0 flex h-full w-[min(100%,18rem)] flex-col p-4 shadow-xl"
+            style={{
+              paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))',
+            }}
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <span
+                className="text-lg font-bold"
+                style={{ color: 'var(--casino-text-primary)' }}
+              >
+                Menu
+              </span>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg p-2"
+                style={{
+                  color: 'var(--casino-text-secondary)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                }}
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <nav
+              className="flex flex-col gap-1"
+              aria-label="Site pages"
+              onClick={() => setMenuOpen(false)}
+            >
+              {NAV_ITEMS.map((item) => {
+                const isActive =
+                  item.name === 'Home'
+                    ? isHomeActive
+                    : location.pathname === item.href;
+                const to = item.name === 'Home' ? homeHref : item.href;
+                return (
+                  <NavLink
+                    key={item.name}
+                    to={to}
+                    end={item.name === 'Home'}
+                    className={() => drawerNavLinkClass({ isActive })}
+                  >
+                    {item.name}
+                  </NavLink>
+                );
+              })}
+              <Link
+                to="/privacy"
+                className="block rounded-lg px-4 py-3 text-sm hover:bg-white/[0.06]"
+                style={{ color: 'var(--casino-text-primary)' }}
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                to="/terms"
+                className="block rounded-lg px-4 py-3 text-sm hover:bg-white/[0.06]"
+                style={{ color: 'var(--casino-text-primary)' }}
+              >
+                Terms of Service
+              </Link>
+            </nav>
+
+            <div
+              className="mt-auto border-t pt-4"
+              style={{ borderColor: 'var(--casino-card-border)' }}
+            >
+              {isAuthenticated ? (
+                <div className="flex flex-col gap-2">
+                  <Link
+                    to="/profile"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm"
+                    style={{
+                      color: 'var(--casino-text-primary)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    }}
+                  >
+                    <User className="h-4 w-4" />
+                    My Account
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold"
+                    style={{
+                      color: 'var(--casino-accent-red)',
+                      backgroundColor: 'rgba(229, 57, 53, 0.08)',
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Link
+                    to="/login"
+                    onClick={() => setMenuOpen(false)}
+                    className="btn-casino-primary text-center text-sm"
+                    style={{ borderRadius: '0.75rem' }}
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    to="/register"
+                    onClick={() => setMenuOpen(false)}
+                    className="rounded-xl border py-3 text-center text-sm font-semibold"
+                    style={{
+                      borderColor: 'var(--casino-highlight-gold)',
+                      color: 'var(--casino-highlight-gold)',
+                    }}
+                  >
+                    Sign up
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- Main content ---------------- */}
+      <main
+        className={`${
+          isChatPage
+            ? 'fixed inset-x-0 z-0 flex min-h-0 flex-col overflow-hidden top-[calc(var(--layout-header-height)+env(safe-area-inset-top,0px))] max-lg:bottom-[calc(var(--mobile-tab-bar-height)+env(safe-area-inset-bottom,0px))] lg:relative lg:top-auto lg:bottom-auto lg:z-auto lg:flex-1 lg:min-h-0'
+            : isGuestHome
+              ? 'flex min-h-0 flex-1 flex-col overflow-x-clip overflow-y-auto overscroll-y-contain'
+              : 'relative cosmic-page-bg overflow-visible'
+        } ${isChatPage || hideBottomNav ? '' : 'pb-[calc(var(--mobile-tab-bar-height)+env(safe-area-inset-bottom,0px))] lg:pb-0'}`}
+      >
+        {children}
+        {!hideFooter && isGuestHome ? <Footer /> : null}
+      </main>
+
+      {/* ---------------- Footer ---------------- */}
+      {!hideFooter && !isGuestHome ? <Footer /> : null}
+
+      {/* ---------------- Mobile bottom tab bar ---------------- */}
+      {!hideBottomNav && (
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-40 border-t backdrop-blur-lg lg:hidden"
+          aria-label="Mobile primary"
           style={{
-            backgroundColor: 'rgba(10, 10, 15, 0.97)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+            backgroundColor: 'rgba(10, 10, 15, 0.9)',
             borderTopColor: 'var(--casino-card-border)',
             paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           }}
         >
-          <div className="flex items-center justify-around py-1">
-            {mobileNavItems.map((item) => {
-              const isActive = item.name === 'Home'
-                ? (isAuthenticated ? location.pathname === '/dashboard' : location.pathname === '/')
-                : location.pathname === item.href;
+          <div className="mx-auto flex max-w-lg items-stretch justify-between gap-1 px-2 pt-1.5">
+            {MOBILE_TABS.map((item) => {
+              const to = item.name === 'Home' ? homeHref : item.href;
+              const isActive =
+                item.name === 'Home'
+                  ? isHomeActive
+                  : location.pathname === item.href;
               return (
-                <Link
+                <NavLink
                   key={item.name}
-                  to={item.href}
+                  to={to}
+                  end={item.name === 'Home'}
                   onClick={() => triggerHaptic('light')}
-                  className={`flex flex-col items-center justify-center min-w-[48px] min-h-[48px] px-3 rounded-xl transition-all duration-200 group active:scale-90 ${
+                  className={`flex min-h-[48px] min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5 transition-colors active:scale-95 ${
                     isActive
-                      ? 'text-yellow-400'
-                      : 'text-gray-400'
+                      ? 'text-[color:var(--casino-highlight-gold)]'
+                      : 'text-[color:var(--casino-text-secondary)]'
                   }`}
                   style={{
-                    WebkitTapHighlightColor: 'transparent',
-                    touchAction: 'manipulation',
-                    background: isActive ? 'rgba(255, 215, 0, 0.08)' : 'transparent',
+                    backgroundColor: isActive
+                      ? 'rgba(255, 215, 0, 0.08)'
+                      : 'transparent',
                   }}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  <item.icon className={`w-5 h-5 mb-0.5 transition-transform duration-200 ${
-                    isActive ? 'scale-110' : ''
-                  }`} />
-                  <span className={`text-[10px] leading-tight font-medium ${
-                    isActive ? 'font-semibold' : ''
-                  }`}>{item.name}</span>
-                </Link>
+                  <item.icon className="h-5 w-5" />
+                  <span className="text-[11px] font-semibold leading-tight">
+                    {item.name}
+                  </span>
+                </NavLink>
               );
             })}
           </div>
-        </div>
+        </nav>
       )}
-      
     </div>
   );
 };

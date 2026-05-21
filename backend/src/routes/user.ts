@@ -122,20 +122,12 @@ router.get('/profile', authenticate, async (req: Request, res: Response) => {
 router.put('/profile', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = req.user!._id;
-    const { firstName, lastName, username, phone, dateOfBirth, country, currency } = req.body;
+    const { firstName, lastName, phone, dateOfBirth, country, currency } = req.body;
 
     const updateData: any = {};
     
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
-    if (username !== undefined) {
-      // Check if username is already taken by another user
-      const existingUser = await User.findOne({ username, _id: { $ne: userId } });
-      if (existingUser) {
-        return sendError(res, 'Username already taken', 409);
-      }
-      updateData.username = username;
-    }
     if (phone !== undefined) updateData.phone = phone;
     if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : undefined;
     if (country !== undefined) updateData.country = country;

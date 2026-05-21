@@ -1,125 +1,172 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
-import axios from 'axios';
-import { getApiBaseUrl } from '../utils/api';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import toast from 'react-hot-toast';
+import { Loader2 } from 'lucide-react';
+import { PageMeta } from '../components/PageMeta';
+import { AuthScreenShell } from '../components/auth/AuthScreenShell';
+import { AuthFormCard } from '../components/auth/AuthFormCard';
+import { AuthTextField } from '../components/auth/AuthFields';
+import { LoginError, requestPasswordReset } from '../services/authApi';
+import { shouldAuthAutoFocus } from '../utils/authMobile';
+
+const schema = z.object({
+  email: z.string().trim().min(1, 'Email is required').email('Enter a valid email'),
+});
+
+type FormValues = z.infer<typeof schema>;
+
+const btnPrimary =
+  'btn-casino-primary flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-base font-bold disabled:cursor-not-allowed disabled:opacity-50';
 
 const ForgotPassword = () => {
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!email) {
-      toast.error('Please enter your email address');
-      return;
-    }
+  const {
+    register,
+    handleSubmit,
+    getValues,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: '' },
+  });
 
-    setIsLoading(true);
+  const onSubmit = handleSubmit(async ({ email }) => {
+    setFormError(null);
     try {
-      const response = await axios.post(`${getApiBaseUrl()}/auth/forgot-password`, { email });
-      
-      if (response.data.success) {
-        setEmailSent(true);
-        toast.success('If an account with that email exists, a password reset link has been sent.');
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to send reset email');
-    } finally {
-      setIsLoading(false);
+      await requestPasswordReset(email);
+      setSentTo(email);
+      toast.success('Reset email sent (if the account exists).');
+    } catch (e) {
+      const msg =
+        e instanceof LoginError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Failed to send reset email';
+      setFormError(msg);
+      toast.error(msg);
     }
-  };
+  });
 
   return (
-    <div className="min-h-screen casino-bg-primary relative overflow-hidden pt-16 flex items-center justify-center">
-      {/* Casino-themed background elements */}
-      <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-      <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
+    <>
+      <PageMeta
+        title="Forgot Password | Global Ace Gaming"
+        description="Reset your Global Ace Gaming account password. We'll email you a secure reset link."
+        noIndex
+      />
+      <AuthScreenShell
+        showBack
+        title="Forgot password"
+        subtitle={
+          sentTo
+            ? `If an account exists for ${sentTo}, a reset link is on its way.`
+            : 'Enter the email on your account — we will send a secure reset link.'
+        }
+        backTo="/login"
+      >
+        <AuthFormCard>
+          {!sentTo ? (
+            <form
+              onSubmit={onSubmit}
+              className="flex flex-col gap-5 sm:gap-4"
+              noValidate
+            >
+              {formError ? (
+                <p
+                  className="rounded-xl border px-3 py-3 text-sm leading-snug"
+                  style={{
+                    borderColor: 'rgba(229, 57, 53, 0.3)',
+                    backgroundColor: 'rgba(229, 57, 53, 0.1)',
+                    color: '#fecaca',
+                  }}
+                  role="alert"
+                >
+                  {formError}
+                </p>
+              ) : null}
 
-      <div className="relative z-10 w-full max-w-md mx-auto px-4">
-        <div className="casino-bg-secondary rounded-2xl shadow-2xl p-8 casino-border">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-4">
-              <Mail className="w-8 h-8 text-black" />
-            </div>
-            <h1 className="text-2xl font-bold casino-text-primary mb-2">Forgot Password?</h1>
-            <p className="casino-text-secondary">
-              {emailSent 
-                ? 'Check your email for password reset instructions'
-                : 'Enter your email address and we\'ll send you a link to reset your password'}
-            </p>
-          </div>
-
-          {!emailSent ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium casino-text-secondary mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  className="input-casino w-full px-4 py-3 rounded-lg"
-                  required
-                />
-              </div>
+              <AuthTextField
+                id="email"
+                label="Email address"
+                leftIcon="email"
+                type="email"
+                autoComplete="email"
+                enterKeyHint="done"
+                placeholder="you@example.com"
+                autoFocus={shouldAuthAutoFocus()}
+                error={errors.email?.message}
+                {...register('email')}
+              />
 
               <button
                 type="submit"
-                disabled={isLoading}
-                className="btn-casino-primary w-full py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={isSubmitting}
+                className={btnPrimary}
               >
-                {isLoading ? (
+                {isSubmitting ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Sending...
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Sending…
                   </>
                 ) : (
-                  'Send Reset Link'
+                  'Send reset link'
                 )}
               </button>
             </form>
           ) : (
-            <div className="text-center space-y-4">
-              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <p className="text-sm casino-text-secondary">
-                  We've sent a password reset link to <strong className="casino-text-primary">{email}</strong>
-                </p>
-                <p className="text-xs casino-text-secondary mt-2">
-                  Please check your inbox and click the link to reset your password. The link will expire in 1 hour.
-                </p>
+            <div className="flex flex-col gap-4 text-center">
+              <div
+                className="rounded-xl border p-4 text-sm leading-relaxed"
+                style={{
+                  borderColor: 'rgba(0, 200, 83, 0.25)',
+                  backgroundColor: 'rgba(0, 200, 83, 0.08)',
+                  color: 'var(--casino-text-secondary)',
+                }}
+              >
+                We sent a reset link to{' '}
+                <strong style={{ color: 'var(--casino-text-primary)' }}>
+                  {sentTo}
+                </strong>
+                . The link will expire in 1 hour.
               </div>
               <button
+                type="button"
                 onClick={() => {
-                  setEmailSent(false);
-                  setEmail('');
+                  setSentTo(null);
+                  reset({ email: getValues('email') });
                 }}
-                className="text-sm casino-text-secondary hover:casino-text-primary underline"
+                className="text-sm underline-offset-2 hover:underline"
+                style={{ color: 'var(--casino-text-secondary)' }}
               >
                 Send to a different email
               </button>
             </div>
           )}
 
-          <div className="mt-6 text-center">
+          <p
+            className="mt-6 text-center text-sm"
+            style={{ color: 'var(--casino-text-secondary)' }}
+          >
+            Remembered it?{' '}
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-sm casino-text-secondary hover:casino-text-primary transition-colors"
+              className="font-semibold underline-offset-2 hover:underline"
+              style={{ color: 'var(--casino-highlight-gold)' }}
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Login
+              Back to sign in
             </Link>
-          </div>
-        </div>
-      </div>
-    </div>
+          </p>
+        </AuthFormCard>
+      </AuthScreenShell>
+    </>
   );
 };
 
 export default ForgotPassword;
-

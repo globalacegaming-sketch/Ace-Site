@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getGamesApiUrl } from '../utils/api';
 import { useMusic } from '../contexts/MusicContext';
 import { PageMeta } from '../components/PageMeta';
+import { PageShell } from '../components/cosmic';
 import { GameCardSkeleton } from '../components/skeletons/GameCardSkeleton';
 import { LazyImage } from '../components/LazyImage';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
@@ -214,40 +215,25 @@ const Games = () => {
   }, [faqSchema]);
 
   return (
-    <div
-      className="min-h-screen pt-16"
-      style={{
-        background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-      }}
-    >
+    <>
       <PageMeta
         title="Online Slots, Fish, Table & Sports Games | Global Ace Gaming"
         description="Play online slots, online fish games, online table games, and sports in one platform. Bonuses, how to play, and support. Get started in minutes."
       />
-
-      {/* Pull-to-refresh visual indicator */}
       <PullToRefreshIndicator isRefreshing={isRefreshing} pullDistance={pullDistance} />
-
-      {/* Decorative glowing orbs */}
-      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-40 animate-pulse" style={{ backgroundColor: '#6A1B9A' }} />
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-35" style={{ backgroundColor: '#00B0FF' }} />
-        <div className="absolute top-1/2 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-30 animate-pulse" style={{ backgroundColor: '#FFD700' }} />
-      </div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
-        {/* H1 + intro */}
-        <div className="text-center mb-4 sm:mb-5">
-          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold casino-text-primary mb-1.5 sm:mb-2">
-            Online Slots, Fish, Table & Sports Games in One Place
-          </h1>
-          <p className="text-sm casino-text-secondary px-2 max-w-2xl mx-auto">
-            Play <strong className="casino-text-primary">online slots</strong>,{' '}
-            <strong className="casino-text-primary">online fish games</strong>, and{' '}
-            <strong className="casino-text-primary">online table games</strong> from one
+      <PageShell
+        title="Online Slots, Fish, Table & Sports Games in One Place"
+        subtitle={
+          <>
+            Play <strong className="text-[color:var(--casino-text-primary)]">online slots</strong>,{' '}
+            <strong className="text-[color:var(--casino-text-primary)]">online fish games</strong>, and{' '}
+            <strong className="text-[color:var(--casino-text-primary)]">online table games</strong> from one
             platform. Pick a category below to start.
-          </p>
-        </div>
+          </>
+        }
+        width="7xl"
+        background="subtle"
+      >
 
         {/* Category filter — touch-optimised with active:scale */}
         <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 lg:gap-3 mb-4 sm:mb-6 lg:mb-8 px-1 sm:px-2">
@@ -496,8 +482,8 @@ const Games = () => {
             </p>
           </section>
         </div>
-      </div>
-    </div>
+      </PageShell>
+    </>
   );
 };
 

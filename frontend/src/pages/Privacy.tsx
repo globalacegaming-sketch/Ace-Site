@@ -1,32 +1,28 @@
 import { Link } from 'react-router-dom';
 import { PageMeta } from '../components/PageMeta';
+import { CosmicCard, PageShell } from '../components/cosmic';
 
 const Privacy = () => (
-  <div
-    className="min-h-screen pt-20 pb-16"
-    style={{
-      background:
-        'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-    }}
-  >
+  <>
     <PageMeta
       title="Privacy Policy | Global Ace Gaming"
       description="Global Ace Gaming Privacy Policy: Detailed information on how we handle, protect, and process your personal data."
     />
 
-    <div className="max-w-4xl mx-auto px-4 sm:px-6">
-      <header className="mb-10 border-b border-gray-700 pb-6">
-        <h1 className="text-3xl sm:text-4xl font-bold casino-text-primary mb-4">
-          Privacy Policy
-        </h1>
-        <p className="text-sm casino-text-secondary">
-          Last Updated: <span className="casino-text-primary">February 7, 2026</span>
-        </p>
-      </header>
-
-      <div className="space-y-8 text-sm sm:text-base casino-text-secondary leading-relaxed text-justify">
+    <PageShell
+      title="Privacy Policy"
+      subtitle={
+        <>
+          Last Updated:{' '}
+          <span className="text-[color:var(--casino-text-primary)]">February 7, 2026</span>
+        </>
+      }
+      width="4xl"
+      background="subtle"
+    >
+      <CosmicCard variant="solid" padding="lg" className="cosmic-body space-y-8 text-justify">
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             1. Information Collection and Origin
           </h2>
           <p className="mb-4">
@@ -46,7 +42,7 @@ const Privacy = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             2. Purpose and Legal Basis for Processing
           </h2>
           <p className="mb-4">We process your data under the following legal frameworks:</p>
@@ -58,7 +54,7 @@ const Privacy = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             3. Data Sharing and Disclosure
           </h2>
           <p>
@@ -72,7 +68,7 @@ const Privacy = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             4. Data Security Protocols
           </h2>
           <p>
@@ -81,7 +77,7 @@ const Privacy = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             5. User Rights and Data Portability
           </h2>
           <p className="mb-4">Depending on your jurisdiction, you may exercise the following rights:</p>
@@ -93,7 +89,7 @@ const Privacy = () => (
         </section>
 
         <section>
-          <h2 className="text-xl font-bold casino-text-primary mb-3">
+          <h2 className="cosmic-h2 mb-3">
             6. International Data Transfers
           </h2>
           <p>
@@ -102,20 +98,24 @@ const Privacy = () => (
         </section>
 
         <section>
-          <h2 className="text-lg font-bold casino-text-primary mb-2">
+          <h2 className="cosmic-h2 mb-2">
             7. Contact and Compliance
           </h2>
           <p>
             For formal Data Subject Access Requests (DSAR) or privacy grievances, please contact our Data Protection Officer (DPO) via the{' '}
-            <Link to="/support" className="text-yellow-400 hover:underline font-semibold">
+            <Link
+              to="/support"
+              className="font-semibold hover:underline"
+              style={{ color: 'var(--casino-highlight-gold)' }}
+            >
               Support Portal
             </Link>
             . We aim to respond to all inquiries within 30 days.
           </p>
         </section>
-      </div>
-    </div>
-  </div>
+      </CosmicCard>
+    </PageShell>
+  </>
 );
 
 export default Privacy;

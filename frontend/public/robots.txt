@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+
+# Auth flows and account-only pages should not be indexed.
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /verify-code
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /settings
+Disallow: /wallet
+Disallow: /referrals
+Disallow: /loans
+Disallow: /chat
+Disallow: /game/
+Disallow: /fortune-panda
+Disallow: /aceagent
+Disallow: /aceadmin
+
+Sitemap: https://www.globalacegaming.com/sitemap.xml

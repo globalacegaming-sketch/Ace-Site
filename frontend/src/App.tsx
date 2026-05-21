@@ -13,6 +13,7 @@ import IOSAddToHomeScreenBanner from './components/IOSAddToHomeScreenBanner';
 import AnalyticsProvider from './components/AnalyticsProvider';
 import WheelOfFortune from './components/wheel/WheelOfFortune';
 import CookieConsentBanner from './components/CookieConsentBanner';
+import { ScrollToTop } from './components/ScrollToTop';
 
 // Global axios interceptor: auto-logout when the server says the account is banned
 axios.interceptors.response.use(
@@ -36,7 +37,6 @@ const Games = lazy(() => import('./pages/Games'));
 const Bonuses = lazy(() => import('./pages/Bonuses'));
 const Platforms = lazy(() => import('./pages/Platforms'));
 const AboutUs = lazy(() => import('./pages/AboutUs'));
-const WalletPage = lazy(() => import('./pages/Wallet'));
 const ProfilePage = lazy(() => import('./pages/Profile'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Support = lazy(() => import('./pages/Support'));
@@ -164,37 +164,55 @@ function App() {
       <ClickSoundProvider>
         <Router>
           <div className="App">
+          <ScrollToTop />
           <SessionManager />
           <AnalyticsProvider />
           <OneSignalAuthSync />
-          <Toaster 
-            position="top-right"
+          <Toaster
+            position="top-center"
             containerStyle={{
-              top: 20,
-              right: 20,
+              top: 'calc(10px + env(safe-area-inset-top, 0px))',
               zIndex: 9999,
-              maxHeight: 'calc(100vh - 120px)',
             }}
             gutter={8}
-            containerClassName="!z-[9999] md:!top-5 md:!right-5 !top-16 !right-2"
             toastOptions={{
-              duration: 3000,
+              duration: 3500,
               style: {
-                background: '#363636',
-                color: '#fff',
-                maxWidth: 'calc(100vw - 40px)',
-                margin: '0 auto',
+                background: '#1B1B2F',
+                color: '#F5F5F5',
+                border: '1px solid #2C2C3A',
+                borderRadius: '12px',
+                padding: '10px 14px',
                 fontSize: '14px',
-                padding: '12px 16px',
-                wordBreak: 'break-word',
+                maxWidth: 'calc(100vw - 32px)',
+                boxShadow:
+                  '0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 215, 0, 0.04)',
               },
               success: {
-                duration: 3000,
-                iconTheme: { primary: '#22c55e', secondary: '#fff' },
+                iconTheme: { primary: '#FFD700', secondary: '#0A0A0F' },
+                style: {
+                  background: '#1B1B2F',
+                  color: '#F5F5F5',
+                  border: '1px solid rgba(255, 215, 0, 0.35)',
+                  boxShadow:
+                    '0 10px 30px rgba(0, 0, 0, 0.45), 0 0 24px rgba(255, 215, 0, 0.12)',
+                },
               },
               error: {
-                duration: 3000,
-                iconTheme: { primary: '#ef4444', secondary: '#fff' },
+                iconTheme: { primary: '#F87171', secondary: '#0A0A0F' },
+                style: {
+                  background: '#1B1B2F',
+                  color: '#F5F5F5',
+                  border: '1px solid rgba(248, 113, 113, 0.35)',
+                },
+              },
+              loading: {
+                iconTheme: { primary: '#00B0FF', secondary: '#0A0A0F' },
+                style: {
+                  background: '#1B1B2F',
+                  color: '#F5F5F5',
+                  border: '1px solid rgba(0, 176, 255, 0.35)',
+                },
               },
             }}
           />
@@ -220,20 +238,13 @@ function App() {
             
             <Route path="/games" element={<Layout><Games /></Layout>} />
             <Route path="/bonuses" element={<Layout><Bonuses /></Layout>} />
-            <Route path="/chat" element={
-              <ProtectedRoute>
-                <Layout><Chat /></Layout>
-              </ProtectedRoute>
-            } />
+            <Route path="/chat" element={<Layout><Chat /></Layout>} />
             <Route path="/platforms" element={<Layout><Platforms /></Layout>} />
             <Route path="/about-us" element={<Layout><AboutUs /></Layout>} />
             
-            <Route path="/wallet" element={
-              <ProtectedRoute>
-                <Layout><WalletPage /></Layout>
-              </ProtectedRoute>
-            } />
-            
+            {/* /wallet has been retired — redirect any legacy links to the dashboard to preserve SEO link equity */}
+            <Route path="/wallet" element={<Navigate to="/dashboard" replace />} />
+
             <Route path="/profile" element={
               <ProtectedRoute>
                 <Layout><ProfilePage /></Layout>

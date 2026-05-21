@@ -120,4 +120,22 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Manual chunking: keep React + router + axios in their own caches
+    // so changes to app code don't bust the (rarely-updated) vendor cache.
+    // Reduces repeat-visit cold-cache time on mobile.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'forms-vendor': ['react-hook-form', 'zod', '@hookform/resolvers'],
+          'icons-vendor': ['lucide-react'],
+          'realtime-vendor': ['socket.io-client'],
+          'chart-vendor': ['recharts'],
+        },
+      },
+    },
+    // Inline assets ≤ 4 kB (default) and treat anything below 200 kB as a chunk threshold
+    chunkSizeWarningLimit: 800,
+  },
 })

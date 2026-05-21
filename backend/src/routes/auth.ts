@@ -11,6 +11,7 @@ import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
 import { isIPBanned } from '../utils/ipBanUtils';
+import { generateUniqueUsername } from '../utils/username';
 
 const router = Router();
 
@@ -25,7 +26,6 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
     const { 
       firstName, 
       lastName, 
-      username, 
       email, 
       phoneNumber, 
       password, 
@@ -43,8 +43,17 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
     }
 
     // Validate required fields
-    if (!firstName || !lastName || !username || !email || !password) {
-      return sendError(res, 'First name, last name, username, email, and password are required', 400);
+    if (!firstName || !lastName || !email || !phoneNumber || !password) {
+      return sendError(res, 'First name, last name, email, phone number, and password are required', 400);
+    }
+
+    const phoneTrimmed = String(phoneNumber).trim();
+    if (phoneTrimmed.length < 10) {
+      return sendError(res, 'Phone number must be at least 10 characters', 400);
+    }
+    const phoneRegex = /^\+?[\d\s\-\(\)]+$/;
+    if (!phoneRegex.test(phoneTrimmed)) {
+      return sendError(res, 'Please enter a valid phone number', 400);
     }
 
     // Validate email format
@@ -58,13 +67,9 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
       return sendError(res, 'Password must be at least 6 characters long', 400);
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { username }]
-    });
-
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return sendError(res, existingUser.email === email ? 'Email already registered' : 'Username already taken', 409);
+      return sendError(res, 'Email already registered', 409);
     }
 
     // Handle referral code if provided
@@ -123,6 +128,7 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
     // This handles race conditions where multiple users might generate the same code
     let user: any = null;
     let userReferralCode = generateReferralCode();
+    let username = await generateUniqueUsername(firstName);
     const MAX_RETRIES = 10; // Prevent infinite loops
     let retries = 0;
 
@@ -133,7 +139,7 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
           lastName,
           username,
           email,
-          phone: phoneNumber,
+          phone: phoneTrimmed,
           password,
           referralCode: userReferralCode,
           referredBy,
@@ -149,23 +155,27 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
         user = newUser;
       } catch (error: any) {
         // Check if it's a duplicate key error for referralCode
-        const isDuplicateReferralCode = 
-          (error.name === 'MongoError' || error.name === 'MongoServerError') && 
-          error.code === 11000 && 
-          error.keyPattern?.referralCode;
+        const isDupKey =
+          (error.name === 'MongoError' || error.name === 'MongoServerError') &&
+          error.code === 11000;
 
-        if (isDuplicateReferralCode && retries < MAX_RETRIES - 1) {
-          // Generate a new referral code and retry
+        if (isDupKey && error.keyPattern?.referralCode && retries < MAX_RETRIES - 1) {
           retries++;
           userReferralCode = generateReferralCode();
           continue;
-        } else if (isDuplicateReferralCode) {
-          // Max retries reached, return error
-          return sendError(res, 'Failed to generate unique referral code. Please try again.', 500);
-        } else {
-          // Some other error occurred, throw it
-          throw error;
         }
+        if (isDupKey && error.keyPattern?.username && retries < MAX_RETRIES - 1) {
+          retries++;
+          username = await generateUniqueUsername(firstName);
+          continue;
+        }
+        if (isDupKey && error.keyPattern?.referralCode) {
+          return sendError(res, 'Failed to generate unique referral code. Please try again.', 500);
+        }
+        if (isDupKey && error.keyPattern?.username) {
+          return sendError(res, 'Failed to generate unique username. Please try again.', 500);
+        }
+        throw error;
       }
     }
 

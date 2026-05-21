@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, UserSession } from '../types';
 import { isTokenExpired } from '../utils/jwt';
+import { oneSignalLogout } from '../services/oneSignal';
 
 // Session timeout: 24 hours of inactivity on the client side.
 // The server-side session in MongoDB has a 7-day TTL and is the source of truth.
@@ -62,16 +63,19 @@ export const useAuthStore = create<AuthState>()(
         lastActivityTime: Date.now(), // Set activity time on login
       }),
       
-      logout: () => set({
-        user: null,
-        token: null,
-        isAuthenticated: false,
-        isLoading: false,
-        lastRechargeStatus: null,
-        fortunePandaBalance: null,
-        balanceLastUpdated: null,
-        lastActivityTime: null,
-      }),
+      logout: () => {
+        oneSignalLogout().catch(() => {});
+        set({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isLoading: false,
+          lastRechargeStatus: null,
+          fortunePandaBalance: null,
+          balanceLastUpdated: null,
+          lastActivityTime: null,
+        });
+      },
       
       updateBalance: (balance: number) => {
         const { user } = get();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Download, Reply, SmilePlus, ChevronDown, Check, CheckCheck } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Loader2, FileText, Gift, Download, Reply, SmilePlus, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
@@ -8,7 +8,9 @@ import { useAuthStore } from '../../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../../utils/api';
 import { trackFeature } from '../../services/analyticsTracker';
 import { linkify } from '../../utils/linkify';
-import { oneSignalRequestPermission } from '../../services/oneSignal';
+import { oneSignalEnsurePushSetup, oneSignalRequestPermission } from '../../services/oneSignal';
+import { ChatSignInPrompt } from './ChatSignInPrompt';
+import { ChatSupportNotice } from './ChatSupportNotice';
 
 interface ChatMessage {
   id: string;
@@ -83,12 +85,9 @@ const UserChatWidget = () => {
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(false);
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const [newMsgCount, setNewMsgCount] = useState(0);
   const [isAdminTyping, setIsAdminTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef(0);
-  const initialLoadRef = useRef(true); // Track first message load to force-scroll
   const [isMobile, setIsMobile] = useState(false);
   const [imageModal, setImageModal] = useState<{ url: string; name: string } | null>(null);
 
@@ -200,23 +199,12 @@ const UserChatWidget = () => {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const isNearBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollContainerRef.current;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (!el) return;
+    const run = () => el.scrollTo({ top: el.scrollHeight, behavior });
+    requestAnimationFrame(() => requestAnimationFrame(run));
   }, []);
-
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-    setNewMsgCount(0);
-    setShowScrollBottom(false);
-  }, []);
-
-  const handleScrollEvent = useCallback(() => {
-    setShowScrollBottom(!isNearBottom());
-  }, [isNearBottom]);
 
   // Decode HTML entities (like &#x27; for apostrophe) for display
   // This safely decodes entities that were escaped by the backend sanitization
@@ -274,24 +262,14 @@ const UserChatWidget = () => {
   }, [token, API_BASE_URL]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    if (messages.length === 0) return;
-    // On initial load, always jump to the latest message
-    if (initialLoadRef.current) {
-      initialLoadRef.current = false;
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-        setNewMsgCount(0);
-        setShowScrollBottom(false);
-      }, 50);
-      return;
-    }
-    if (isNearBottom()) {
-      scrollToBottom();
-    } else {
-      setNewMsgCount((c) => c + 1);
-    }
-  }, [messages.length, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isOpen || messages.length === 0) return;
+    scrollToBottom('auto');
+  }, [messages, isOpen, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isOpen || isLoading || messages.length === 0) return;
+    scrollToBottom('auto');
+  }, [isOpen, isLoading, messages.length, scrollToBottom]);
 
   useEffect(() => {
     // Disconnect if not authenticated, on admin/agent pages, or if user is admin
@@ -444,23 +422,26 @@ const UserChatWidget = () => {
   // Keep ref in sync so socket handler reads latest value
   useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
 
+  const closePanel = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      setIsOpen(false);
+      setIsClosing(false);
+    }, 250);
+  };
+
   const handleToggle = () => {
-    if (!isAuthenticated) {
-      toast.error('Please sign in to contact support.');
-      return;
-    }
     if (isOpen) {
-      // Start close animation
-      setIsClosing(true);
-      setTimeout(() => {
-        setIsOpen(false);
-        setIsClosing(false);
-      }, 250); // match CSS transition duration
+      closePanel();
     } else {
       setIsOpen(true);
       setUnreadCount(0);
       trackFeature('live_chat', 'feature_opened');
-      oneSignalRequestPermission().catch(() => {});
+      if (user?.id) {
+        const id = String(user.id);
+        void oneSignalEnsurePushSetup(id).then(() => oneSignalRequestPermission(true));
+      }
     }
   };
 
@@ -564,33 +545,50 @@ const UserChatWidget = () => {
     }
   };
 
-  // Don't show widget if not authenticated, on admin/agent pages, if user is admin, or on mobile (use /chat page instead)
-  if (!isAuthenticated || isAdminOrAgentPage || isAdminUser || isMobile) {
+  const isOnChatPage = location.pathname === '/chat';
+
+  // Don't show widget on /chat, mobile, or admin routes (mobile uses /chat tab)
+  if (isAdminOrAgentPage || isAdminUser || isMobile || isOnChatPage) {
     return null;
   }
 
   return (
     <div className="fixed bottom-6 right-6 z-[60]">
-      {(isOpen || isClosing) && (
-        <div className={`mb-4 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-250 ease-out ${
-          isClosing
-            ? 'opacity-0 translate-y-4 scale-95'
-            : 'opacity-100 translate-y-0 scale-100'
-        }`}>
+      {/* Panel is absolutely positioned so the FAB never shifts when open/close */}
+      <div className="relative">
+        {(isOpen || isClosing) && (
+          <div
+            className={`absolute bottom-[calc(100%+1rem)] right-0 w-80 sm:w-96 h-chat-widget-panel bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-250 ease-out origin-bottom-right ${
+              isClosing
+                ? 'pointer-events-none opacity-0 translate-y-2 scale-[0.98]'
+                : 'opacity-100 translate-y-0 scale-100'
+            }`}
+          >
           <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-            <div>
+            <div className="min-w-0 pr-2">
               <p className="text-sm font-medium opacity-80">Support Chat</p>
-              <p className="text-lg font-semibold">Global Ace Gaming</p>
+              <p className="text-lg font-semibold truncate">Global Ace Gaming</p>
             </div>
             <button
-              onClick={() => setIsOpen(false)}
-              className="text-white hover:text-gray-200 transition-colors"
+              type="button"
+              onClick={closePanel}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 active:bg-white/20"
+              aria-label="Close chat"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5 shrink-0" />
             </button>
           </div>
 
-          <div ref={scrollContainerRef} onScroll={handleScrollEvent} className="flex-1 max-h-96 overflow-y-auto p-4 bg-gray-50 relative">
+          {!isAuthenticated ? (
+            <div className="flex flex-1 min-h-0 flex-col items-center justify-center bg-gray-50">
+              <ChatSignInPrompt compact variant="light" />
+            </div>
+          ) : (
+          <>
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-none p-4 bg-gray-50 relative"
+          >
             {isLoading ? (
               <div className="space-y-3 py-2">
                 {[...Array(4)].map((_, i) => (
@@ -605,10 +603,11 @@ const UserChatWidget = () => {
                 ))}
               </div>
             ) : messages.length === 0 ? (
-              <div className="rounded-xl bg-white shadow-sm p-6 text-center text-gray-500">
-                <MessageCircle className="w-8 h-8 mx-auto mb-2 text-indigo-500" />
-                <p className="font-medium">No messages yet</p>
-                <p className="text-sm">Start the conversation and our support team will respond.</p>
+              <div className="py-4">
+                <ChatSupportNotice variant="light" />
+                <p className="mt-4 text-center text-xs text-gray-500">
+                  Type a message below — we will respond when support is available.
+                </p>
               </div>
             ) : (
               <>
@@ -864,19 +863,6 @@ const UserChatWidget = () => {
                 <div ref={messagesEndRef} />
               </>
             )}
-            {/* Scroll-to-bottom floating button */}
-            <button
-              onClick={scrollToBottom}
-              className={`sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-              title="Scroll to latest"
-            >
-              <ChevronDown className="w-4 h-4 text-indigo-600" />
-              {newMsgCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold">
-                  {newMsgCount > 9 ? '9+' : newMsgCount}
-                </span>
-              )}
-            </button>
           </div>
 
           <div className="border-t border-gray-200 bg-white p-4 space-y-3 flex-shrink-0">
@@ -955,20 +941,32 @@ const UserChatWidget = () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      <button
-        onClick={handleToggle}
-        className="relative flex items-center justify-center w-14 h-14 rounded-full shadow-lg bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:scale-105 active:scale-95 transition-transform"
-      >
-        {isOpen ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
-        {!isOpen && unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold shadow-md animate-bounce-gentle">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
+          </>
+          )}
+          </div>
         )}
-      </button>
+
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg transition-shadow hover:shadow-xl"
+          aria-label={isOpen && !isClosing ? 'Close chat' : 'Open chat'}
+          aria-expanded={isOpen}
+        >
+          <span className="flex h-6 w-6 items-center justify-center">
+            {isOpen && !isClosing ? (
+              <X className="h-6 w-6 shrink-0" />
+            ) : (
+              <MessageCircle className="h-6 w-6 shrink-0" />
+            )}
+          </span>
+          {!isOpen && unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex min-h-[20px] min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white shadow-md animate-bounce-gentle">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Image Modal */}
       {imageModal && (

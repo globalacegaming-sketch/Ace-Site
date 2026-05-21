@@ -24,6 +24,8 @@ import ActiveSessions from '../components/ActiveSessions';
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/api';
 import toast from 'react-hot-toast';
+import { PageMeta } from '../components/PageMeta';
+import { PageShell } from '../components/cosmic';
 
 const Settings = () => {
   const { user } = useAuthStore();
@@ -124,18 +126,9 @@ const Settings = () => {
   };
 
   return (
-    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{ 
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-    }}>
-      {/* Decorative glowing orbs */}
-      <div className="absolute inset-0 -z-10">
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-30 animate-pulse" style={{ backgroundColor: '#6A1B9A' }}></div>
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-25 animate-ping" style={{ backgroundColor: '#00B0FF' }}></div>
-        <div className="absolute top-1/2 left-1/4 w-48 h-48 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: '#FFD700' }}></div>
-      </div>
-      
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold casino-text-primary mb-8">⚙️ Settings</h1>
+    <>
+      <PageMeta title="Settings | Global Ace Gaming" description="Update your password, notifications, music, and security settings on Global Ace Gaming." noIndex />
+      <PageShell title="⚙️ Settings" width="4xl" background="subtle">
 
         {/* Audio element is handled by MusicContext */}
 
@@ -467,8 +460,8 @@ const Settings = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </PageShell>
+    </>
   );
 };
 

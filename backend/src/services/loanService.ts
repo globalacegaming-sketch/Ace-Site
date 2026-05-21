@@ -9,6 +9,7 @@ import ChatMessage from '../models/ChatMessage';
 import Notification from '../models/Notification';
 import User from '../models/User';
 import emailService from './emailService';
+import { buildLoanEmail } from '../templates/email/emailLayout';
 import { getSocketServerInstance } from '../utils/socketManager';
 
 const PAYMENT_METHOD_TO_LEDGER_TYPE: Record<PaymentMethod, LedgerType> = {
@@ -763,31 +764,24 @@ class LoanService {
       const user = await User.findById(userId).select('email firstName').lean();
       if (!user?.email) return;
 
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0;">Global Ace Gaming</h1>
-            </div>
-            <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-              <h2 style="color: #22c55e;">Loan Request Approved</h2>
-              <p>Hello ${(user as any).firstName || 'there'},</p>
-              <p>Your loan request has been approved. Here are the details:</p>
-              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
-                <p style="margin: 5px 0;"><strong>Amount:</strong> $${amount.toFixed(2)}</p>
-                <p style="margin: 5px 0;"><strong>Due Date:</strong> ${dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                <p style="margin: 5px 0;"><strong>Total Balance Owed:</strong> $${remainingBalance.toFixed(2)}</p>
-              </div>
-              <p style="color: #666; font-size: 13px;">Please ensure repayment before the due date to maintain your borrowing privileges.</p>
-            </div>
-          </body>
-        </html>
-      `;
+      const dueLabel = dueDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      const html = buildLoanEmail({
+        variant: 'approved',
+        firstName: (user as any).firstName,
+        introHtml: 'Your loan request has been approved. Here are the details:',
+        detailRows: [
+          { label: 'Amount', value: `$${amount.toFixed(2)}` },
+          { label: 'Due Date', value: dueLabel },
+          { label: 'Total Balance Owed', value: `$${remainingBalance.toFixed(2)}` },
+        ],
+        footerNoteHtml:
+          'Please repay before the due date to maintain your borrowing privileges.',
+      });
 
       await emailService.sendEmail({
         to: user.email,
@@ -804,30 +798,17 @@ class LoanService {
       const user = await User.findById(userId).select('email firstName').lean();
       if (!user?.email) return;
 
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0;">Global Ace Gaming</h1>
-            </div>
-            <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-              <h2 style="color: #ef4444;">Loan Request Not Approved</h2>
-              <p>Hello ${(user as any).firstName || 'there'},</p>
-              <p>We regret to inform you that your loan request could not be approved at this time.</p>
-              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
-                <p style="margin: 5px 0;"><strong>Requested Amount:</strong> $${amount.toFixed(2)}</p>
-                <p style="margin: 5px 0;"><strong>Reason:</strong> ${remarks}</p>
-              </div>
-              <p style="color: #666; font-size: 13px;">Feel free to submit a new request in the future.</p>
-            </div>
-          </body>
-        </html>
-      `;
+      const html = buildLoanEmail({
+        variant: 'rejected',
+        firstName: (user as any).firstName,
+        introHtml:
+          'We regret to inform you that your loan request could not be approved at this time.',
+        detailRows: [
+          { label: 'Requested Amount', value: `$${amount.toFixed(2)}` },
+          { label: 'Reason', value: remarks },
+        ],
+        footerNoteHtml: 'Feel free to submit a new request in the future.',
+      });
 
       await emailService.sendEmail({
         to: user.email,
@@ -851,31 +832,19 @@ class LoanService {
 
       const methodDisplay = paymentMethod.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1 style="color: white; margin: 0;">Global Ace Gaming</h1>
-            </div>
-            <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-              <h2 style="color: #3b82f6;">Loan Payment Received</h2>
-              <p>Hello ${(user as any).firstName || 'there'},</p>
-              <p>A payment has been applied to your loan account.</p>
-              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
-                <p style="margin: 5px 0;"><strong>Amount Paid:</strong> $${amount.toFixed(2)}</p>
-                <p style="margin: 5px 0;"><strong>Payment Method:</strong> ${methodDisplay}</p>
-                <p style="margin: 5px 0;"><strong>Remaining Balance:</strong> $${remainingBalance.toFixed(2)}</p>
-              </div>
-              ${remainingBalance === 0 ? '<p style="color: #22c55e; font-weight: bold;">Your loan has been fully repaid. Thank you!</p>' : ''}
-            </div>
-          </body>
-        </html>
-      `;
+      const paidOffNote =
+        remainingBalance === 0 ? 'Your loan has been fully repaid. Thank you!' : undefined;
+      const html = buildLoanEmail({
+        variant: 'payment',
+        firstName: (user as any).firstName,
+        introHtml: 'A payment has been applied to your loan account.',
+        detailRows: [
+          { label: 'Amount Paid', value: `$${amount.toFixed(2)}` },
+          { label: 'Payment Method', value: methodDisplay },
+          { label: 'Remaining Balance', value: `$${remainingBalance.toFixed(2)}` },
+        ],
+        footerNoteHtml: paidOffNote,
+      });
 
       await emailService.sendEmail({
         to: user.email,

@@ -4,6 +4,8 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { getApiBaseUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
+import { PageMeta } from '../components/PageMeta';
+import { PageShell } from '../components/cosmic';
 
 interface ReferralData {
   referralCode: string | null;
@@ -71,34 +73,52 @@ export default function ReferralsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8 flex items-center justify-center" style={{
-        background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-      }}>
+      <PageShell width="3xl" background="subtle" contentClassName="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#FFD700' }} />
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)',
-    }}>
-      {/* Decorative orbs */}
-      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: '#FF6F00' }} />
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ backgroundColor: '#00B0FF' }} />
-      </div>
+    <>
+      <PageMeta
+        title="Refer Friends & Earn $10 per Sign-up | Global Ace Gaming"
+        description="Invite friends to Global Ace Gaming with your unique referral code. Earn $10 in bonus credit for every verified friend who joins and plays."
+        noIndex
+      />
+      <PageShell
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Users className="h-7 w-7 sm:h-8 sm:w-8" style={{ color: '#FFD700' }} />
+            Invite Friends &amp; Earn $10 Each
+          </span>
+        }
+        subtitle="Share your unique referral code. When your friend signs up and plays, you both get $10 bonus credit."
+        width="3xl"
+        background="subtle"
+      >
 
-      <div className="relative z-10 max-w-2xl mx-auto px-3 sm:px-4 lg:px-6">
-        {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold casino-text-primary mb-2 flex items-center gap-2">
-            <Users className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: '#FFD700' }} />
-            Invite Friends
-          </h1>
-          <p className="text-sm sm:text-base casino-text-secondary">
-            Share your referral code and earn rewards when your friends sign up and play!
-          </p>
+        {/* How it works — moved to the TOP so first-time visitors immediately understand the value prop */}
+        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border mb-4 sm:mb-6">
+          <h2 className="text-base sm:text-lg font-semibold casino-text-primary mb-3 sm:mb-4">How It Works</h2>
+          <ol className="space-y-3" aria-label="Referral steps">
+            {[
+              { step: '1', text: 'Copy your unique referral code below.' },
+              { step: '2', text: 'Share it with friends — they sign up using your code.' },
+              { step: '3', text: 'You both earn $10 in bonus credit once they play.' },
+            ].map((item) => (
+              <li key={item.step} className="flex items-center gap-3">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                  style={{ background: 'linear-gradient(135deg, #FFD700, #FFA000)', color: '#0A0A0F' }}
+                  aria-hidden
+                >
+                  {item.step}
+                </div>
+                <p className="text-sm casino-text-secondary">{item.text}</p>
+              </li>
+            ))}
+          </ol>
         </div>
 
         {/* Referral Code Card */}
@@ -244,30 +264,7 @@ export default function ReferralsPage() {
           )}
         </div>
 
-        {/* How it works */}
-        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl p-4 sm:p-6 casino-border mt-4 sm:mt-6">
-          <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-3 sm:mb-4">
-            How It Works
-          </h3>
-          <div className="space-y-3">
-            {[
-              { step: '1', text: 'Share your unique referral code with friends' },
-              { step: '2', text: 'They sign up using your code' },
-              { step: '3', text: 'You both earn bonus credits when they play' },
-            ].map((item) => (
-              <div key={item.step} className="flex items-center gap-3">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
-                  style={{ background: 'linear-gradient(135deg, #FFD700, #FFA000)', color: '#0A0A0F' }}
-                >
-                  {item.step}
-                </div>
-                <p className="text-sm casino-text-secondary">{item.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+      </PageShell>
+    </>
   );
 }

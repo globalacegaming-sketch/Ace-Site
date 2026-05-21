@@ -1,6 +1,8 @@
 import Loan from '../models/Loan';
 import Notification from '../models/Notification';
 import emailService from './emailService';
+import { buildLoanEmail } from '../templates/email/emailLayout';
+import { escape as escapeHtml } from 'validator';
 import { getSocketServerInstance } from '../utils/socketManager';
 
 class LoanCronService {
@@ -205,79 +207,67 @@ class LoanCronService {
   }
 
   private async sendDueSoonEmail(email: string, firstName: string | undefined, amount: number, dueDate: Date, timeLabel: string) {
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0;">Global Ace Gaming</h1>
-          </div>
-          <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-            <h2 style="color: #f59e0b;">Loan Payment Due Tomorrow</h2>
-            <p>Hello ${firstName || 'there'},</p>
-            <p>This is a reminder that your loan payment is due <strong>${timeLabel}</strong>.</p>
-            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
-              <p style="margin: 5px 0;"><strong>Amount:</strong> $${amount.toFixed(2)}</p>
-              <p style="margin: 5px 0;"><strong>Due Date:</strong> ${new Date(dueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            </div>
-            <p style="color: #666; font-size: 13px;">Please ensure repayment before the due date to maintain your borrowing privileges and avoid overdue status.</p>
-          </div>
-        </body>
-      </html>
-    `;
+    const dueLabel = new Date(dueDate).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const html = buildLoanEmail({
+      variant: 'due_soon',
+      firstName,
+      introHtml: `This is a reminder that your loan payment is due <strong>${escapeHtml(timeLabel)}</strong>.`,
+      detailRows: [
+        { label: 'Amount', value: `$${amount.toFixed(2)}` },
+        { label: 'Due Date', value: dueLabel },
+      ],
+      footerNoteHtml:
+        'Please repay before the due date to maintain your borrowing privileges and avoid overdue status.',
+    });
 
     await emailService.sendEmail({ to: email, subject: 'Loan Due Tomorrow - Global Ace Gaming', html });
   }
 
   private async sendOverdueEmail(email: string, firstName: string | undefined, amount: number, dueDate: Date) {
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0;">Global Ace Gaming</h1>
-          </div>
-          <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-            <h2 style="color: #ef4444;">Loan Overdue</h2>
-            <p>Hello ${firstName || 'there'},</p>
-            <p>Your loan payment is now <strong>overdue</strong>. Please arrange repayment immediately.</p>
-            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
-              <p style="margin: 5px 0;"><strong>Amount:</strong> $${amount.toFixed(2)}</p>
-              <p style="margin: 5px 0;"><strong>Due Date:</strong> ${new Date(dueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            </div>
-            <p style="color: #ef4444; font-size: 13px; font-weight: bold;">Failure to repay may affect your future loan eligibility and limit increases.</p>
-          </div>
-        </body>
-      </html>
-    `;
+    const dueLabel = new Date(dueDate).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const html = buildLoanEmail({
+      variant: 'overdue',
+      firstName,
+      introHtml: 'Your loan payment is now <strong>overdue</strong>. Please arrange repayment immediately.',
+      detailRows: [
+        { label: 'Amount', value: `$${amount.toFixed(2)}` },
+        { label: 'Due Date', value: dueLabel },
+      ],
+      footerNoteHtml:
+        'Failure to repay may affect your future loan eligibility and limit increases.',
+    });
 
     await emailService.sendEmail({ to: email, subject: 'Loan Overdue - Immediate Action Required - Global Ace Gaming', html });
   }
 
   private async sendOverdueReminderEmail(email: string, firstName: string | undefined, amount: number, dueDate: Date, overdueLabel: string) {
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0;">Global Ace Gaming</h1>
-          </div>
-          <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-            <h2 style="color: #ef4444;">Overdue Loan Reminder</h2>
-            <p>Hello ${firstName || 'there'},</p>
-            <p>Your loan of <strong>$${amount.toFixed(2)}</strong> was due <strong>${overdueLabel}</strong> and remains unpaid.</p>
-            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
-              <p style="margin: 5px 0;"><strong>Amount Owed:</strong> $${amount.toFixed(2)}</p>
-              <p style="margin: 5px 0;"><strong>Original Due Date:</strong> ${new Date(dueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            </div>
-            <p style="color: #ef4444; font-size: 13px; font-weight: bold;">Please contact support or arrange repayment immediately to restore your borrowing privileges.</p>
-          </div>
-        </body>
-      </html>
-    `;
+    const dueLabel = new Date(dueDate).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const html = buildLoanEmail({
+      variant: 'overdue_reminder',
+      firstName,
+      introHtml: `Your loan of <strong>$${amount.toFixed(2)}</strong> was due <strong>${escapeHtml(overdueLabel)}</strong> and remains unpaid.`,
+      detailRows: [
+        { label: 'Amount Owed', value: `$${amount.toFixed(2)}` },
+        { label: 'Original Due Date', value: dueLabel },
+      ],
+      footerNoteHtml:
+        'Please contact support or arrange repayment immediately to restore your borrowing privileges.',
+    });
 
     await emailService.sendEmail({ to: email, subject: 'Overdue Loan Reminder - Global Ace Gaming', html });
   }

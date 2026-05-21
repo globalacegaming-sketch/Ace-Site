@@ -18,8 +18,33 @@
     <!-- Preconnect to performance-critical origins -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
+    <!--
+      Inter is the actual UI font (declared in src/index.css).
+      Preload + non-blocking stylesheet load: the browser fetches the font
+      asynchronously and we apply it once it's ready, removing render-blocking.
+    -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    </noscript>
+    <!-- Preload the logo image used above-the-fold on Home (hero background + nav). -->
+    <link rel="preload" as="image" href="/logo.png" fetchpriority="high" />
     <title>Online Slots, Fish & Table Games | Global Ace Gaming</title>
+    <link rel="canonical" href="https://www.globalacegaming.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Global Ace Gaming" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <!-- OneSignal: deferred queue and init run before SDK loads. -->
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -27,7 +52,7 @@
         await OneSignal.init({
           appId: "85f288b7-130d-4334-9a01-304bd9070551",
           allowLocalhostAsSecureOrigin: true,
-          serviceWorkerPath: "/OneSignalSDKWorker.js",
+          serviceWorkerPath: "/onesignal/OneSignalSDKWorker.js",
           serviceWorkerParam: { scope: "/onesignal/" },
           promptOptions: {
             slidedown: {
@@ -47,6 +72,24 @@
     </script>
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <meta name="description" content="Play online slots, online fish games, and online table games in one platform. Global Ace Gaming offers bonuses and support. Desktop and mobile." />
+    <meta property="og:title" content="Online Slots, Fish & Table Games | Global Ace Gaming" />
+    <meta property="og:description" content="Play online slots, fish games, and table games on one secure platform. Bonuses, referrals, and 24/7-style support — desktop and mobile." />
+    <meta property="og:image" content="/logo.png" />
+    <meta property="og:url" content="https://www.globalacegaming.com/" />
+    <meta name="twitter:title" content="Online Slots, Fish & Table Games | Global Ace Gaming" />
+    <meta name="twitter:description" content="Play online slots, fish games, and table games on one secure platform." />
+    <meta name="twitter:image" content="/logo.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Global Ace Gaming",
+        "url": "https://www.globalacegaming.com/",
+        "logo": "https://www.globalacegaming.com/logo.png",
+        "description": "Play online slots, fish games, and table games in one platform.",
+        "sameAs": []
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

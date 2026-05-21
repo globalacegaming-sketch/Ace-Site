@@ -1,217 +1,256 @@
-import { Users, Award, Shield, Globe, Heart, Target } from 'lucide-react';
+import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Calendar,
+  Zap,
+  Wallet,
+  Users,
+  Target,
+  Eye,
+  Headphones,
+  Heart,
+  Check,
+} from 'lucide-react';
 import { PageMeta } from '../components/PageMeta';
-import { Link } from 'react-router-dom';
+import { PageShell } from '../components/cosmic';
+
+const PAYMENT_METHODS = [
+  'Cards',
+  'Crypto',
+  'Apple Pay',
+  'Cash App',
+  'Chime',
+  'Online wallets',
+  'And more',
+] as const;
+
+const MISSION_FOCUS = [
+  'Reliable customer experience',
+  'Secure transactions',
+  'Responsive support',
+  'Platform consistency',
+  'Continuous improvement',
+] as const;
+
+type Differentiator = {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  list?: readonly string[];
+};
+
+const DIFFERENTIATORS: Differentiator[] = [
+  {
+    icon: Calendar,
+    title: 'Trusted Since 2019',
+    description:
+      'Global Ace Gaming has been operating and growing since late 2019, serving players consistently with dedication and reliability.',
+  },
+  {
+    icon: Zap,
+    title: 'Fast & Reliable Transactions',
+    description:
+      'From deposits to withdrawals, our goal is to make every transaction quick, smooth, and hassle-free.',
+  },
+  {
+    icon: Wallet,
+    title: 'Multiple Payment Methods',
+    description: 'We support flexible payment solutions including:',
+    list: PAYMENT_METHODS,
+  },
+  {
+    icon: Users,
+    title: 'Community Focused',
+    description:
+      'Our players are at the center of everything we do. We continuously improve our services, support, and platform experience based on real user feedback.',
+  },
+];
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="cosmic-h2 border-b border-white/10 pb-3 text-left lg:pb-4">
+      {children}
+    </h2>
+  );
+}
+
+function IconBadge({ icon: Icon }: { icon: LucideIcon }) {
+  return (
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full lg:h-11 lg:w-11"
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,165,0,0.06))',
+        border: '1px solid rgba(255,215,0,0.18)',
+      }}
+    >
+      <Icon className="h-5 w-5" style={{ color: 'var(--casino-highlight-gold)' }} aria-hidden />
+    </div>
+  );
+}
 
 const AboutUs = () => {
-  const stats = [
-    { number: '10K+', label: 'Active Players', icon: Users },
-    { number: '500+', label: 'Games Available', icon: Award },
-    { number: '99.9%', label: 'Uptime Guarantee', icon: Shield },
-    { number: '24/7', label: 'Customer Support', icon: Globe }
-  ];
-
-  const values = [
-    {
-      icon: Shield,
-      title: 'Security First',
-      description: 'We prioritize the security of our players with advanced encryption and secure payment processing.'
-    },
-    {
-      icon: Heart,
-      title: 'Player Focused',
-      description: 'Every decision we make is centered around providing the best possible experience for our players.'
-    },
-    {
-      icon: Award,
-      title: 'Fair Gaming',
-      description: 'We ensure all our games are fair, transparent, and regularly audited by independent testing agencies.'
-    },
-    {
-      icon: Globe,
-      title: 'Global Reach',
-      description: 'Serving players worldwide with localized support and multiple language options.'
-    }
-  ];
-
   return (
-    <div className="min-h-screen pt-20 pb-4 sm:pb-6 lg:pb-8" style={{
-      background: 'linear-gradient(135deg, #1B1B2F 0%, #2C2C3A 50%, #1B1B2F 100%)'
-    }}>
-      <PageMeta title="About Global Ace Gaming | Our Platform & Games" description="Learn about Global Ace Gaming: online slots, fish, table games, and our commitment to safe, transparent play." />
-
-      {/* Decorative orbs */}
-      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
-        <div className="absolute top-20 left-10 w-64 h-64 rounded-full blur-3xl opacity-20 animate-pulse" style={{ backgroundColor: 'var(--casino-accent-purple)' }} />
-        <div className="absolute bottom-20 right-10 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ backgroundColor: 'var(--casino-accent-blue)' }} />
-      </div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-8">
-        {/* Header */}
-        <div className="text-center mb-8 sm:mb-12">
-          <h1 className="text-2xl sm:text-4xl font-bold casino-text-primary mb-3 sm:mb-4">
-            About Global Ace Gaming
-          </h1>
-          <p className="text-sm sm:text-xl casino-text-secondary max-w-3xl mx-auto">
-            Your premier destination for online gaming excellence, where entertainment meets innovation
-          </p>
-        </div>
-
-        {/* Stats Section */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-8 sm:mb-12">
-          {stats.map((stat, index) => {
-            const IconComponent = stat.icon;
-            return (
-              <div
-                key={index}
-                className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 text-center transition-all duration-300 hover:border-[#FFD700]/40"
-                style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-              >
-                <div
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3"
-                  style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))', border: '1px solid rgba(255,215,0,0.2)' }}
-                >
-                  <IconComponent className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: 'var(--casino-highlight-gold)' }} />
-                </div>
-                <div className="text-2xl sm:text-3xl font-bold mb-1" style={{ color: 'var(--casino-highlight-gold)' }}>
-                  {stat.number}
-                </div>
-                <div className="text-xs sm:text-sm casino-text-secondary">{stat.label}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Our Story */}
-        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-8 mb-6 sm:mb-8" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-10 items-center">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold casino-text-primary mb-4 sm:mb-6">Our Story</h2>
-              <div className="space-y-3 sm:space-y-4 text-sm sm:text-base casino-text-secondary leading-relaxed">
-                <p>
-                  Founded in 2020, Global Ace Gaming emerged from a simple vision: to create
-                  the most engaging, secure, and innovative online gaming platform. What started
-                  as a small team of gaming enthusiasts has grown into a global platform serving
-                  thousands of players worldwide.
-                </p>
-                <p>
-                  Our journey began with a commitment to fair play, cutting-edge technology,
-                  and exceptional customer service. Today, we're proud to offer a diverse
-                  portfolio of games, from classic casino favorites to the latest Fortune Panda
-                  slots, all powered by state-of-the-art technology.
-                </p>
-                <p>
-                  We believe that gaming should be fun, fair, and accessible to everyone.
-                  That's why we've built our platform with player safety and satisfaction
-                  at its core, ensuring every player has an amazing experience.
-                </p>
-              </div>
-            </div>
-            <div
-              className="rounded-xl sm:rounded-2xl p-6 sm:p-8 text-center"
-              style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.08), rgba(106,27,154,0.1))', border: '1px solid rgba(255,215,0,0.15)' }}
-            >
-              <Target className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4" style={{ color: 'var(--casino-highlight-gold)' }} />
-              <h3 className="text-xl sm:text-2xl font-bold casino-text-primary mb-3 sm:mb-4">Our Mission</h3>
-              <p className="text-sm sm:text-base casino-text-secondary leading-relaxed">
-                To provide the ultimate gaming experience through innovative technology,
-                fair play, and exceptional service, while maintaining the highest standards
-                of security and responsible gaming.
+    <>
+      <PageMeta
+        title="About Global Ace Gaming | Our Platform & Mission"
+        description="Global Ace Gaming — trusted since 2019. Fast transactions, flexible payments, responsive support, and access to recognized gaming platforms."
+      />
+      <PageShell
+        title="About Global Ace Gaming"
+        subtitle="Trusted gaming services · Serving players since late 2019"
+        width="6xl"
+        background="subtle"
+        contentClassName="pb-4"
+      >
+        <article className="space-y-10 sm:space-y-12 lg:space-y-14">
+          <section className="border-b border-white/10 pb-8 sm:pb-10 lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end lg:gap-12 lg:pb-12">
+            <div className="min-w-0">
+              <p className="text-base font-medium leading-relaxed casino-text-primary sm:text-lg lg:text-xl lg:leading-[1.65] xl:text-[1.35rem]">
+                At Global Ace Gaming, we believe online gaming should feel{' '}
+                <span style={{ color: 'var(--casino-highlight-gold)' }}>fast, secure, exciting,</span>
+                {' '}and community-driven. Since late 2019, we have continuously served players with
+                trusted gaming services, fast transactions, responsive support, and access to
+                internationally recognized platforms—building our reputation on reliability,
+                smooth user experience, and long-term customer trust.
+              </p>
+              <p className="mt-5 text-sm leading-relaxed casino-text-secondary sm:text-base lg:mt-6 lg:max-w-3xl lg:text-lg">
+                We are not game developers. We work alongside official gaming providers and
+                platforms so you can load, play, and redeem through one simple, user-friendly system.
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Our Values */}
-        <div className="mb-6 sm:mb-8">
-          <h2 className="text-xl sm:text-2xl font-bold casino-text-primary text-center mb-6 sm:mb-8">Our Values</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            {values.map((value, index) => {
-              const IconComponent = value.icon;
-              return (
-                <div
-                  key={index}
-                  className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-6 text-center transition-all duration-300 hover:border-[#FFD700]/40"
-                  style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-                >
-                  <div
-                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
-                    style={{ background: 'linear-gradient(135deg, rgba(106,27,154,0.2), rgba(0,176,255,0.15))', border: '1px solid rgba(106,27,154,0.25)' }}
-                  >
-                    <IconComponent className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: 'var(--casino-highlight-gold)' }} />
-                  </div>
-                  <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-2 sm:mb-3">{value.title}</h3>
-                  <p className="text-xs sm:text-sm casino-text-secondary">{value.description}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Why Choose Us */}
-        <div className="casino-bg-secondary rounded-xl sm:rounded-2xl casino-border border p-4 sm:p-8 mb-6 sm:mb-8" style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
-          <h2 className="text-xl sm:text-2xl font-bold casino-text-primary text-center mb-6 sm:mb-8">Why Choose Global Ace Gaming?</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-            {[
-              { icon: Shield, title: 'Licensed & Regulated', desc: 'We operate under strict licensing requirements, ensuring your safety and security at all times.' },
-              { icon: Award, title: 'Award-Winning Games', desc: 'Our game portfolio includes award-winning titles from top providers, ensuring quality entertainment.' },
-              { icon: Globe, title: 'Global Community', desc: 'Join a worldwide community of players and enjoy localized support in multiple languages.' },
-            ].map((item, index) => {
-              const IconComponent = item.icon;
-              return (
-                <div key={index} className="text-center">
-                  <div
-                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
-                    style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))', border: '1px solid rgba(255,215,0,0.2)' }}
-                  >
-                    <IconComponent className="w-6 h-6 sm:w-7 sm:h-7" style={{ color: 'var(--casino-highlight-gold)' }} />
-                  </div>
-                  <h3 className="text-base sm:text-lg font-semibold casino-text-primary mb-2 sm:mb-3">{item.title}</h3>
-                  <p className="text-xs sm:text-sm casino-text-secondary">{item.desc}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Call to Action */}
-        <div
-          className="rounded-xl sm:rounded-2xl p-6 sm:p-10 text-center"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(139,0,0,0.2) 50%, rgba(255,215,0,0.1) 100%)',
-            border: '1px solid rgba(255,215,0,0.2)',
-            boxShadow: '0 4px 30px rgba(0,0,0,0.3)',
-          }}
-        >
-          <h2 className="text-xl sm:text-3xl font-bold casino-text-primary mb-3 sm:mb-4">Ready to Start Your Gaming Journey?</h2>
-          <p className="text-sm sm:text-lg casino-text-secondary mb-6 sm:mb-8 max-w-2xl mx-auto">
-            Join thousands of satisfied players and experience the best in online gaming
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-            <Link
-              to="/register"
-              className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation"
-              style={{
-                background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
-                color: '#0A0A0F',
-                boxShadow: '0 0 15px rgba(255,215,0,0.25)',
-              }}
+            <aside
+              className="mt-6 hidden text-right lg:mt-0 lg:block"
+              aria-label="Established"
             >
-              Get Started Today
-            </Link>
-            <Link
-              to="/games"
-              className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation casino-text-primary"
-              style={{
-                border: '2px solid rgba(255,215,0,0.4)',
-                background: 'rgba(255,255,255,0.04)',
-              }}
+              <p
+                className="text-5xl font-black leading-none tracking-tight xl:text-6xl"
+                style={{ color: 'var(--casino-highlight-gold)' }}
+              >
+                2019
+              </p>
+              <p className="cosmic-label mt-2">Trusted since</p>
+            </aside>
+            <p
+              className="cosmic-label mt-4 lg:hidden"
+              style={{ color: 'var(--casino-highlight-gold)' }}
             >
-              Explore Games
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
+              Trusted since 2019
+            </p>
+          </section>
+
+          {/* Differentiators — list on mobile, 2-col grid on desktop, no per-item cards */}
+          <section>
+            <SectionHeading>What Makes Us Different</SectionHeading>
+            <ul className="mt-6 divide-y divide-white/10 lg:mt-8 lg:grid lg:grid-cols-2 lg:gap-x-14 lg:gap-y-10 lg:divide-y-0">
+              {DIFFERENTIATORS.map(({ icon, title, description, list }) => (
+                <li key={title} className="flex gap-4 py-6 first:pt-0 lg:py-0">
+                  <IconBadge icon={icon} />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="cosmic-h3 mb-1.5">{title}</h3>
+                    <p className="cosmic-body text-sm leading-relaxed lg:text-base">
+                      {description}
+                    </p>
+                    {list ? (
+                      <ul className="mt-3 flex flex-wrap gap-2 lg:mt-4">
+                        {list.map((item) => (
+                          <li
+                            key={item}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs casino-text-secondary lg:text-sm"
+                          >
+                            <Check
+                              className="h-3 w-3 shrink-0"
+                              style={{ color: 'var(--casino-highlight-gold)' }}
+                              aria-hidden
+                            />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Mission + Vision — side by side on large screens */}
+          <section className="lg:grid lg:grid-cols-2 lg:gap-14 lg:gap-y-0">
+            <div className="border-t border-white/10 pt-8 lg:border-t-0 lg:pt-0 lg:pr-8 lg:border-r lg:border-white/10">
+              <div className="mb-4 flex items-center gap-3">
+                <IconBadge icon={Target} />
+                <h2 className="cosmic-h2">Our Mission</h2>
+              </div>
+              <p className="cosmic-body leading-relaxed">
+                Our mission is to create a trusted gaming environment where players can enjoy
+                entertainment with confidence, convenience, and speed.
+              </p>
+              <p className="cosmic-label mt-5 mb-3">We focus on:</p>
+              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                {MISSION_FOCUS.map((item) => (
+                  <li key={item} className="flex items-start gap-2 cosmic-body text-sm">
+                    <Check
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      style={{ color: 'var(--casino-highlight-gold)' }}
+                      aria-hidden
+                    />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="border-t border-white/10 pt-8 lg:border-t-0 lg:pt-0 lg:pl-8">
+              <div className="mb-4 flex items-center gap-3">
+                <IconBadge icon={Eye} />
+                <h2 className="cosmic-h2">Our Vision</h2>
+              </div>
+              <p className="cosmic-body leading-relaxed lg:text-base">
+                We aim to become one of the most trusted global gaming service platforms by
+                combining modern technology, strong customer support, and a seamless gaming
+                experience.
+              </p>
+            </div>
+          </section>
+
+          {/* Support + responsible — two columns on xl */}
+          <section className="border-t border-white/10 pt-8 lg:grid lg:grid-cols-5 lg:gap-10 lg:pt-10">
+            <div className="lg:col-span-3">
+              <div className="mb-3 flex items-center gap-3">
+                <IconBadge icon={Headphones} />
+                <h2 className="cosmic-h2">Dedicated Support</h2>
+              </div>
+              <p className="cosmic-body leading-relaxed lg:pr-4 lg:text-base">
+                We understand how important fast assistance is in online gaming. Our team works
+                hard to provide responsive and helpful support whenever players need help with
+                recharges, withdrawals, bonuses, or account-related concerns.
+              </p>
+            </div>
+
+            <div className="mt-8 border-t border-white/10 pt-8 lg:col-span-2 lg:mt-0 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+              <div className="mb-3 flex items-center gap-3">
+                <Heart className="h-6 w-6 shrink-0 text-rose-400" aria-hidden />
+                <h2 className="cosmic-h3">Play Smart. Stay Responsible.</h2>
+              </div>
+              <p className="cosmic-body text-sm leading-relaxed lg:text-base">
+                Gaming should always remain fun and responsible. We encourage all players to
+                enjoy gaming responsibly as a form of entertainment.
+              </p>
+            </div>
+          </section>
+
+          {/* Footer line — no card */}
+          <footer className="border-t border-white/10 pt-8 text-center lg:pt-10">
+            <p
+              className="text-lg font-bold tracking-tight sm:text-xl lg:text-2xl"
+              style={{ color: 'var(--casino-highlight-gold)' }}
+            >
+              Global Ace Gaming
+            </p>
+            <p className="cosmic-body mt-2">Trusted by players since 2019.</p>
+          </footer>
+        </article>
+      </PageShell>
+    </>
   );
 };
 
