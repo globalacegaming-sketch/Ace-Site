@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, type MutableRefObject } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 import {
@@ -18,7 +18,11 @@ import {
   ChevronDown,
   Reply,
   SmilePlus,
-  StickyNote
+  StickyNote,
+  Wallet,
+  ArrowUp,
+  Zap,
+  UserPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAttachmentUrl, isImageAttachment } from '../../../utils/api';
@@ -68,6 +72,43 @@ interface ChatMessage {
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🔥', '😢'];
 const MORE_EMOJIS  = ['😮', '🎉', '👏', '🙏', '😍', '💯', '👎', '😡', '🤔', '✅'];
 
+/**
+ * Canned replies for the money flows players start from the site
+ * (Deposit / Withdraw / Bonus). Inserted into the composer; the agent edits and sends.
+ */
+const CANNED_REPLIES: { label: string; text: (name: string) => string }[] = [
+  {
+    label: 'Payment options',
+    text: (name) =>
+      `Hi ${name}! Happy to help with your deposit. Which payment method would you like to use? Let me know the amount and I'll send the details.`,
+  },
+  {
+    label: 'Send screenshot',
+    text: (name) =>
+      `Thanks ${name}! Please send a screenshot of the payment confirmation here and I'll credit your account right away.`,
+  },
+  {
+    label: 'Credit added',
+    text: (name) =>
+      `All set, ${name} — your deposit has been credited. Refresh your balance and good luck!`,
+  },
+  {
+    label: 'Bonus added',
+    text: (name) =>
+      `Done, ${name} — your bonus has been added to your account. Refresh your balance to see it. Have fun!`,
+  },
+  {
+    label: 'Processing withdrawal',
+    text: (name) =>
+      `Got it, ${name}. Your withdrawal is being processed now. Please share the account or wallet details you'd like it sent to.`,
+  },
+];
+
+/** Max height the composer can grow to before it scrolls internally. */
+const COMPOSER_MAX_HEIGHT = 140;
+/** When the agent scrolls within this many px of the top, older messages auto-load. */
+const AUTO_LOAD_OLDER_THRESHOLD = 80;
+
 /** Format a date for the divider between message groups */
 const formatDateDivider = (date: Date): string => {
   const today = new Date();
@@ -85,6 +126,10 @@ interface ConversationSummary {
   lastMessage?: ChatMessage;
   unreadCount: number;
   labels?: LabelData[];
+  /** Player context returned with the conversation (FP account, balance, referral). */
+  fortunePandaUsername?: string;
+  fortunePandaBalance?: number | null;
+  joinedViaReferral?: boolean;
 }
 
 interface AdminChatPanelProps {
@@ -95,13 +140,34 @@ interface AdminChatPanelProps {
   onInitialUserConsumed?: () => void;
   onUnreadChange?: (count: number) => void;
   onSessionExpired?: () => void;
+  /**
+   * Whether the panel is currently shown. The parent keeps the panel mounted
+   * (display:none) on other tabs so the socket stays alive; scrolling while hidden
+   * is a no-op, so we re-scroll when this flips to true.
+   */
+  isVisible?: boolean;
+  /** Receives the "refresh conversations" function so the parent can wire a toolbar button. */
+  refreshRef?: MutableRefObject<(() => void) | null>;
+  /** When provided, the chat header shows a Deposit button that opens the parent's deposit flow. */
+  onOpenDeposit?: (userId: string) => void;
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const INITIAL_MESSAGE_LIMIT = 50; // Increased initial load for better UX
 const LOAD_MORE_LIMIT = 50; // Load more messages at once
 
-const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onInitialUserConsumed, onUnreadChange, onSessionExpired }: AdminChatPanelProps) => {
+const AdminChatPanel = ({
+  adminToken,
+  apiBaseUrl,
+  wsBaseUrl,
+  initialUserId,
+  onInitialUserConsumed,
+  onUnreadChange,
+  onSessionExpired,
+  isVisible = true,
+  refreshRef,
+  onOpenDeposit,
+}: AdminChatPanelProps) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -126,6 +192,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const [socketReconnecting, setSocketReconnecting] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [newMsgCount, setNewMsgCount] = useState(0);
+  const [confirmResolve, setConfirmResolve] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, string>>({}); // userId -> name
   const [onlineAgents, setOnlineAgents] = useState<string[]>([]);
   // Labels & Notes state
@@ -142,9 +210,18 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const loadMoreButtonRef = useRef<HTMLButtonElement | null>(null);
   const selectedUserIdRef = useRef<string | null>(null);
+  /** Last message id rendered per conversation — lets the auto-scroll effect tell "appended" from "status/reaction/prepend". */
+  const lastMsgIdRef = useRef<Record<string, string | null>>({});
+  /** Scroll anchor captured before prepending older messages so the view doesn't jump. */
+  const prependAnchorRef = useRef<{ userId: string; scrollHeight: number; scrollTop: number } | null>(null);
+  /** Force a scroll to bottom on the next appended message (set after the agent sends). */
+  const forceScrollNextRef = useRef(false);
+  const handleSelectConversationRef = useRef<(userId: string) => void>(() => {});
+  const resolveConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playNotificationSoundRef = useRef<() => void>(() => {});
   const showPushNotificationRef = useRef<(message: ChatMessage) => void>(() => {});
   const notificationPermissionRef = useRef<NotificationPermission>('default');
@@ -313,7 +390,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
           window.parent.focus();
         }
         if (selectedUserIdRef.current !== message.userId) {
-          setSelectedUserId(message.userId);
+          // Go through the normal select path so the conversation scrolls to the latest message
+          handleSelectConversationRef.current(message.userId);
         }
         // Don't auto-close on click - let Windows handle it
       };
@@ -329,7 +407,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     } catch (error) {
       console.log('Error showing push notification:', error);
     }
-  }, [setSelectedUserId]);
+  }, []);
 
   // Initialize notification permission on mount
   useEffect(() => {
@@ -395,17 +473,57 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     return el.scrollHeight - el.scrollTop - el.clientHeight < 200;
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-    setNewMsgCount(0);
-    setShowScrollBottom(false);
+  /**
+   * Scroll the message list (and only the message list) to the bottom.
+   * Uses the container's scrollTop instead of scrollIntoView so the outer
+   * dashboard scroller / page header never move. Double-rAF waits for the
+   * freshly rendered messages to be laid out first.
+   */
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = messagesContainerRef.current;
+        if (!el) return;
+        if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
+      });
+    });
   }, []);
 
-  const handleAdminScroll = useCallback(() => {
-    setShowScrollBottom(!isNearBottom());
-  }, [isNearBottom]);
+  const scrollToBottom = useCallback(() => {
+    scrollMessagesToBottom('smooth');
+    setNewMsgCount(0);
+    setShowScrollBottom(false);
+  }, [scrollMessagesToBottom]);
+
+  /** Resize the composer to fit its content, up to COMPOSER_MAX_HEIGHT. */
+  const resizeComposer = useCallback(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, []);
+
+  /** Put text in the composer (canned reply / card shortcut) and focus it. */
+  const insertIntoComposer = useCallback((text: string) => {
+    setMessageInput((prev) => {
+      const trimmed = prev.trim();
+      return trimmed ? `${prev.replace(/\s+$/, '')}\n${text}` : text;
+    });
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+      resizeComposer();
+    });
+  }, [resizeComposer]);
 
   const handleReply = useCallback((msg: ChatMessage) => {
     setReplyingTo(msg);
@@ -448,26 +566,64 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     setEmojiPickerMsgId(null);
   }, [adminToken, apiBaseUrl]);
 
-  useEffect(() => {
-    // On initial conversation load, always jump to the latest message
-    if (selectedUserId && initialConvoLoadRef.current === selectedUserId) {
-      const msgs = conversationMessages[selectedUserId];
-      if (msgs && msgs.length > 0) {
-        initialConvoLoadRef.current = null;
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-          setNewMsgCount(0);
-          setShowScrollBottom(false);
-        }, 50);
-        return;
-      }
+  // Restore the scroll anchor right after older messages are prepended, before paint.
+  useLayoutEffect(() => {
+    const anchor = prependAnchorRef.current;
+    if (!anchor || anchor.userId !== selectedUserId) return;
+    const el = messagesContainerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight - anchor.scrollHeight + anchor.scrollTop;
     }
-    if (isNearBottom()) {
+    prependAnchorRef.current = null;
+  }, [conversationMessages, selectedUserId]);
+
+  useEffect(() => {
+    if (!selectedUserId) return;
+    const msgs = conversationMessages[selectedUserId] || [];
+    const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : null;
+    const prevLastId = lastMsgIdRef.current[selectedUserId] ?? null;
+    lastMsgIdRef.current[selectedUserId] = lastId;
+
+    // Initial open of a conversation: jump to the latest message, but only once the
+    // API batch has rendered. Socket leftovers from before the open must not consume
+    // the flag — that is what left the view parked at the top.
+    if (initialConvoLoadRef.current === selectedUserId) {
+      if (loadingConversation) return;
+      if (msgs.length === 0 && !loadedConversationsRef.current.has(selectedUserId)) return;
+      initialConvoLoadRef.current = null;
+      scrollMessagesToBottom('auto');
+      setNewMsgCount(0);
+      setShowScrollBottom(false);
+      return;
+    }
+
+    // Nothing appended (status / reaction update, or older messages prepended) → leave the view alone.
+    if (lastId === prevLastId) return;
+
+    if (forceScrollNextRef.current || isNearBottom()) {
+      forceScrollNextRef.current = false;
       scrollToBottom();
-    } else if (selectedUserId) {
+    } else {
       setNewMsgCount((c) => c + 1);
     }
-  }, [selectedUserId, conversationMessages]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedUserId, conversationMessages, loadingConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-scroll when the panel becomes visible again (it is kept mounted with display:none on other tabs).
+  useEffect(() => {
+    if (!isVisible || !selectedUserId) return;
+    if (!showScrollBottom) scrollMessagesToBottom('auto');
+  }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the composer height in sync with its content (also when cleared after send).
+  useEffect(() => {
+    resizeComposer();
+  }, [messageInput, resizeComposer, selectedUserId]);
+
+  useEffect(() => {
+    return () => {
+      if (resolveConfirmTimerRef.current) clearTimeout(resolveConfirmTimerRef.current);
+    };
+  }, []);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -539,13 +695,14 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     }
   }, [adminToken, apiBaseUrl, allLabels]);
 
-  // Expose refresh function to parent component via window object
+  // Expose the refresh function to the parent through a ref (no window globals)
   useEffect(() => {
-    (window as any).__adminChatRefresh = fetchConversations;
+    if (!refreshRef) return;
+    refreshRef.current = fetchConversations;
     return () => {
-      delete (window as any).__adminChatRefresh;
+      refreshRef.current = null;
     };
-  }, [fetchConversations]);
+  }, [fetchConversations, refreshRef]);
 
   const loadConversation = async (userId: string, loadOlder: boolean = false) => {
     if (!userId) return;
@@ -587,6 +744,15 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
 
         if (loadOlder) {
           const totalMessages = response.data.pagination?.total || 0;
+          // Capture the scroll anchor so the layout effect can keep the same message in view
+          const container = messagesContainerRef.current;
+          if (container && sorted.length > 0) {
+            prependAnchorRef.current = {
+              userId,
+              scrollHeight: container.scrollHeight,
+              scrollTop: container.scrollTop
+            };
+          }
           setConversationMessages((prev) => {
             const prevMessages = prev[userId] || [];
             const updatedMessages = [...sorted, ...prevMessages];
@@ -631,6 +797,12 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
         // Update conversation summary with user info from API response if available
         if (response.data.user && !loadOlder) {
           const userInfo = response.data.user;
+          const playerContext = {
+            fortunePandaUsername: userInfo.fortunePandaUsername || undefined,
+            fortunePandaBalance:
+              typeof userInfo.fortunePandaBalance === 'number' ? userInfo.fortunePandaBalance : null,
+            joinedViaReferral: Boolean(userInfo.joinedViaReferral)
+          };
           setConversationSummaries((prev) => {
             const existing = prev.find((c) => c.userId === userId);
             if (existing) {
@@ -639,7 +811,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                   ? {
                       ...c,
                       name: userInfo.name || c.name,
-                      email: userInfo.email || c.email
+                      email: userInfo.email || c.email,
+                      ...playerContext
                     }
                   : c
               );
@@ -651,6 +824,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                   userId,
                   name: userInfo.name || 'User',
                   email: userInfo.email || '',
+                  ...playerContext,
                   lastMessage: sorted[sorted.length - 1],
                   unreadCount: sorted.filter(
                     (msg) => msg.senderType === 'user' && msg.status === 'unread'
@@ -675,6 +849,23 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
       setLoadingConversation(false);
     }
   };
+
+  const handleAdminScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    setShowScrollBottom(!isNearBottom());
+    // Auto-load older messages when the agent reaches the top (the pill stays as a fallback)
+    if (
+      selectedUserId &&
+      el.scrollTop < AUTO_LOAD_OLDER_THRESHOLD &&
+      hasMoreMessages[selectedUserId] === true &&
+      !loadingMore &&
+      !loadingConversation
+    ) {
+      void loadConversation(selectedUserId, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNearBottom, selectedUserId, hasMoreMessages, loadingMore, loadingConversation]);
 
   const markMessagesAsRead = async (_userId: string, messages: ChatMessage[]) => {
     const unreadMessages = messages.filter(
@@ -967,11 +1158,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
         return sorted;
       });
 
-      // Auto-scroll to bottom if viewing this conversation
-      // Use ref to get current selectedUserId without causing socket reconnection
-      if (selectedUserIdRef.current === message.userId) {
-        setTimeout(() => scrollToBottom(), 100);
-      }
+      // Scrolling is handled by the conversationMessages effect, which only scrolls
+      // when the agent is already near the bottom (otherwise it bumps the badge).
     });
 
     socket.on('chat:message:status', (message: ChatMessage) => {
@@ -1068,7 +1256,10 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
   const handleSelectConversation = (userId: string) => {
     setSelectedUserId(userId);
     setReplyingTo(null);
-    // Mark this conversation for initial-load scroll
+    setConfirmResolve(false);
+    setNewMsgCount(0);
+    setShowScrollBottom(false);
+    // Mark this conversation for initial-load scroll (consumed once the API batch renders)
     initialConvoLoadRef.current = userId;
     // Hide conversations sidebar on mobile when selecting a conversation
     // This ensures chat area takes full width on mobile
@@ -1080,13 +1271,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
       }));
       void loadConversation(userId);
     } else {
-      // Already loaded via API — just scroll to bottom
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-        setNewMsgCount(0);
-        setShowScrollBottom(false);
-      }, 50);
-      void markMessagesAsRead(userId, conversationMessages[userId]);
+      // Already loaded via API — the conversationMessages effect sees the flag and scrolls
+      void markMessagesAsRead(userId, conversationMessages[userId] || []);
     }
     setConversationSummaries((prev) =>
       prev.map((summary) =>
@@ -1094,6 +1280,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
       )
     );
   };
+  handleSelectConversationRef.current = handleSelectConversation;
 
   useEffect(() => {
     if (initialUserId) {
@@ -1130,6 +1317,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
         }
       });
 
+      // The sent message comes back over the socket; always show it even if the agent had scrolled up
+      forceScrollNextRef.current = true;
       setMessageInput('');
       setAttachment(null);
       setAttachmentPreview(null);
@@ -1150,8 +1339,21 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
     }
   };
 
+  /** First tap arms an inline confirm (auto-dismisses); second tap resolves. */
+  const handleResolveClick = () => {
+    if (confirmResolve) {
+      setConfirmResolve(false);
+      if (resolveConfirmTimerRef.current) clearTimeout(resolveConfirmTimerRef.current);
+      void handleResolveMessages();
+      return;
+    }
+    setConfirmResolve(true);
+    if (resolveConfirmTimerRef.current) clearTimeout(resolveConfirmTimerRef.current);
+    resolveConfirmTimerRef.current = setTimeout(() => setConfirmResolve(false), 4000);
+  };
+
   const handleResolveMessages = async () => {
-    if (!selectedUserId) return;
+    if (!selectedUserId || resolving) return;
     const messages = conversationMessages[selectedUserId] || [];
     const unresolved = messages.filter(
       (msg) => msg.senderType === 'user' && msg.status !== 'resolved'
@@ -1162,6 +1364,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
       return;
     }
 
+    setResolving(true);
     try {
       // Use batch endpoint for better performance
       const messageIds = unresolved
@@ -1253,7 +1456,25 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
       } else {
         toast.error(errorMessage);
       }
+    } finally {
+      setResolving(false);
     }
+  };
+
+  /** Prefill the composer from a bonus / loan system card. */
+  const handleSystemCardReply = (msg: ChatMessage) => {
+    const playerName = msg.name || 'there';
+    const metaType = msg.metadata?.type || '';
+    let text: string;
+    if (metaType.startsWith('loan_')) {
+      text = `Hi ${playerName}, I'm reviewing your loan request now and will update you here shortly.`;
+    } else if (msg.metadata?.bonusTitle) {
+      text = `Hi ${playerName}, I'm adding your ${msg.metadata.bonusTitle} now — it'll show in your balance shortly.`;
+    } else {
+      text = `Hi ${playerName}, I'm looking into this for you now.`;
+    }
+    setReplyingTo(msg);
+    insertIntoComposer(text);
   };
 
   const filteredConversations = conversationSummaries.filter((conversation) => {
@@ -1386,21 +1607,21 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
               className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white text-gray-900 placeholder-gray-400"
             />
           </div>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+          <div className="flex gap-2 mb-2 sm:mb-3 overflow-x-auto scrollbar-hide -mx-1 px-1">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 sm:gap-1.5 transition min-h-[32px] ${
+              className={`px-3 rounded-lg text-xs font-medium flex items-center gap-1.5 transition min-h-[36px] whitespace-nowrap flex-shrink-0 ${
                 statusFilter === 'all'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 border border-gray-200'
               }`}
             >
-              <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+              <Filter className="w-3.5 h-3.5 flex-shrink-0" />
               <span>All</span>
             </button>
             <button
               onClick={() => setStatusFilter('unread')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[32px] ${
+              className={`px-3 rounded-lg text-xs font-medium transition min-h-[36px] whitespace-nowrap flex-shrink-0 ${
                 statusFilter === 'unread'
                   ? 'bg-red-100 text-red-700 border border-red-200'
                   : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 border border-gray-200'
@@ -1410,7 +1631,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
             </button>
             <button
               onClick={() => setStatusFilter('resolved')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[32px] ${
+              className={`px-3 rounded-lg text-xs font-medium transition min-h-[36px] whitespace-nowrap flex-shrink-0 ${
                 statusFilter === 'resolved'
                   ? 'bg-green-100 text-green-700 border border-green-200'
                   : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 border border-gray-200'
@@ -1477,7 +1698,11 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                               {conversation.name || 'Unknown User'}
                             </p>
                             {conversation.unreadCount > 0 && (
-                              <span className="inline-flex items-center justify-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[18px] sm:min-w-[20px] animate-bounce-gentle">
+                              // key on the count so the badge bounces once per change, then sits still
+                              <span
+                                key={conversation.unreadCount}
+                                className="inline-flex items-center justify-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white min-w-[18px] sm:min-w-[20px] animate-bounce-once"
+                              >
                                 {conversation.unreadCount}
                               </span>
                             )}
@@ -1520,62 +1745,126 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
       <div className={`bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-lg flex flex-col flex-1 min-h-0 w-full ${showConversations && !selectedUserId ? 'hidden' : 'flex'} lg:flex lg:w-2/3`}>
         {selectedUserId ? (
           <>
-            <div className="p-2 sm:p-3 lg:p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
-              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <button
-                  onClick={() => {
-                    setShowConversations(true);
-                    setSelectedUserId(null);
-                  }}
-                  className="lg:hidden p-1.5 sm:p-2 text-gray-600 hover:bg-white active:bg-gray-100 rounded-lg transition flex-shrink-0"
-                  title="Back to conversations"
-                >
-                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm sm:text-base lg:text-lg font-semibold sm:font-bold text-gray-900 truncate">
-                    {conversationSummaries.find((c) => c.userId === selectedUserId)?.name || 'User'}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">
-                    {conversationSummaries.find((c) => c.userId === selectedUserId)?.email || 'No email on file'}
-                  </p>
+            {(() => {
+              const conv = conversationSummaries.find((c) => c.userId === selectedUserId);
+              const hasBalance = typeof conv?.fortunePandaBalance === 'number';
+              return (
+                <div className="p-2 sm:p-3 lg:p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-3 flex-1 min-w-0">
+                      <button
+                        onClick={() => {
+                          setShowConversations(true);
+                          setSelectedUserId(null);
+                        }}
+                        className="lg:hidden flex items-center justify-center min-w-[40px] min-h-[40px] text-gray-600 hover:bg-white active:bg-gray-100 rounded-lg transition flex-shrink-0"
+                        title="Back to conversations"
+                        aria-label="Back to conversations"
+                      >
+                        <ArrowLeft className="w-5 h-5" />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm sm:text-base lg:text-lg font-semibold sm:font-bold text-gray-900 truncate">
+                          {conv?.name || 'User'}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-gray-500 truncate">
+                          {conv?.email || 'No email on file'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      {/* Label selector */}
+                      <LabelSelector
+                        allLabels={allLabels}
+                        selectedIds={(conv?.labels || []).map((l) => l._id)}
+                        onChange={(ids) => handleAssignLabels(selectedUserId!, ids)}
+                      />
+                      {/* Notes button */}
+                      <button
+                        onClick={() => {
+                          setNotesUserId(selectedUserId);
+                          setNotesUserName(conv?.name || 'User');
+                        }}
+                        className="flex items-center justify-center gap-1 px-2.5 min-h-[36px] text-xs rounded-lg bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-700 border border-amber-200 transition-colors"
+                        title="View notes"
+                        aria-label="View notes"
+                      >
+                        <StickyNote className="w-4 h-4" />
+                        <span className="hidden sm:inline">Notes</span>
+                      </button>
+                      {/* Resolve: first tap arms an inline confirm, second tap resolves */}
+                      {confirmResolve ? (
+                        <div className="flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 p-0.5">
+                          <span className="hidden sm:inline px-1.5 text-xs font-medium text-green-800">Resolve?</span>
+                          <button
+                            onClick={handleResolveClick}
+                            disabled={resolving}
+                            className="flex items-center gap-1 px-2.5 min-h-[32px] rounded-md bg-green-600 text-white text-xs font-semibold hover:bg-green-700 active:bg-green-800 disabled:opacity-60"
+                          >
+                            {resolving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setConfirmResolve(false)}
+                            className="px-2.5 min-h-[32px] rounded-md text-xs font-medium text-green-800 hover:bg-green-100"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleResolveClick}
+                          disabled={resolving}
+                          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 lg:px-4 min-h-[36px] text-xs sm:text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 active:bg-green-200 border border-green-200 rounded-lg transition disabled:opacity-60"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span className="hidden sm:inline">Mark Resolved</span>
+                          <span className="sm:hidden">Resolve</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Player context: FP account, balance, referral flag, deposit shortcut */}
+                  {(conv?.fortunePandaUsername || hasBalance || conv?.joinedViaReferral || onOpenDeposit) && (
+                    <div className="mt-2 flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
+                      {hasBalance && (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-white border border-green-200 px-2 min-h-[30px] text-xs font-semibold text-green-700 whitespace-nowrap flex-shrink-0">
+                          <Wallet className="w-3.5 h-3.5" />
+                          ${(conv!.fortunePandaBalance as number).toFixed(2)}
+                        </span>
+                      )}
+                      {conv?.fortunePandaUsername && (
+                        <span
+                          className="inline-flex items-center rounded-lg bg-white border border-gray-200 px-2 min-h-[30px] text-xs font-mono text-gray-700 whitespace-nowrap flex-shrink-0"
+                          title="FortunePanda account"
+                        >
+                          {conv.fortunePandaUsername}
+                        </span>
+                      )}
+                      {conv?.joinedViaReferral && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-lg bg-purple-50 border border-purple-200 px-2 min-h-[30px] text-xs font-medium text-purple-700 whitespace-nowrap flex-shrink-0"
+                          title="Joined through a referral link — eligible for the 70% first-deposit bonus"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Referred · 70% 1st deposit
+                        </span>
+                      )}
+                      {onOpenDeposit && (
+                        <button
+                          onClick={() => onOpenDeposit(selectedUserId!)}
+                          className="ml-auto inline-flex items-center gap-1 rounded-lg bg-indigo-600 text-white px-3 min-h-[32px] text-xs font-semibold hover:bg-indigo-700 active:bg-indigo-800 whitespace-nowrap flex-shrink-0 shadow-sm"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                          Deposit
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                {/* Label selector */}
-                {(() => {
-                  const conv = conversationSummaries.find(c => c.userId === selectedUserId);
-                  return (
-                    <LabelSelector
-                      allLabels={allLabels}
-                      selectedIds={(conv?.labels || []).map(l => l._id)}
-                      onChange={(ids) => handleAssignLabels(selectedUserId!, ids)}
-                    />
-                  );
-                })()}
-                {/* Notes button */}
-                <button
-                  onClick={() => {
-                    const conv = conversationSummaries.find(c => c.userId === selectedUserId);
-                    setNotesUserId(selectedUserId);
-                    setNotesUserName(conv?.name || 'User');
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg border border-white/10 bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 transition-colors"
-                  title="View notes"
-                >
-                  <StickyNote className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Notes</span>
-                </button>
-                <button
-                  onClick={handleResolveMessages}
-                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 active:bg-green-200 border border-green-200 rounded-lg transition"
-                >
-                  <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">Mark Resolved</span>
-                  <span className="sm:hidden">Resolve</span>
-                </button>
-              </div>
-            </div>
+              );
+            })()}
 
             <div 
               ref={messagesContainerRef}
@@ -1660,7 +1949,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                           {showDateDivider && (
                             <div className="flex items-center justify-center my-3">
                               <div className="flex-1 border-t border-gray-200" />
-                              <span className="px-3 text-[11px] font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
+                              <span className="px-3 text-xs font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
                               <div className="flex-1 border-t border-gray-200" />
                             </div>
                           )}
@@ -1670,17 +1959,30 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                                 ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400'
                                 : 'bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400'
                             }`}>
-                              <div className="flex items-center gap-2 mb-2">
+                              <div className="flex items-center gap-2 mb-2 flex-wrap">
                                 <Gift className={`w-4 h-4 flex-shrink-0 ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`} />
                                 <span className={`text-xs font-semibold ${isLoanMsg ? 'text-green-800' : 'text-yellow-800'}`}>{systemLabel}</span>
-                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>•</span>
-                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>
+                                <span className={`text-xs ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>•</span>
+                                <span className={`text-xs ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>
                                   {msg.name || 'User'}
                                 </span>
-                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>•</span>
-                                <span className={`text-[10px] ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`} title={formatFullTime(msg.createdAt)}>
+                                <span className={`text-xs ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`}>•</span>
+                                <span className={`text-xs ${isLoanMsg ? 'text-green-600' : 'text-yellow-600'}`} title={formatFullTime(msg.createdAt)}>
                                   {formatTime(msg.createdAt)}
                                 </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSystemCardReply(msg)}
+                                  className={`ml-auto inline-flex items-center gap-1 rounded-md px-2 min-h-[28px] text-xs font-semibold transition ${
+                                    isLoanMsg
+                                      ? 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'
+                                      : 'bg-yellow-500 text-white hover:bg-yellow-600 active:bg-yellow-700'
+                                  }`}
+                                  title="Reply to this request"
+                                >
+                                  <Reply className="w-3.5 h-3.5" />
+                                  Reply
+                                </button>
                               </div>
                               {msg.message && (
                                 <p className={`text-sm font-medium whitespace-pre-wrap break-words ${isLoanMsg ? 'text-green-900' : 'text-yellow-900'}`}>
@@ -1708,7 +2010,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                         {showDateDivider && (
                           <div className="flex items-center justify-center my-3">
                             <div className="flex-1 border-t border-gray-200" />
-                            <span className="px-3 text-[11px] font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
+                            <span className="px-3 text-xs font-medium text-gray-400">{formatDateDivider(msgDate)}</span>
                             <div className="flex-1 border-t border-gray-200" />
                           </div>
                         )}
@@ -1716,41 +2018,42 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                           ref={(el) => { messageRefs.current[msg.id] = el; }}
                           className={`group flex ${isAdmin ? 'justify-end' : 'justify-start'} transition-all duration-500 rounded-lg animate-slide-up ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                         >
-                          <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[80%] sm:max-w-[70%]`}>
-                          {/* Reply & React buttons — visible on mobile, hover on desktop */}
-                          <div className="opacity-60 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-0.5 px-1">
+                          <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[70%]`}>
+                          {/* Reply & React buttons — always visible on touch devices, hover-reveal on desktop */}
+                          <div className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1 mb-0.5">
                             <button
                               onClick={() => handleReply(msg)}
-                              className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1"
+                              className="inline-flex items-center gap-1 px-1.5 min-h-[28px] rounded-md text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 active:bg-indigo-100"
                               title="Reply"
                             >
-                              <Reply className="w-3 h-3" />
+                              <Reply className="w-3.5 h-3.5" />
                               <span>Reply</span>
                             </button>
                             <div className="relative">
                               <button
                                 onClick={() => { setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id); setEmojiExpanded(false); }}
-                                className="text-xs text-gray-400 hover:text-indigo-600 flex items-center"
+                                className="inline-flex items-center justify-center min-w-[28px] min-h-[28px] rounded-md text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 active:bg-indigo-100"
                                 title="React"
+                                aria-label="React"
                               >
-                                <SmilePlus className="w-3 h-3" />
+                                <SmilePlus className="w-3.5 h-3.5" />
                               </button>
                               {emojiPickerMsgId === msg.id && (
                                 <div className={`absolute ${isAdmin ? 'right-0' : 'left-0'} bottom-full mb-1 rounded-xl shadow-lg z-[70] bg-white border border-gray-200 p-1.5`}>
                                   <div className="flex items-center gap-0.5">
                                     {QUICK_EMOJIS.map((emoji) => (
-                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                      <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-base hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded min-w-[32px] min-h-[32px] text-center">
                                         {emoji}
                                       </button>
                                     ))}
                                     {!emojiExpanded && (
-                                      <button onClick={() => setEmojiExpanded(true)} className="text-xs text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded p-1 transition-all" title="More emojis">+</button>
+                                      <button onClick={() => setEmojiExpanded(true)} className="text-sm text-gray-400 hover:text-indigo-600 hover:bg-gray-100 rounded min-w-[32px] min-h-[32px] transition-all" title="More emojis">+</button>
                                     )}
                                   </div>
                                   {emojiExpanded && (
                                     <div className="flex items-center gap-0.5 mt-0.5">
                                       {MORE_EMOJIS.map((emoji) => (
-                                        <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-sm hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded p-1 text-center">
+                                        <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)} className="text-base hover:scale-110 active:scale-125 hover:bg-gray-100 transition-all rounded min-w-[32px] min-h-[32px] text-center">
                                           {emoji}
                                         </button>
                                       ))}
@@ -1777,7 +2080,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                                   : { backgroundColor: 'rgba(99,102,241,0.08)', borderColor: '#6366F1' }
                                 }
                               >
-                                <p className="text-[11px] font-semibold mb-0.5" style={{ color: isAdmin ? 'rgba(255,255,255,0.9)' : '#6366F1' }}>
+                                <p className="text-xs font-semibold mb-0.5" style={{ color: isAdmin ? 'rgba(255,255,255,0.9)' : '#6366F1' }}>
                                   {msg.replyTo.senderName || (msg.replyTo.senderType === 'admin' ? 'Support Team' : 'User')}
                                 </p>
                                 <p className={`text-xs line-clamp-2 ${isAdmin ? 'text-indigo-100' : 'text-gray-500'}`}>
@@ -1832,7 +2135,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                             )}
                             {isLastInGroup && (
                               <div
-                                className={`mt-2 text-[11px] capitalize ${
+                                className={`mt-2 text-xs capitalize ${
                                   isAdmin ? 'text-indigo-100' : 'text-gray-500'
                                 } flex items-center gap-2`}
                               >
@@ -1882,7 +2185,7 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                 <div className="flex justify-start mt-2">
                   <div className="rounded-2xl rounded-bl-sm bg-white border border-gray-200 px-4 py-2.5 shadow-sm">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-gray-500 mr-1">{typingUsers[selectedUserId]}</span>
+                      <span className="text-xs text-gray-500 mr-1">{typingUsers[selectedUserId]}</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0ms' }} />
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.2s' }} />
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-typing-dot" style={{ animationDelay: '0.4s' }} />
@@ -1894,12 +2197,13 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
               {/* Scroll-to-bottom floating button */}
               <button
                 onClick={scrollToBottom}
-                className={`sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                className={`sticky bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-11 h-11 rounded-full bg-white shadow-lg border border-gray-200 transition-all duration-200 hover:scale-105 active:scale-95 mx-auto ${showScrollBottom ? 'opacity-90 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 title="Scroll to latest"
+                aria-label={newMsgCount > 0 ? `${newMsgCount} new messages — scroll to latest` : 'Scroll to latest'}
               >
                 <ChevronDown className="w-5 h-5 text-indigo-600" />
                 {newMsgCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold animate-bounce-gentle">
+                  <span key={newMsgCount} className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold animate-bounce-once">
                     {newMsgCount > 9 ? '9+' : newMsgCount}
                   </span>
                 )}
@@ -1921,7 +2225,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                   </div>
                   <button
                     onClick={() => { setClosingReply(true); setTimeout(() => { setReplyingTo(null); setClosingReply(false); }, 200); }}
-                    className="text-indigo-400 hover:text-indigo-700 flex-shrink-0"
+                    className="flex items-center justify-center min-w-[32px] min-h-[32px] rounded-md text-indigo-400 hover:text-indigo-700 hover:bg-indigo-100 flex-shrink-0"
+                    aria-label="Cancel reply"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1983,31 +2288,58 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                   )}
                 </div>
               )}
+              {/* Canned replies for the deposit / withdraw / bonus flows */}
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide -mx-1 px-1" aria-label="Quick replies">
+                <Zap className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" aria-hidden />
+                {CANNED_REPLIES.map((reply) => (
+                  <button
+                    key={reply.label}
+                    type="button"
+                    onClick={() => {
+                      const conv = conversationSummaries.find((c) => c.userId === selectedUserId);
+                      const firstName = (conv?.name || 'there').split(' ')[0];
+                      insertIntoComposer(reply.text(firstName));
+                    }}
+                    className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 min-h-[32px] text-xs font-medium text-indigo-700 hover:bg-indigo-100 active:bg-indigo-200 whitespace-nowrap flex-shrink-0 transition"
+                  >
+                    {reply.label}
+                  </button>
+                ))}
+              </div>
               <div className="flex items-end gap-2 sm:gap-3">
                 <label htmlFor="message-input" className="sr-only">
                   Type your message
                 </label>
-                <textarea
-                  id="message-input"
-                  name="message-input"
-                  value={messageInput}
-                  onChange={(e) => { setMessageInput(e.target.value); emitTyping(); }}
-                  onPaste={handlePaste}
-                  onKeyDown={handleKeyDown}
-                  rows={2}
-                  placeholder="Type your message...."
-                  className="flex-1 rounded-lg sm:rounded-xl border border-gray-200 px-3 sm:px-4 py-2 sm:py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-white sm:bg-gray-50"
-                  maxLength={2000}
-                />
-                {messageInput.length > 1500 && (
-                  <span className={`text-[10px] mt-0.5 ml-1 ${
-                    messageInput.length > 1950 ? 'text-red-500' : messageInput.length > 1800 ? 'text-yellow-500' : 'text-gray-400'
-                  }`}>
-                    {messageInput.length}/2000
-                  </span>
-                )}
-                <div className="flex flex-row sm:flex-col gap-1.5 sm:gap-2">
-                  <label htmlFor="attachment-input" className="flex items-center justify-center text-gray-600 cursor-pointer hover:text-indigo-600 transition-all p-2 sm:p-2 rounded-lg hover:bg-gray-100 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 active:scale-95">
+                <div className="flex-1 min-w-0 relative">
+                  <textarea
+                    id="message-input"
+                    name="message-input"
+                    ref={composerRef}
+                    value={messageInput}
+                    onChange={(e) => { setMessageInput(e.target.value); emitTyping(); }}
+                    onPaste={handlePaste}
+                    onKeyDown={handleKeyDown}
+                    rows={1}
+                    placeholder="Type your message…"
+                    className="w-full min-h-[44px] rounded-xl border border-gray-200 px-3 sm:px-4 py-2.5 sm:py-3 text-base md:text-sm leading-snug text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-white sm:bg-gray-50"
+                    style={{ maxHeight: COMPOSER_MAX_HEIGHT }}
+                    maxLength={2000}
+                  />
+                  {messageInput.length > 1500 && (
+                    <span className={`absolute right-2 -top-4 text-[10px] ${
+                      messageInput.length > 1950 ? 'text-red-500' : messageInput.length > 1800 ? 'text-yellow-500' : 'text-gray-400'
+                    }`}>
+                      {messageInput.length}/2000
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-row gap-1.5 sm:gap-2 flex-shrink-0">
+                  <label
+                    htmlFor="attachment-input"
+                    className="flex items-center justify-center text-gray-600 cursor-pointer hover:text-indigo-600 transition-all rounded-xl hover:bg-gray-100 active:bg-gray-200 min-w-[44px] min-h-[44px] active:scale-95"
+                    aria-label="Attach a file"
+                    title="Attach a file"
+                  >
                     <Paperclip className="w-5 h-5" />
                     <input
                       id="attachment-input"
@@ -2021,7 +2353,8 @@ const AdminChatPanel = ({ adminToken, apiBaseUrl, wsBaseUrl, initialUserId, onIn
                   <button
                     onClick={() => void handleSendMessage()}
                     disabled={sending || (!messageInput.trim() && !attachment)}
-                    className="inline-flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0"
+                    className="inline-flex items-center justify-center gap-2 px-3 sm:px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md min-w-[44px] min-h-[44px]"
+                    aria-label="Send message"
                   >
                     {sending ? (
                       <Loader2 className="w-5 h-5 animate-spin" />

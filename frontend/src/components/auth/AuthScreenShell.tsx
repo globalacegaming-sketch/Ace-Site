@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Gamepad2, Gift, Headphones } from 'lucide-react';
 import { AuthHeroBg } from './AuthHeroBg';
 import { IconArrowLeft } from './AuthIcons';
+import { isFocusedAuthRoute } from '../../constants/authRoutes';
 
 type Props = {
   title: ReactNode;
@@ -35,6 +36,9 @@ export function AuthScreenShell({
   children,
 }: Props) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  /** Reset / verify flows render without the site header; login, register, forgot keep it. */
+  const hasSiteHeader = !isFocusedAuthRoute(pathname);
   const [keyboardPadding, setKeyboardPadding] = useState(0);
 
   useEffect(() => {
@@ -64,11 +68,19 @@ export function AuthScreenShell({
   };
 
   return (
-    <section className="relative isolate flex min-h-[calc(100dvh-env(safe-area-inset-top,0px))] w-full flex-col overflow-x-clip lg:justify-center">
+    <section
+      className={`relative isolate flex w-full flex-col overflow-x-clip lg:justify-center ${
+        hasSiteHeader
+          ? 'min-h-[calc(100dvh-var(--layout-header-height)-var(--mobile-tab-bar-height)-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] lg:min-h-[calc(100dvh-var(--layout-header-height)-env(safe-area-inset-top,0px))]'
+          : 'min-h-[calc(100dvh-env(safe-area-inset-top,0px))]'
+      }`}
+    >
       <AuthHeroBg />
 
       <div
-        className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-4 pb-8 pt-6 sm:px-6 sm:pb-10 sm:pt-8 lg:flex-row lg:items-center lg:gap-14 lg:px-10 lg:py-12"
+        className={`relative z-10 mx-auto flex w-full max-w-6xl flex-col px-4 pb-8 sm:px-6 sm:pb-10 lg:flex-row lg:items-center lg:gap-14 lg:px-10 lg:py-12 ${
+          hasSiteHeader ? 'pt-4 sm:pt-6' : 'pt-6 sm:pt-8'
+        }`}
         style={{ paddingBottom: keyboardPadding > 0 ? keyboardPadding + 32 : undefined }}
       >
         {/* Desktop branding — hidden on mobile where the compact layout already works well */}
@@ -172,7 +184,7 @@ export function AuthScreenShell({
                 <IconArrowLeft className="h-5 w-5" />
               </button>
             </div>
-          ) : (
+          ) : hasSiteHeader ? null : (
             <div className="mb-4 flex justify-center lg:hidden">
               <Link to="/" aria-label="Global Ace Gaming home">
                 <img src="/logo.png" alt="" className="h-12 w-12 object-contain opacity-90" width={48} height={48} />

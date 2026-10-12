@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Gamepad2, User, MessageCircle, Banknote, Users, Gift, ChevronLeft, ChevronRight, Play, Loader2, Headphones, Info } from 'lucide-react';
+import { Gamepad2, User, MessageCircle, Banknote, Users, Gift, ChevronLeft, ChevronRight, Play, Loader2, Headphones, Info, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { chatMessages } from '../utils/chatPrefill';
+import { REFERRAL_BONUS_USD, REFERRED_FRIEND_DEPOSIT_BONUS_PCT } from '../constants/referral';
 import { useBalancePolling } from '../hooks/useBalancePolling';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/PullToRefreshIndicator';
@@ -22,15 +24,17 @@ interface GameItem {
   gameLogo: string;
 }
 
+// Order matters: the first row (Chat, Games, Bonuses, Referrals) is what players
+// use daily; the second row is account / help / info.
 const QUICK_ACTIONS = [
+  { to: '/chat', icon: MessageCircle, label: 'Chat', desc: 'Deposit, withdraw & get help', grad: 'linear-gradient(135deg, #00B0FF, #0091EA)', shadow: 'rgba(0,176,255,0.25)', dark: false },
   { to: '/games', icon: Gamepad2, label: 'Games', desc: 'Browse & play your favourite games', grad: 'linear-gradient(135deg, #FFD700, #FFA000)', shadow: 'rgba(255,215,0,0.25)', dark: true },
   { to: '/bonuses', icon: Gift, label: 'Bonuses', desc: 'Claim active offers and rewards', grad: 'linear-gradient(135deg, #00C853, #00A844)', shadow: 'rgba(0,200,83,0.25)', dark: false },
-  { to: '/profile', icon: User, label: 'Profile', desc: 'Update your account info', grad: 'linear-gradient(135deg, #6A1B9A, #00B0FF)', shadow: 'rgba(106,27,154,0.25)', dark: false },
   { to: '/referrals', icon: Users, label: 'Referrals', desc: 'Invite friends & earn rewards', grad: 'linear-gradient(135deg, #E040FB, #7C4DFF)', shadow: 'rgba(224,64,251,0.25)', dark: false },
-  { to: '/loans', icon: Banknote, label: 'Loans', desc: 'Request short-term zero-interest loans', grad: 'linear-gradient(135deg, #FF6F00, #FF8F00)', shadow: 'rgba(255,111,0,0.25)', dark: true },
-  { to: '/chat', icon: MessageCircle, label: 'Chat', desc: 'Live support — message our team', grad: 'linear-gradient(135deg, #00B0FF, #0091EA)', shadow: 'rgba(0,176,255,0.25)', dark: false },
+  { to: '/profile', icon: User, label: 'Profile', desc: 'Update your account info', grad: 'linear-gradient(135deg, #6A1B9A, #00B0FF)', shadow: 'rgba(106,27,154,0.25)', dark: false },
   { to: '/support', icon: Headphones, label: 'Support', desc: 'Help center, tickets & FAQs', grad: 'linear-gradient(135deg, #26A69A, #00897B)', shadow: 'rgba(38,166,154,0.25)', dark: false },
   { to: '/about-us', icon: Info, label: 'About Us', desc: 'Our platform, games & mission', grad: 'linear-gradient(135deg, #5C6BC0, #3949AB)', shadow: 'rgba(92,107,192,0.25)', dark: false },
+  { to: '/loans', icon: Banknote, label: 'Loans', desc: 'Request short-term zero-interest loans', grad: 'linear-gradient(135deg, #FF6F00, #FF8F00)', shadow: 'rgba(255,111,0,0.25)', dark: true },
 ] as const;
 
 const RECENT_KEY = 'gag-recent-games';
@@ -102,7 +106,8 @@ function GameCarousel({ title, games, icon, loading = false }: { title: string; 
 
   const handlePlay = async (game: GameItem) => {
     if (!isAuthenticated) {
-      if (window.confirm('Please login to play. Go to login?')) navigate('/login');
+      toast('Please sign in to play.', { icon: '🔒' });
+      navigate('/login', { state: { from: '/dashboard' } });
       return;
     }
     trackFeature('game_launch', 'feature_opened', { gameId: game.kindId, gameName: game.gameName });
@@ -171,7 +176,7 @@ function GameCarousel({ title, games, icon, loading = false }: { title: string; 
                     {launchingId === game.kindId ? (
                       <Loader2 className="w-8 h-8 text-white animate-spin" />
                     ) : (
-                      <Play className="w-8 h-8 text-white opacity-0 group-hover/card:opacity-100 transition-opacity drop-shadow-lg" />
+                      <Play className="w-8 h-8 text-white opacity-80 md:opacity-0 md:group-hover/card:opacity-100 transition-opacity drop-shadow-lg" />
                     )}
                   </div>
                 </div>
@@ -203,7 +208,8 @@ function GameCarousel({ title, games, icon, loading = false }: { title: string; 
 }
 
 const Dashboard = () => {
-  const { user, lastRechargeStatus, token } = useAuthStore();
+  const { user, token } = useAuthStore();
+  const navigate = useNavigate();
   const { balance, fetchBalance } = useBalancePolling(30000, { poll: false });
   const [loanBadge, setLoanBadge] = useState(false);
   const { recentGames, randomGames, gamesLoading } = useGameCarousels();
@@ -234,15 +240,10 @@ const Dashboard = () => {
     onRefresh: handleRefresh,
   });
 
-  const rechargeColor =
-    lastRechargeStatus === 'success' ? '#00C853' :
-    lastRechargeStatus === 'failed' ? '#FF5252' :
-    lastRechargeStatus === 'processing' ? '#FFB300' : '#888';
-
-  const rechargeLabel =
-    lastRechargeStatus === 'success' ? 'Success' :
-    lastRechargeStatus === 'failed' ? 'Failed' :
-    lastRechargeStatus === 'processing' ? 'Processing' : 'None';
+  const openChatWith = (message: string, action: 'deposit' | 'withdraw') => {
+    trackFeature('chat_money_shortcut', 'feature_opened', { action, source: 'dashboard' });
+    navigate('/chat', { state: { prefill: message } });
+  };
 
   return (
     <>
@@ -263,22 +264,41 @@ const Dashboard = () => {
           variant="glass"
           padding="md"
           glow
-          className="flex items-center justify-between gap-3 overflow-hidden"
+          className="flex flex-col gap-3 overflow-hidden sm:flex-row sm:items-center sm:justify-between sm:gap-4"
         >
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <p className="cosmic-label mb-0.5">Balance</p>
-            <p className="text-xl font-extrabold leading-none casino-text-primary truncate sm:text-2xl lg:text-3xl">
+            <p className="text-2xl font-extrabold leading-none casino-text-primary sm:text-2xl lg:text-3xl">
               ${balance || '0.00'}
             </p>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="cosmic-label mb-0.5">Last recharge</p>
-            <span
-              className="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap sm:px-3 sm:py-1"
-              style={{ backgroundColor: `${rechargeColor}22`, color: rechargeColor }}
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:gap-2.5">
+            <button
+              type="button"
+              onClick={() => openChatWith(chatMessages.deposit, 'deposit')}
+              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-bold transition active:scale-[0.97] touch-manipulation sm:px-4"
+              style={{
+                background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
+                color: '#0A0A0F',
+                boxShadow: '0 0 14px rgba(255,215,0,0.25)',
+              }}
             >
-              {rechargeLabel}
-            </span>
+              <ArrowDownToLine className="h-4 w-4" />
+              Deposit
+            </button>
+            <button
+              type="button"
+              onClick={() => openChatWith(chatMessages.withdraw, 'withdraw')}
+              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-bold transition active:scale-[0.97] touch-manipulation sm:px-4"
+              style={{
+                borderColor: 'rgba(255,215,0,0.45)',
+                color: 'var(--casino-highlight-gold)',
+                background: 'rgba(255,215,0,0.06)',
+              }}
+            >
+              <ArrowUpFromLine className="h-4 w-4" />
+              Withdraw
+            </button>
           </div>
         </CosmicCard>
 
@@ -287,7 +307,7 @@ const Dashboard = () => {
 
         <Section className="py-0">
           <h2 className="cosmic-h3 mb-3">Quick actions</h2>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3">
+          <div className="grid grid-cols-4 gap-2 sm:gap-3">
             {QUICK_ACTIONS.map(({ to, icon: Icon, label, desc, grad, shadow, dark }) => (
               <Link
                 key={to}
@@ -318,7 +338,7 @@ const Dashboard = () => {
 
         <Link
           to="/referrals"
-          aria-label="Invite friends and earn $10 per referral"
+          aria-label={`Invite friends and earn $${REFERRAL_BONUS_USD} per referral`}
           className="block touch-manipulation active:scale-[0.98]"
         >
           <CosmicCard
@@ -336,10 +356,10 @@ const Dashboard = () => {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold leading-tight casino-text-primary sm:text-base">
-                  Invite friends · Earn $10 each
+                  Invite friends · Earn ${REFERRAL_BONUS_USD} each
                 </p>
                 <p className="cosmic-body truncate text-xs sm:text-sm">
-                  Share your code — you both get rewarded
+                  Your friend gets a {REFERRED_FRIEND_DEPOSIT_BONUS_PCT}% first-deposit bonus
                 </p>
               </div>
             </div>

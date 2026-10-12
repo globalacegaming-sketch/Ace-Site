@@ -88,6 +88,8 @@ const AceagentDashboard: React.FC = () => {
 
   const [pendingChatUserId, setPendingChatUserId] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  /** Filled by AdminChatPanel so the toolbar Refresh button can reload conversations. */
+  const chatRefreshRef = useRef<(() => void) | null>(null);
 
   // ── Permissions ────────────────────────────────────────────────────────────
   const [permissions, setPermissions] = useState<AgentPermission[]>([
@@ -700,6 +702,43 @@ const AceagentDashboard: React.FC = () => {
     }
   };
 
+  /**
+   * Open the deposit (recharge) modal for a player straight from the chat header,
+   * so agents don't have to leave the conversation to top up an account.
+   */
+  const openDepositForUser = async (userId: string) => {
+    const token = getAdminToken();
+    if (!token) {
+      navigate('/aceagent/login');
+      return;
+    }
+    let target = users.find((u) => u._id === userId) || null;
+    if (!target) {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/admin/users/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.data.success && res.data.data) {
+          target = res.data.data as User;
+          setUsers((prev) => (prev.some((u) => u._id === userId) ? prev : [target as User, ...prev]));
+        }
+      } catch (error) {
+        const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+        toast.error(message || 'Could not load this player');
+        return;
+      }
+    }
+    if (!target) {
+      toast.error('Player not found');
+      return;
+    }
+    setSelectedUser(target);
+    setModalAction('recharge');
+    setDepositAmount('');
+    setRedeemAmount('');
+    setShowUserModal(true);
+  };
+
   const handleDeposit = async () => {
     if (!selectedUser) {
       toast.error('Please select a user');
@@ -915,10 +954,7 @@ const AceagentDashboard: React.FC = () => {
                 onClick={() => {
                   if (activeTab === 'chat') {
                     // Refresh chat conversations if on chat tab
-                    const chatRefresh = (window as any).__adminChatRefresh;
-                    if (chatRefresh && typeof chatRefresh === 'function') {
-                      chatRefresh();
-                    }
+                    chatRefreshRef.current?.();
                   } else {
                     // Refresh agent balance for other tabs
                     loadAgentBalance();
@@ -943,7 +979,14 @@ const AceagentDashboard: React.FC = () => {
         </div>
       </nav>
 
-      <div className="flex-1 overflow-y-auto max-w-full mx-auto w-full px-3 sm:px-4 lg:px-8 py-3 sm:py-4 lg:py-6 pb-20 sm:pb-6" style={{ minHeight: 0, maxHeight: '100%', overflowY: 'auto' }}>
+      <div
+        className={`flex-1 min-h-0 max-w-full mx-auto w-full px-3 sm:px-4 lg:px-8 ${
+          activeTab === 'chat'
+            // Chat tab: only the message list scrolls, and the composer sits above the mobile tab bar
+            ? 'overflow-hidden flex flex-col py-2 sm:py-4 lg:py-6 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] sm:pb-6'
+            : 'overflow-y-auto py-3 sm:py-4 lg:py-6 pb-20 sm:pb-6'
+        }`}
+      >
 
         {activeTab === 'users' && hasPermission('users') ? (
           <>
@@ -1241,7 +1284,7 @@ const AceagentDashboard: React.FC = () => {
 
         {/* Chat Tab - always mounted so WebSocket stays connected for real-time notifications */}
         {hasPermission('chat') && adminToken ? (
-          <div className={activeTab === 'chat' ? 'h-full min-h-[500px] sm:min-h-[600px]' : 'hidden'}>
+          <div className={activeTab === 'chat' ? 'flex-1 min-h-0 h-full' : 'hidden'}>
             <AdminChatPanel
               adminToken={adminToken}
               apiBaseUrl={API_BASE_URL}
@@ -1249,6 +1292,9 @@ const AceagentDashboard: React.FC = () => {
               initialUserId={pendingChatUserId}
               onInitialUserConsumed={() => setPendingChatUserId(null)}
               onUnreadChange={setUnreadChatCount}
+              isVisible={activeTab === 'chat'}
+              refreshRef={chatRefreshRef}
+              onOpenDeposit={hasPermission('users') ? openDepositForUser : undefined}
               onSessionExpired={() => {
                 localStorage.removeItem('admin_session');
                 toast.error('Session expired. Please login again.');
@@ -1273,7 +1319,7 @@ const AceagentDashboard: React.FC = () => {
                 <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />
                 Referral Management
               </h2>
-              <p className="text-sm text-gray-500">Review and verify user referrals. Verified referrals send a $10 bonus to the referrer.</p>
+              <p className="text-sm text-gray-500">Review and verify user referrals. Verified referrals send a $15 bonus to the referrer.</p>
             </div>
 
             {/* Filter tabs */}
@@ -1407,8 +1453,8 @@ const AceagentDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* User Update Modal */}
-        {activeTab === 'users' && hasPermission('users') && showUserModal && selectedUser && (
+        {/* User Update Modal — also opened from the chat header's Deposit button */}
+        {hasPermission('users') && showUserModal && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
             <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md mx-auto animate-slideUp border border-gray-200 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
               {/* Modal Header */}

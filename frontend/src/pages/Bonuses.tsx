@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Gift, Star, Clock, CheckCircle, Loader2, Bell, BellOff, Users, Copy, Share2, Timer, ChevronDown, ChevronUp, CalendarClock, Ban } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Gift, Star, Clock, CheckCircle, Loader2, Bell, BellOff, Users, Copy, Share2, Timer, ChevronDown, ChevronUp, CalendarClock, Ban, MessageCircle, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getAttachmentUrl } from '../utils/api';
+import { chatMessages } from '../utils/chatPrefill';
+import { REFERRAL_BONUS_USD, REFERRED_FRIEND_DEPOSIT_BONUS_PCT } from '../constants/referral';
 import { PageMeta } from '../components/PageMeta';
 import { PageShell } from '../components/cosmic';
 import BonusCountdown from '../components/BonusCountdown';
@@ -51,11 +53,19 @@ function saveReminder(id: string) {
 
 const Offers = () => {
   const API_BASE_URL = getApiBaseUrl();
+  const navigate = useNavigate();
   const { isAuthenticated, user, token } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'current' | 'upcoming' | 'expired'>('current');
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState<string | null>(null);
+  /** Title of the bonus most recently requested in this session (drives the inline notice). */
+  const [lastRequested, setLastRequested] = useState<string | null>(null);
+
+  const openChat = useCallback((prefill?: string) => {
+    toast.dismiss();
+    navigate('/chat', prefill ? { state: { prefill } } : undefined);
+  }, [navigate]);
   const [reminders, setReminders] = useState<Set<string>>(getReminders);
   const [expandedTerms, setExpandedTerms] = useState<Set<string>>(new Set());
   const [, setTick] = useState(0);
@@ -129,7 +139,31 @@ const Offers = () => {
       );
 
       if (claimResponse.data.success) {
-        toast.success('Bonus claimed successfully!');
+        // The backend has already dropped a "BONUS CLAIM REQUEST" system message
+        // into this player's chat; an agent adds the credit from there.
+        setLastRequested(bonus.title);
+        toast.custom(
+          (t) => (
+            <div
+              className={`flex max-w-[calc(100vw-32px)] items-center gap-3 rounded-xl border px-3.5 py-3 shadow-lg ${t.visible ? 'animate-slide-up' : 'opacity-0'}`}
+              style={{ background: '#1B1B2F', borderColor: 'rgba(255,215,0,0.35)', color: '#F5F5F5' }}
+              role="status"
+            >
+              <CheckCircle className="h-5 w-5 shrink-0" style={{ color: '#FFD700' }} />
+              <p className="text-sm font-semibold">Request sent to an agent</p>
+              <button
+                type="button"
+                onClick={() => { toast.dismiss(t.id); openChat(chatMessages.bonusHelp); }}
+                className="ml-1 inline-flex min-h-[36px] shrink-0 items-center gap-1 rounded-lg px-3 text-xs font-bold touch-manipulation"
+                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F' }}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Open chat
+              </button>
+            </div>
+          ),
+          { duration: 6000 },
+        );
         loadBonuses();
       } else {
         toast.error(claimResponse.data.message || 'Failed to claim bonus');
@@ -215,10 +249,50 @@ const Offers = () => {
       <PageMeta title="Bonuses & Promotions | Global Ace Gaming" description="Discover bonuses and promotions. Use them across our online slots, fish, and table games. See current offers." />
       <PageShell
         title="Claim Your Bonus"
-        subtitle="Active offers refresh regularly. Tap any card to claim — most are one-tap."
+        subtitle="Tap Claim and an agent will add the bonus to your account via chat."
         width="7xl"
         background="subtle"
       >
+        {/* Inline confirmation — survives the toast so the player knows what happens next */}
+        {lastRequested && (
+          <div
+            className="mb-5 flex flex-col gap-3 rounded-xl border p-3.5 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:p-4"
+            style={{ background: 'rgba(255,215,0,0.08)', borderColor: 'rgba(255,215,0,0.35)' }}
+            role="status"
+          >
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: '#FFD700' }} />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold casino-text-primary">
+                  Request sent — an agent will add it to your account.
+                </p>
+                <p className="mt-0.5 text-xs casino-text-secondary">
+                  &ldquo;{lastRequested}&rdquo; is now in your chat. You&apos;ll get a notification when an agent replies.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openChat(chatMessages.bonusHelp)}
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition active:scale-[0.98] touch-manipulation sm:flex-none"
+                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)', color: '#0A0A0F' }}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Open chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setLastRequested(null)}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl casino-text-secondary transition hover:bg-white/10 touch-manipulation"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tab Navigation */}
         <div className="flex justify-center mb-6 sm:mb-8">
           <div className="casino-bg-secondary rounded-xl p-1 casino-border border" style={{ boxShadow: '0 0 15px rgba(0,0,0,0.3)' }}>
@@ -237,7 +311,7 @@ const Offers = () => {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 ${
+                  className={`min-h-[40px] px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium text-xs sm:text-base whitespace-nowrap transition-all duration-200 touch-manipulation ${
                     activeTab === tab
                       ? 'text-[#0A0A0F] font-bold'
                       : 'casino-text-secondary hover:text-[#F5F5F5]'
@@ -313,7 +387,7 @@ const Offers = () => {
                   <button
                     onClick={() => handleClaimBonus(featured)}
                     disabled={!featured.isActive || !fState.canClaim || claiming === featured._id}
-                    className="self-start py-3 sm:py-3.5 px-6 sm:px-8 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 min-h-[48px]"
+                    className="w-full sm:w-auto sm:self-start py-3 sm:py-3.5 px-6 sm:px-8 rounded-xl font-bold text-sm sm:text-base transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-h-[48px]"
                     style={{
                       background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
                       color: '#0A0A0F',
@@ -321,9 +395,9 @@ const Offers = () => {
                     }}
                   >
                     {claiming === featured._id ? (
-                      <><Loader2 className="w-5 h-5 animate-spin" /> Claiming...</>
+                      <><Loader2 className="w-5 h-5 animate-spin" /> Sending request...</>
                     ) : fClaimed ? (
-                      <><CheckCircle className="w-5 h-5" /> Already Claimed</>
+                      <><CheckCircle className="w-5 h-5" /> Requested</>
                     ) : (
                       <><Gift className="w-5 h-5" /> Claim Now</>
                     )}
@@ -355,13 +429,13 @@ const Offers = () => {
                 </div>
 
                 <p className="casino-text-secondary text-sm mb-4">
-                  Share your referral code with friends. When they sign up and play, you both earn bonus credits!
+                  Share your referral link. You earn ${REFERRAL_BONUS_USD} when a friend joins and plays; they get a {REFERRED_FRIEND_DEPOSIT_BONUS_PCT}% bonus on their first deposit.
                 </p>
 
                 <div className="rounded-lg p-3 sm:p-4 mb-4" style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.1), rgba(255,165,0,0.05))', border: '1px solid rgba(255,215,0,0.15)' }}>
                   <div className="text-center">
-                    <div className="text-2xl sm:text-3xl font-bold mb-1" style={{ color: 'var(--casino-highlight-gold)' }}>$10</div>
-                    <div className="text-xs sm:text-sm casino-text-secondary">Per Referral</div>
+                    <div className="text-2xl sm:text-3xl font-bold mb-1" style={{ color: 'var(--casino-highlight-gold)' }}>${REFERRAL_BONUS_USD}</div>
+                    <div className="text-xs sm:text-sm casino-text-secondary">For you, per verified referral</div>
                   </div>
                 </div>
 
@@ -466,7 +540,7 @@ const Offers = () => {
                     {showClaimed && (
                       <div className="status-success-casino flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium flex-shrink-0">
                         <CheckCircle className="w-3.5 h-3.5" />
-                        <span>Claimed</span>
+                        <span>Requested</span>
                       </div>
                     )}
                     {isRepeatable && claimState.claimCount > 0 && !isExpired && (
@@ -605,7 +679,7 @@ const Offers = () => {
                     <button
                       onClick={() => handleClaimBonus(bonus)}
                       disabled={!bonus.isActive || !claimState.canClaim || claiming === bonus._id}
-                      className="w-full py-2.5 sm:py-3 px-4 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 flex items-center justify-center gap-2 touch-manipulation disabled:opacity-50"
+                      className="w-full min-h-[44px] py-2.5 sm:py-3 px-4 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 flex items-center justify-center gap-2 touch-manipulation disabled:opacity-50"
                       style={claimState.onCooldown ? {
                         background: 'rgba(255,215,0,0.1)',
                         color: 'var(--casino-highlight-gold)',
@@ -629,7 +703,7 @@ const Offers = () => {
                       {claiming === bonus._id ? (
                         <>
                           <Loader2 className="w-5 h-5 animate-spin" />
-                          Claiming...
+                          Sending request...
                         </>
                       ) : claimState.onCooldown && cooldownLabel ? (
                         <>
@@ -639,7 +713,7 @@ const Offers = () => {
                       ) : claimState.maxReached ? (
                         <>
                           <CheckCircle className="w-5 h-5" />
-                          {isRepeatable ? 'Max Claims Reached' : 'Already Claimed'}
+                          {isRepeatable ? 'Max Claims Reached' : 'Requested'}
                         </>
                       ) : bonus.isActive ? (
                         claimState.claimCount > 0 ? 'Claim Again' : 'Claim Offer'

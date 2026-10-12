@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl } from '../utils/api';
+import { chatMessages, chatPathWithPrefill } from '../utils/chatPrefill';
+import { trackFeature } from '../services/analyticsTracker';
 import { PageMeta } from '../components/PageMeta';
 import { CosmicCard, PageShell } from '../components/cosmic';
 
@@ -50,15 +52,22 @@ const Platforms = () => {
     window.open(gameLink, '_blank', 'noopener,noreferrer');
   };
 
-  const handleRechargeNow = () => {
+  /** Deposits happen in chat: open it with the platform name already typed in. */
+  const handleDepositViaChat = (platform: Platform) => {
+    const message = chatMessages.platformDeposit(platform.name);
+    trackFeature('chat_money_shortcut', 'feature_opened', {
+      action: 'deposit',
+      source: 'platforms',
+      platform: platform.name,
+    });
+
     if (!isAuthenticated) {
-      toast.error('Please login to recharge your account');
-      navigate('/login');
+      toast('Sign in to deposit via chat.', { icon: '🔒' });
+      navigate('/login', { state: { from: chatPathWithPrefill(message) } });
       return;
     }
 
-    toast.success('Redirecting you to support...');
-    navigate('/support');
+    navigate('/chat', { state: { prefill: message } });
   };
 
   if (loading) {
@@ -97,7 +106,7 @@ const Platforms = () => {
             <p className="cosmic-body mt-2 text-sm">Please check back later.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
             {platforms.map((platform) => (
               <CosmicCard
                 key={platform._id}
@@ -106,7 +115,7 @@ const Platforms = () => {
                 glow
                 className="group relative overflow-hidden transition-all duration-300"
               >
-                <div className="relative h-64 overflow-hidden">
+                <div className="relative h-44 overflow-hidden sm:h-64">
                   <img
                     src={platform.image}
                     alt={platform.name}
@@ -123,16 +132,16 @@ const Platforms = () => {
                   </div>
                 </div>
 
-                <div className="p-6">
-                  <p className="cosmic-body mb-6 line-clamp-3 min-h-[60px] text-sm">
+                <div className="p-4 sm:p-6">
+                  <p className="cosmic-body mb-4 line-clamp-3 text-sm sm:mb-6 sm:min-h-[60px]">
                     {platform.description}
                   </p>
 
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 sm:gap-3">
                     <button
                       type="button"
                       onClick={() => handleGameLink(platform.gameLink)}
-                      className="btn-casino-primary flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition active:scale-[0.98]"
+                      className="btn-casino-primary flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition active:scale-[0.98] touch-manipulation"
                     >
                       <ExternalLink className="h-5 w-5" />
                       Game Link
@@ -140,8 +149,8 @@ const Platforms = () => {
 
                     <button
                       type="button"
-                      onClick={handleRechargeNow}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition active:scale-[0.98]"
+                      onClick={() => handleDepositViaChat(platform)}
+                      className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition active:scale-[0.98] touch-manipulation"
                       style={{
                         borderColor: 'var(--casino-accent-green)',
                         color: 'var(--casino-accent-green)',
@@ -150,12 +159,12 @@ const Platforms = () => {
                       {isAuthenticated ? (
                         <>
                           <MessageCircle className="h-5 w-5" />
-                          Recharge Now
+                          Deposit via chat
                         </>
                       ) : (
                         <>
                           <LogIn className="h-5 w-5" />
-                          Login to Recharge
+                          Login to deposit
                         </>
                       )}
                     </button>

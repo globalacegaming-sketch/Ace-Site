@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Shield, Zap, Crown, Play } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 import { getGamesApiUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 import { useMusic } from '../contexts/MusicContext';
@@ -31,7 +32,7 @@ const WHY_CHOOSE = [
   {
     id: '2',
     title: 'Responsive Support',
-    description: 'Help with recharges, withdrawals, bonuses, and account questions when we are open.',
+    description: 'Help with deposits, withdrawals, bonuses, and account questions.',
     icon: Shield,
   },
   {
@@ -96,9 +97,8 @@ const Home = () => {
       navigate('/dashboard');
       return;
     }
-    if (window.confirm('Please login to play games. Would you like to login now?')) {
-      navigate('/login');
-    }
+    toast('Please sign in to play.', { icon: '🔒' });
+    navigate('/login', { state: { from: '/dashboard' } });
   };
 
   return (
@@ -205,56 +205,10 @@ const Home = () => {
         {/* 2 — Player reviews (RSG-style carousel) */}
         <PlayerReviewsSection />
 
-        {/* 3 — Operating hours */}
-        <HomeSection
-          id="hours"
-          title="Operating Hours"
-          subtitle="Live support and play availability (CST)"
-        >
-          <div className="mx-auto grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-            <div
-              className="flex items-center gap-3 rounded-xl border p-4 sm:gap-4 sm:rounded-2xl sm:p-6"
-              style={{ borderColor: 'rgba(34,197,94,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-            >
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-12 sm:w-12"
-                style={{ background: 'rgba(34,197,94,0.15)' }}
-              >
-                <div className="h-3 w-3 rounded-full bg-green-500 sm:h-3.5 sm:w-3.5" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold casino-text-primary sm:text-base">Open</p>
-                <p className="text-xs casino-text-secondary sm:text-sm">
-                  6:00 PM – 12:00 PM (CST) next day
-                </p>
-              </div>
-            </div>
-            <div
-              className="flex items-center gap-3 rounded-xl border p-4 sm:gap-4 sm:rounded-2xl sm:p-6"
-              style={{ borderColor: 'rgba(239,68,68,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-            >
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-12 sm:w-12"
-                style={{ background: 'rgba(239,68,68,0.15)' }}
-              >
-                <div className="h-3 w-3 rounded-full bg-red-500 sm:h-3.5 sm:w-3.5" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold casino-text-primary sm:text-base">Closed</p>
-                <p className="text-xs casino-text-secondary sm:text-sm">12:00 PM – 6:00 PM (CST)</p>
-              </div>
-            </div>
-          </div>
-          <p className="mx-auto mt-5 max-w-xl text-center text-xs italic leading-relaxed casino-text-secondary sm:text-sm">
-            Chat and support are available during open hours. We appreciate your patience during
-            closed hours.
-          </p>
-        </HomeSection>
-
-        {/* 4 — Platforms */}
+        {/* 3 — Platforms */}
         <HomePlatformsSection />
 
-        {/* 5 — Popular games */}
+        {/* 4 — Popular games */}
         <HomeSection
           title="Popular Games"
           subtitle="Try our most played titles—sign up to play for real"
@@ -289,16 +243,27 @@ const Home = () => {
               {popularGames.map((game) => (
                 <div
                   key={game.kindId}
-                  className="group overflow-hidden rounded-xl border casino-border transition hover:border-[#FFD700]/40 sm:rounded-2xl"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Play ${game.gameName}`}
+                  onClick={handlePlayGame}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handlePlayGame();
+                    }
+                  }}
+                  className="group cursor-pointer overflow-hidden rounded-xl border casino-border transition hover:border-[#FFD700]/40 active:scale-[0.98] touch-manipulation sm:rounded-2xl"
                   style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
                 >
                   <div className="relative aspect-[4/3] overflow-hidden sm:h-48">
                     <LazyImage src={game.gameLogo} alt={game.gameName} />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/40">
+                    {/* Play pill: always visible on touch, hover-reveal on md+ */}
+                    <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/70 to-transparent pb-3 transition md:items-center md:bg-black/0 md:bg-none md:pb-0 md:group-hover:bg-black/40">
                       <button
                         type="button"
-                        onClick={handlePlayGame}
-                        className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold opacity-0 transition group-hover:opacity-100"
+                        onClick={(e) => { e.stopPropagation(); handlePlayGame(); }}
+                        className="flex min-h-[40px] items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold opacity-100 transition touch-manipulation md:opacity-0 md:group-hover:opacity-100"
                         style={{
                           background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
                           color: '#0A0A0F',
@@ -332,7 +297,7 @@ const Home = () => {
           </div>
         </HomeSection>
 
-        {/* 6 — Why choose us */}
+        {/* 5 — Why choose us */}
         <HomeSection
           title="Why Choose Global Ace Gaming?"
           subtitle="Fast, secure, and built around our player community"
@@ -368,7 +333,7 @@ const Home = () => {
           </div>
         </HomeSection>
 
-        {/* 7 — Final CTA */}
+        {/* 6 — Final CTA */}
         <section className="relative z-10 border-t border-white/[0.06] px-3 py-12 sm:px-4 sm:py-16 lg:px-8 lg:py-20">
           <div className="mx-auto max-w-4xl">
             <div

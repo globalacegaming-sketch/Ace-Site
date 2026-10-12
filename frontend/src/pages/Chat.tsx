@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import { Send, Loader2, FileText, X, Reply, SmilePlus, Check, CheckCheck } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { getApiBaseUrl, getWsBaseUrl, getAttachmentUrl, isImageAttachment } from '../utils/api';
+import { CHAT_PREFILL_PARAM, type ChatPrefillState } from '../utils/chatPrefill';
 import { linkify } from '../utils/linkify';
 import { oneSignalEnsurePushSetup, oneSignalRequestPermission } from '../services/oneSignal';
 import { ChatSignInPrompt } from '../components/chat/ChatSignInPrompt';
@@ -66,6 +68,9 @@ const formatDateDivider = (date: Date): string => {
 
 const Chat = () => {
   const { isAuthenticated, token, user } = useAuthStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -77,6 +82,7 @@ const Chat = () => {
   const [emojiExpanded, setEmojiExpanded] = useState(false);
   const [closingReply, setClosingReply] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const syncMessagesRef = useRef<() => Promise<void>>(async () => {});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -96,6 +102,30 @@ const Chat = () => {
     const id = String(user.id);
     void oneSignalEnsurePushSetup(id).then(() => oneSignalRequestPermission(true));
   }, [isAuthenticated, user?.id]);
+
+  // Prefill the composer when arriving from Deposit / Withdraw / Bonus-help shortcuts.
+  // Consumed once, then stripped from history so a refresh doesn't re-insert it.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fromState = (location.state as ChatPrefillState)?.prefill;
+    const fromQuery = searchParams.get(CHAT_PREFILL_PARAM);
+    const prefill = (fromState ?? fromQuery ?? '').trim();
+    if (!prefill) return;
+
+    setInputValue((prev) => (prev.trim() ? prev : prefill));
+    navigate(location.pathname, { replace: true, state: null });
+
+    const t = window.setTimeout(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 50);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, location.state, searchParams]);
 
   // Initialize audio context on user interaction
   useEffect(() => {
@@ -257,9 +287,15 @@ const Chat = () => {
     });
 
     socketRef.current = socket;
+    let hasConnectedOnce = false;
 
     socket.on('connect', () => {
-      console.log('Chat socket connected');
+      // On a *re*connect (phone was backgrounded, network blipped) pull anything that
+      // arrived while we were offline. The first connect is covered by loadMessages.
+      if (hasConnectedOnce) {
+        void syncMessagesRef.current();
+      }
+      hasConnectedOnce = true;
     });
 
     socket.on('chat:message:new', (message: ChatMessage) => {
@@ -333,6 +369,38 @@ const Chat = () => {
       setIsLoading(false);
     }
   };
+
+  /** Quietly fetch the latest page and merge by id — used after a socket reconnect. */
+  const syncMessages = async () => {
+    if (!token) return;
+    try {
+      const response = await axios.get(`${API_BASE_URL}/chat/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 50, page: 1 }
+      });
+      if (!response.data.success) return;
+      const incoming: ChatMessage[] = response.data.data || [];
+      if (incoming.length === 0) return;
+      setMessages((prev) => {
+        const byId = new Map(prev.map((m) => [m.id, m] as const));
+        let changed = false;
+        for (const m of incoming) {
+          const existing = byId.get(m.id);
+          if (!existing || existing.status !== m.status) {
+            byId.set(m.id, existing ? { ...existing, ...m } : m);
+            changed = true;
+          }
+        }
+        if (!changed) return prev;
+        return Array.from(byId.values()).sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+    } catch {
+      // Best-effort; the next socket event or page open will catch up.
+    }
+  };
+  syncMessagesRef.current = syncMessages;
 
   useEffect(() => {
     if (isAuthenticated && token && messages.length === 0 && !isLoading) {
@@ -458,10 +526,12 @@ const Chat = () => {
               ))}
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 sm:py-16">
-              <ChatSupportNotice />
-              <p className="mt-6 text-center text-sm casino-text-secondary">
-                Send a message below when you are ready — our team will reply as soon as we can.
+            <div className="flex flex-col items-center justify-center py-10 sm:py-16">
+              <div className="w-full max-w-md">
+                <ChatSupportNotice />
+              </div>
+              <p className="mt-5 max-w-sm text-center text-sm casino-text-secondary">
+                Type your message below — include the amount and platform for deposits or withdrawals.
               </p>
             </div>
           ) : (
@@ -493,7 +563,7 @@ const Chat = () => {
                       {showDateDivider && (
                         <div className="flex items-center justify-center my-4">
                           <div className="flex-1 border-t casino-border" />
-                          <span className="px-3 text-[11px] font-medium casino-text-secondary">{formatDateDivider(msgDate)}</span>
+                          <span className="px-3 text-xs font-medium casino-text-secondary">{formatDateDivider(msgDate)}</span>
                           <div className="flex-1 border-t casino-border" />
                         </div>
                       )}
@@ -530,7 +600,7 @@ const Chat = () => {
                     {showDateDivider && (
                       <div className="flex items-center justify-center my-4">
                         <div className="flex-1 border-t casino-border" />
-                        <span className="px-3 text-[11px] font-medium casino-text-secondary">{formatDateDivider(msgDate)}</span>
+                        <span className="px-3 text-xs font-medium casino-text-secondary">{formatDateDivider(msgDate)}</span>
                         <div className="flex-1 border-t casino-border" />
                       </div>
                     )}
@@ -555,7 +625,7 @@ const Chat = () => {
                         <div className="w-8 flex-shrink-0" />
                       )
                     )}
-                    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%] min-w-0`}>
+                    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[75%] min-w-0`}>
                       {/* Reply & React buttons — visible on mobile, hover on desktop */}
                       <div className="opacity-60 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-2 mb-1 px-1">
                         <button
@@ -801,9 +871,11 @@ const Chat = () => {
         )}
         <div className="flex items-end gap-2">
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-10 h-10 rounded-lg casino-bg-primary casino-border border hover:border-yellow-400 transition-all flex items-center justify-center flex-shrink-0 active:scale-95"
+            className="w-11 h-11 rounded-lg casino-bg-primary casino-border border hover:border-yellow-400 transition-all flex items-center justify-center flex-shrink-0 active:scale-95 touch-manipulation"
             style={{ boxShadow: '0 0 10px rgba(255, 215, 0, 0.1)' }}
+            aria-label="Attach a file"
           >
             <span className="text-xl casino-text-primary font-light">+</span>
           </button>
@@ -828,8 +900,9 @@ const Chat = () => {
               onKeyPress={handleKeyPress}
               placeholder={replyingTo ? 'Type your reply...' : 'Type your message...'}
               rows={1}
-              className="input-casino w-full rounded-lg px-4 py-2.5 resize-none text-sm"
+              className="input-casino w-full rounded-lg px-4 py-2.5 resize-none text-base md:text-sm"
               style={{ minHeight: '44px', maxHeight: '120px' }}
+              aria-label="Message"
               maxLength={2000}
             />
             {inputValue.length > 1500 && (
@@ -841,9 +914,11 @@ const Chat = () => {
             )}
           </div>
           <button
+            type="button"
             onClick={handleSendMessage}
             disabled={sending || (!inputValue.trim() && !attachment)}
-            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-90"
+            aria-label="Send message"
+            className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-90 touch-manipulation"
             style={(!inputValue.trim() && !attachment) 
               ? { 
                   backgroundColor: '#1B1B2F', 

@@ -27,6 +27,7 @@ import axios from 'axios';
 import { getApiBaseUrl, getWsBaseUrl } from '../../utils/api';
 import { io, type Socket } from 'socket.io-client';
 import Footer from './Footer';
+import { AUTH_LAYOUT_ROUTES, FOCUSED_AUTH_ROUTES } from '../../constants/authRoutes';
 
 interface LayoutProps {
   children: ReactNode;
@@ -58,25 +59,13 @@ const MOBILE_TABS: { name: string; href: string; icon: typeof Home }[] = [
   { name: 'Chat', href: '/chat', icon: MessageCircle },
 ];
 
-const AUTH_LAYOUT_ROUTES = [
-  '/login',
-  '/register',
-  '/forgot-password',
-  '/reset-password',
-  '/verify-email',
-  '/verify-code',
-];
-
-const HIDE_HEADER_ROUTES = AUTH_LAYOUT_ROUTES;
+/** Only the focused flows (reset / verify) hide the header; login, register and forgot keep it. */
+const HIDE_HEADER_ROUTES = FOCUSED_AUTH_ROUTES;
 
 const HIDE_FOOTER_ROUTES = ['/chat', ...AUTH_LAYOUT_ROUTES];
 
 /** Auth flows that stay focused (no tab bar); login/register/forgot keep mobile nav. */
-const HIDE_BOTTOM_NAV_ROUTES = [
-  '/reset-password',
-  '/verify-email',
-  '/verify-code',
-];
+const HIDE_BOTTOM_NAV_ROUTES = FOCUSED_AUTH_ROUTES;
 
 const Layout = ({ children }: LayoutProps) => {
   const [menuOpen, setMenuOpen] = useState(false);

@@ -96,10 +96,8 @@ const Games = () => {
   const handlePlayGame = useCallback(
     async (game: Game) => {
       if (!isAuthenticated) {
-        const shouldLogin = window.confirm(
-          'Please login to play games. Would you like to login now?',
-        );
-        if (shouldLogin) navigate('/login');
+        toast('Please sign in to play.', { icon: '🔒' });
+        navigate('/login', { state: { from: '/games' } });
         return;
       }
 
@@ -293,7 +291,17 @@ const Games = () => {
             {filteredGames.map((game) => (
               <div
                 key={game.kindId}
-                className="group relative casino-bg-secondary backdrop-blur-lg rounded-xl sm:rounded-2xl lg:rounded-3xl overflow-hidden casino-border hover:border-yellow-400/80 shadow-lg hover:shadow-[0_0_30px_rgba(255,215,0,0.6)] transition-all duration-500 transform hover:scale-105"
+                role="button"
+                tabIndex={0}
+                aria-label={`Play ${game.gameName}`}
+                onClick={() => handlePlayGame(game)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handlePlayGame(game);
+                  }
+                }}
+                className="group relative casino-bg-secondary backdrop-blur-lg rounded-xl sm:rounded-2xl lg:rounded-3xl overflow-hidden casino-border hover:border-yellow-400/80 shadow-lg hover:shadow-[0_0_30px_rgba(255,215,0,0.6)] transition-all duration-500 transform md:hover:scale-105 cursor-pointer touch-manipulation active:scale-[0.97]"
               >
                 {/* Game Image — lazy loaded with Cloudinary optimisation */}
                 <div className="relative aspect-square overflow-hidden">
@@ -314,12 +322,13 @@ const Games = () => {
                       {game.gameType}
                     </span>
                   </div>
-                  {/* Overlay Play Button */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center">
+                  {/* Overlay Play Button — always visible on touch devices (no hover), hover-reveal on md+ */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent md:from-black/90 md:via-black/50 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-500 flex items-end justify-center pb-2 md:items-center md:pb-0">
                     <button
-                      onClick={() => handlePlayGame(game)}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handlePlayGame(game); }}
                       disabled={playingGame === game.kindId}
-                      className="btn-casino-primary py-1.5 sm:py-2 lg:py-3 xl:py-4 px-3 sm:px-4 lg:px-6 xl:px-8 rounded-lg sm:rounded-xl lg:rounded-2xl hover:scale-110 transition-all duration-300 disabled:opacity-50 shadow-2xl hover:shadow-[0_0_25px_rgba(255,215,0,0.8)] transform hover:-translate-y-1 text-xs sm:text-sm active:scale-95 touch-manipulation"
+                      className="btn-casino-primary min-h-[36px] py-1.5 sm:py-2 lg:py-3 xl:py-4 px-3 sm:px-4 lg:px-6 xl:px-8 rounded-lg sm:rounded-xl lg:rounded-2xl md:hover:scale-110 transition-all duration-300 disabled:opacity-50 shadow-2xl hover:shadow-[0_0_25px_rgba(255,215,0,0.8)] transform md:hover:-translate-y-1 text-xs sm:text-sm active:scale-95 touch-manipulation"
                     >
                       {playingGame === game.kindId ? (
                         <>

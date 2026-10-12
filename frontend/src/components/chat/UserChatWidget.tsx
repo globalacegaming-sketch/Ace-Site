@@ -81,6 +81,7 @@ const UserChatWidget = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isClosing, setIsClosing] = useState(false);     // true during close animation
   const socketRef = useRef<Socket | null>(null);
+  const syncMessagesRef = useRef<() => Promise<void>>(async () => {});
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -295,6 +296,15 @@ const UserChatWidget = () => {
       console.error('Chat socket connection error', err);
     });
 
+    let hasConnectedOnce = false;
+    socket.on('connect', () => {
+      // On a *re*connect, pull anything that arrived while offline (first connect is covered by loadMessages)
+      if (hasConnectedOnce) {
+        void syncMessagesRef.current();
+      }
+      hasConnectedOnce = true;
+    });
+
     socket.on('chat:message:new', (message: ChatMessage) => {
       setMessages((prev) => {
         const exists = prev.some((item) => item.id === message.id);
@@ -400,6 +410,50 @@ const UserChatWidget = () => {
       setIsLoading(false);
     }
   };
+
+  /**
+   * Quietly fetch the latest page and merge by id after a socket reconnect.
+   * Only runs once history has been loaded (the widget lazy-loads on open).
+   */
+  const syncMessages = async () => {
+    if (!token || isAdminOrAgentPage || isAdminUser || !checkSession()) return;
+    if (messages.length === 0) return; // nothing loaded yet — loadMessages will run on open
+    try {
+      const response = await axios.get(`${API_BASE_URL}/chat/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 50, page: 1 }
+      });
+      if (!response.data.success) return;
+      const incoming: ChatMessage[] = response.data.data || [];
+      if (incoming.length === 0) return;
+      setMessages((prev) => {
+        const byId = new Map(prev.map((m) => [m.id, m] as const));
+        let changed = false;
+        let newFromAdmin = 0;
+        for (const m of incoming) {
+          const existing = byId.get(m.id);
+          if (!existing) {
+            if (m.senderType === 'admin') newFromAdmin++;
+            byId.set(m.id, m);
+            changed = true;
+          } else if (existing.status !== m.status) {
+            byId.set(m.id, { ...existing, ...m });
+            changed = true;
+          }
+        }
+        if (!changed) return prev;
+        if (newFromAdmin > 0 && !isOpenRef.current) {
+          setUnreadCount((c) => c + newFromAdmin);
+        }
+        return Array.from(byId.values()).sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+    } catch {
+      // Best-effort; the next socket event or widget open will catch up.
+    }
+  };
+  syncMessagesRef.current = syncMessages;
 
   // Lazy-load messages only when the widget is OPENED (not on every page mount).
   // Previously this loaded 1000 messages on every page navigation, which was

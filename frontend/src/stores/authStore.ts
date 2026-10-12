@@ -16,7 +16,6 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  lastRechargeStatus: 'success' | 'failed' | 'processing' | null;
   fortunePandaBalance: string | null;
   balanceLastUpdated: number | null;
   lastActivityTime: number | null;
@@ -24,7 +23,6 @@ interface AuthState {
   // Actions
   setUser: (user: User) => void;
   setToken: (token: string) => void;
-  setLastRechargeStatus: (status: 'success' | 'failed' | 'processing' | null) => void;
   setLoading: (loading: boolean) => void;
   login: (session: UserSession) => void;
   logout: () => void;
@@ -42,7 +40,6 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
       isLoading: false,
-      lastRechargeStatus: null,
       fortunePandaBalance: null,
       balanceLastUpdated: null,
       lastActivityTime: null,
@@ -50,8 +47,6 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user: User) => set({ user }),
       
       setToken: (token: string) => set({ token }),
-      
-      setLastRechargeStatus: (status) => set({ lastRechargeStatus: status }),
       
       setLoading: (loading: boolean) => set({ isLoading: loading }),
       
@@ -70,7 +65,6 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           isAuthenticated: false,
           isLoading: false,
-          lastRechargeStatus: null,
           fortunePandaBalance: null,
           balanceLastUpdated: null,
           lastActivityTime: null,
@@ -129,11 +123,21 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'global-ace-auth',
+      // v1: dropped the persisted `lastRechargeStatus` flag (it was always
+      // set to 'success' on login and never reflected a real transaction).
+      version: 1,
+      migrate: (persisted) => {
+        if (persisted && typeof persisted === 'object') {
+          const { lastRechargeStatus: _dropped, ...rest } = persisted as Record<string, unknown>;
+          void _dropped;
+          return rest as unknown as AuthState;
+        }
+        return persisted as AuthState;
+      },
       partialize: (state) => ({
         user: state.user,
         token: state.token,
         isAuthenticated: state.isAuthenticated,
-        lastRechargeStatus: state.lastRechargeStatus,
         lastActivityTime: state.lastActivityTime,
       }),
       onRehydrateStorage: () => (state) => {

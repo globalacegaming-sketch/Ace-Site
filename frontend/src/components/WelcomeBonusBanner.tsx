@@ -65,7 +65,7 @@ export default function WelcomeBonusBanner() {
             Claim your Welcome Bonus!
           </h3>
           <p className="text-[11px] sm:text-xs md:text-sm text-gray-800 leading-snug">
-            100% match on your first deposit — double your starting balance and get playing today.
+            50% bonus on your first deposit — claim it on the Bonuses page and an agent adds it in chat.
           </p>
         </div>
       </div>

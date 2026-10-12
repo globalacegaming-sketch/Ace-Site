@@ -36,7 +36,7 @@ const Login = () => {
   const location = useLocation();
   const redirectTo =
     (location.state as { from?: string } | null)?.from ?? '/dashboard';
-  const { login, setLastRechargeStatus } = useAuthStore();
+  const { login } = useAuthStore();
   const { stopMusic, startMusic } = useMusic();
   const [formError, setFormError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
@@ -86,7 +86,6 @@ const Login = () => {
         token: result.accessToken,
         expires_at: result.expiresAt,
       });
-      setLastRechargeStatus('success');
 
       try {
         if (rememberMe) {

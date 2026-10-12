@@ -6,6 +6,7 @@ type Props = {
 
 /**
  * Shown when a user opens live chat with no message history yet.
+ * Deliberately avoids promising 24/7 or a reply time.
  */
 export function ChatSupportNotice({ variant = 'dark' }: Props) {
   const light = variant === 'light';
@@ -27,15 +28,14 @@ export function ChatSupportNotice({ variant = 'dark' }: Props) {
           light ? 'text-gray-900' : 'casino-text-primary'
         }`}
       >
-        Text us now for Live Support
+        Message us to deposit, withdraw, or claim a bonus.
       </p>
       <p
         className={`mt-2 text-sm leading-relaxed ${
           light ? 'text-gray-600' : 'casino-text-secondary'
         }`}
       >
-        We are closed <span className="font-semibold">12pm to 6pm CST</span> and available
-        outside those hours.
+        An agent will reply as soon as one is available, and you&apos;ll get a notification.
       </p>
     </div>
   );

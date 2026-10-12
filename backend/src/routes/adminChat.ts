@@ -385,7 +385,7 @@ router.get('/', async (req: Request, res: Response) => {
     let userInfo = null;
     if (userId && typeof userId === 'string' && mongoose.Types.ObjectId.isValid(userId)) {
       const user = await User.findById(userId)
-        .select('firstName lastName username email')
+        .select('firstName lastName username email fortunePandaUsername fortunePandaBalance referredBy')
         .lean();
       
       if (user) {
@@ -407,7 +407,12 @@ router.get('/', async (req: Request, res: Response) => {
           firstName: user.firstName || '',
           lastName: user.lastName || '',
           username: user.username || '',
-          email: user.email || ''
+          email: user.email || '',
+          // Player context for the agent chat header (balance / FP account / referral)
+          fortunePandaUsername: user.fortunePandaUsername || '',
+          fortunePandaBalance:
+            typeof user.fortunePandaBalance === 'number' ? user.fortunePandaBalance : null,
+          joinedViaReferral: Boolean(user.referredBy)
         };
       }
     }

@@ -6,6 +6,7 @@ import { getApiBaseUrl } from '../utils/api';
 import { useAuthStore } from '../stores/authStore';
 import { PageMeta } from '../components/PageMeta';
 import { PageShell } from '../components/cosmic';
+import { REFERRAL_BONUS_USD, REFERRED_FRIEND_DEPOSIT_BONUS_PCT } from '../constants/referral';
 
 interface ReferralData {
   referralCode: string | null;
@@ -56,7 +57,7 @@ export default function ReferralsPage() {
     if (!data?.referralCode) return;
     const shareData = {
       title: 'Join Global Ace Gaming!',
-      text: `Use my referral code ${data.referralCode} when you sign up at Global Ace Gaming and we both earn rewards!`,
+      text: `Join me on Global Ace Gaming — sign up with this link (my code ${data.referralCode} is filled in) and get a ${REFERRED_FRIEND_DEPOSIT_BONUS_PCT}% bonus on your first deposit!`,
       url: `${window.location.origin}/register?ref=${data.referralCode}`,
     };
 
@@ -67,7 +68,13 @@ export default function ReferralsPage() {
         // user cancelled or not supported
       }
     } else {
-      handleCopy();
+      // Desktop fallback: copy the full link so the code is prefilled for the friend.
+      try {
+        await navigator.clipboard.writeText(shareData.url);
+        toast.success('Referral link copied!');
+      } catch {
+        handleCopy();
+      }
     }
   };
 
@@ -82,18 +89,18 @@ export default function ReferralsPage() {
   return (
     <>
       <PageMeta
-        title="Refer Friends & Earn $10 per Sign-up | Global Ace Gaming"
-        description="Invite friends to Global Ace Gaming with your unique referral code. Earn $10 in bonus credit for every verified friend who joins and plays."
+        title={`Refer Friends & Earn $${REFERRAL_BONUS_USD} per Sign-up | Global Ace Gaming`}
+        description={`Invite friends to Global Ace Gaming with your unique referral link. Earn $${REFERRAL_BONUS_USD} in bonus credit for every verified friend who joins and plays.`}
         noIndex
       />
       <PageShell
         title={
           <span className="inline-flex items-center gap-2">
             <Users className="h-7 w-7 sm:h-8 sm:w-8" style={{ color: '#FFD700' }} />
-            Invite Friends &amp; Earn $10 Each
+            Invite Friends &amp; Earn ${REFERRAL_BONUS_USD} Each
           </span>
         }
-        subtitle="Share your unique referral code. When your friend signs up and plays, you both get $10 bonus credit."
+        subtitle={`Share your link — your friend's code is filled in automatically. You get $${REFERRAL_BONUS_USD} when they join and play; they get a ${REFERRED_FRIEND_DEPOSIT_BONUS_PCT}% bonus on their first deposit.`}
         width="3xl"
         background="subtle"
       >
@@ -103,9 +110,9 @@ export default function ReferralsPage() {
           <h2 className="text-base sm:text-lg font-semibold casino-text-primary mb-3 sm:mb-4">How It Works</h2>
           <ol className="space-y-3" aria-label="Referral steps">
             {[
-              { step: '1', text: 'Copy your unique referral code below.' },
-              { step: '2', text: 'Share it with friends — they sign up using your code.' },
-              { step: '3', text: 'You both earn $10 in bonus credit once they play.' },
+              { step: '1', text: 'Tap Share to send your personal link (or copy your code).' },
+              { step: '2', text: 'Your friend opens the link — the code is already filled in when they sign up.' },
+              { step: '3', text: `You earn $${REFERRAL_BONUS_USD} once they play. Your friend gets a ${REFERRED_FRIEND_DEPOSIT_BONUS_PCT}% bonus on their first deposit.` },
             ].map((item) => (
               <li key={item.step} className="flex items-center gap-3">
                 <div
@@ -217,7 +224,7 @@ export default function ReferralsPage() {
               <Gift className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#F5F5F5' }} />
             </div>
             <p className="text-xl sm:text-2xl font-bold casino-text-primary">
-              ${(data?.referralCount || 0) * 10}
+              ${(data?.referralCount || 0) * REFERRAL_BONUS_USD}
             </p>
             <p className="text-xs sm:text-sm casino-text-secondary">Rewards Earned</p>
           </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,6 +17,7 @@ import {
 } from '../components/auth/AuthFields';
 import { LoginError, registerAccount } from '../services/authApi';
 import { shouldAuthAutoFocus } from '../utils/authMobile';
+import { REFERRED_FRIEND_DEPOSIT_BONUS_PCT } from '../constants/referral';
 
 const registerSchema = z
   .object({
@@ -43,14 +44,19 @@ const btnPrimary =
 
 const Register = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuthStore();
   const { stopMusic, startMusic } = useMusic();
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Referral links look like /register?ref=CODE — the code is applied for the player.
+  const refFromLink = (searchParams.get('ref') ?? '').trim().toUpperCase();
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -61,20 +67,33 @@ const Register = () => {
       phoneNumber: '',
       password: '',
       confirmPassword: '',
-      referralCode: '',
+      referralCode: refFromLink,
     },
   });
 
   const passwordValue = watch('password') ?? '';
+  const referralValue = watch('referralCode') ?? '';
+  const referralApplied = Boolean(refFromLink) && referralValue === refFromLink;
+
+  // Keep the field in sync if the link changes while mounted (e.g. back/forward).
+  useEffect(() => {
+    if (refFromLink) {
+      setValue('referralCode', refFromLink, { shouldDirty: true });
+    }
+  }, [refFromLink, setValue]);
 
   useEffect(() => {
     stopMusic();
-    trackOnboarding('onboarding_started', { step: 'registration' });
+    trackOnboarding('onboarding_started', {
+      step: 'registration',
+      ...(refFromLink ? { referralCode: refFromLink, source: 'referral_link' } : {}),
+    });
     return () => {
       if (!window.location.pathname.includes('verify-code')) {
         trackOnboarding('onboarding_abandoned', { step: 'registration' });
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopMusic]);
 
   const onSubmit = handleSubmit(async (values) => {
@@ -86,7 +105,9 @@ const Register = () => {
         email: values.email,
         phoneNumber: values.phoneNumber.trim(),
         password: values.password,
-        ...(values.referralCode ? { referralCode: values.referralCode } : {}),
+        ...(values.referralCode?.trim()
+          ? { referralCode: values.referralCode.trim().toUpperCase() }
+          : {}),
       });
 
       login({
@@ -131,7 +152,7 @@ const Register = () => {
       <AuthScreenShell
         variant="register"
         title="Create your account"
-        subtitle="Join the table in under a minute — claim bonuses, sync your wallet, and play across every partner."
+        subtitle="Join in under a minute — claim bonuses, chat with an agent to deposit, and play across every partner."
       >
         <AuthFormCard>
           <form
@@ -245,6 +266,15 @@ const Register = () => {
               placeholder="Friend's code"
               {...register('referralCode')}
             />
+            {referralApplied ? (
+              <p
+                className="-mt-1 text-xs leading-snug"
+                style={{ color: 'var(--casino-accent-green)' }}
+                role="status"
+              >
+                Referral code applied — you get a {REFERRED_FRIEND_DEPOSIT_BONUS_PCT}% bonus on your first deposit.
+              </p>
+            ) : null}
 
             <p
               className="text-center text-xs leading-relaxed"

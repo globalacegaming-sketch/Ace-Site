@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { REFERRAL_BONUS_USD } from '../constants/referral';
 
 interface Slide {
   id: string;
@@ -17,9 +18,9 @@ const SLIDES: Slide[] = [
   {
     id: 'refer',
     title: 'Refer a Friend',
-    subtitle: 'Invite your friends and earn bonus credits when they sign up and play.',
+    subtitle: `Share your link and earn $${REFERRAL_BONUS_USD} when a friend signs up and plays.`,
     cta: 'Start Referring',
-    href: '/bonuses',
+    href: '/referrals',
     gradient: 'linear-gradient(135deg, #FF6F00 0%, #FFD700 100%)',
   },
   {

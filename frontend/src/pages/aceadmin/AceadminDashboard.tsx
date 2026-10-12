@@ -1216,7 +1216,7 @@ const AceadminDashboard: React.FC = () => {
                 <ul className="text-xs text-red-600 mt-2 space-y-1 ml-4 list-disc">
                   <li>Account & profile info</li>
                   <li>Chat messages & support tickets</li>
-                  <li>Loan records & wallet</li>
+                  <li>Loan records & balance history</li>
                   <li>Referrals, spins & analytics</li>
                   <li>All other associated data</li>
                 </ul>
@@ -2965,7 +2965,7 @@ const AceadminDashboard: React.FC = () => {
                   </select>
                 </div>
                 <div><label className="block text-sm font-semibold text-gray-700 mb-2">Bonus Value</label>
-                  <input type="text" value={bonusForm.bonusValue} onChange={(e) => setBonusForm({...bonusForm, bonusValue: e.target.value})} placeholder="e.g., 100%, $50" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
+                  <input type="text" value={bonusForm.bonusValue} onChange={(e) => setBonusForm({...bonusForm, bonusValue: e.target.value})} placeholder="e.g., 50%, $50" className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black" />
                 </div>
               </div>
               <div><label className="block text-sm font-semibold text-gray-700 mb-2">Terms and Conditions</label>

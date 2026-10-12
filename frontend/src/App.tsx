@@ -43,7 +43,6 @@ const Support = lazy(() => import('./pages/Support'));
 const GameLaunch = lazy(() => import('./pages/GameLaunch'));
 const AceagentLogin = lazy(() => import('./pages/aceagent/AceagentLogin'));
 const AceagentDashboard = lazy(() => import('./pages/aceagent/AceagentDashboard'));
-const UserFortunePandaDashboard = lazy(() => import('./pages/UserFortunePandaDashboard'));
 const AceadminLogin = lazy(() => import('./pages/aceadmin/AceadminLogin'));
 const AceadminDashboard = lazy(() => import('./pages/aceadmin/AceadminDashboard'));
 const RoleSubdomainGuard = lazy(() => import('./components/RoleSubdomainGuard'));
@@ -241,9 +240,6 @@ function App() {
             <Route path="/chat" element={<Layout><Chat /></Layout>} />
             <Route path="/platforms" element={<Layout><Platforms /></Layout>} />
             <Route path="/about-us" element={<Layout><AboutUs /></Layout>} />
-            
-            {/* /wallet has been retired — redirect any legacy links to the dashboard to preserve SEO link equity */}
-            <Route path="/wallet" element={<Navigate to="/dashboard" replace />} />
 
             <Route path="/profile" element={
               <ProtectedRoute>
@@ -277,13 +273,6 @@ function App() {
             <Route path="/game/:id" element={
               <ProtectedRoute>
                 <GameLaunch />
-              </ProtectedRoute>
-            } />
-            
-            {/* Fortune Panda Routes */}
-            <Route path="/fortune-panda" element={
-              <ProtectedRoute>
-                <UserFortunePandaDashboard />
               </ProtectedRoute>
             } />
             

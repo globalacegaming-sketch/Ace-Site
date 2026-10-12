@@ -234,23 +234,23 @@ const Support = () => {
     <>
       <PageMeta
         title="Help & Support | Global Ace Gaming"
-        description="Submit a support ticket or browse FAQs. Live chat available outside 12pm–6pm CST."
+        description="Submit a support ticket or browse FAQs. Message us in live chat for deposits, withdrawals and bonuses."
       />
       <PageShell
         title="Support"
-        subtitle="Submit a ticket below. For faster help, use live chat when we're online."
+        subtitle="Submit a ticket below, or message us in live chat for faster help."
         width="3xl"
         background="subtle"
         contentClassName="space-y-6 sm:space-y-8"
       >
         <CosmicCard variant="glass" padding="md" className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="cosmic-body text-sm sm:text-base">
-            Live chat: closed <strong className="text-[color:var(--casino-text-primary)]">12pm–6pm CST</strong>
-            , available outside those hours.
+            Need help with a <strong className="text-[color:var(--casino-text-primary)]">deposit, withdrawal or bonus</strong>?
+            Message us in live chat.
           </p>
           <Link
             to="/chat"
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98]"
+            className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] touch-manipulation"
             style={{
               background: 'linear-gradient(135deg, #FFD700 0%, #FFA000 100%)',
               color: '#0A0A0F',

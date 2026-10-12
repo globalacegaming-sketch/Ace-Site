@@ -11,12 +11,10 @@ Disallow: /verify-code
 Disallow: /dashboard
 Disallow: /profile
 Disallow: /settings
-Disallow: /wallet
 Disallow: /referrals
 Disallow: /loans
 Disallow: /chat
 Disallow: /game/
-Disallow: /fortune-panda
 Disallow: /aceagent
 Disallow: /aceadmin
 

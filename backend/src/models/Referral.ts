@@ -45,7 +45,9 @@ const ReferralSchema = new Schema<IReferral>(
     },
     bonusAmount: {
       type: Number,
-      default: 10,
+      // Referral bonus paid to the referrer once verified. Keep in sync with
+      // frontend/src/constants/referral.ts (REFERRAL_BONUS_USD).
+      default: 15,
     },
     verifiedAt: {
       type: Date,
