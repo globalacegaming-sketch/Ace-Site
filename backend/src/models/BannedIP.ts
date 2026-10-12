@@ -1,7 +1,7 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBannedIP extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   ip: string;
   bannedAt: Date;
   bannedBy?: string; // Admin/Agent who banned it

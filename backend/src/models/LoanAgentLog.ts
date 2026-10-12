@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type LoanAgentAction =
   | 'APPROVE'
@@ -8,7 +8,7 @@ export type LoanAgentAction =
   | 'MANUAL_ISSUE';
 
 export interface ILoanAgentLog extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   agentId: string;
   action: LoanAgentAction;
   targetUserId: mongoose.Types.ObjectId;

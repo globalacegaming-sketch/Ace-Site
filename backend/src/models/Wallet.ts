@@ -1,11 +1,11 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 /**
  * Internal wallet for each user. Balance is in USD.
  * Credited via NowPayments crypto deposits; used for games and adjustable by agents.
  */
 export interface IWallet extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   balance: number;
   currency: string;

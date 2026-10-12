@@ -1,7 +1,7 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface ILoan extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   principalAmount: number;
   remainingBalance: number;

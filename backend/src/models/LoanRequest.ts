@@ -1,7 +1,7 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface ILoanRequest extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   requestedAmount: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';

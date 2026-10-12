@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type LedgerType =
   | 'ISSUE'
@@ -16,7 +16,7 @@ export type PaymentMethod =
   | 'MANUAL_ADJUSTMENT';
 
 export interface ILoanLedger extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   loanId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   type: LedgerType;

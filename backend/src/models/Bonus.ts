@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IBonusClaim {
   userId: string;
@@ -6,7 +6,7 @@ export interface IBonusClaim {
 }
 
 export interface IBonus extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   title: string;
   description: string;
   image: string;

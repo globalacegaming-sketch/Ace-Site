@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 /**
  * Crypto deposit transactions via NowPayments.
@@ -7,7 +7,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type CryptoTransactionStatus = 'pending' | 'confirmed' | 'failed';
 
 export interface ICryptoTransaction extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   paymentId: string;       // NowPayments payment_id
   invoiceId: string;       // NowPayments invoice_id (if applicable)

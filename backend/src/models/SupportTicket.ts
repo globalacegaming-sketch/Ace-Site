@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type SupportTicketCategory = 
   | 'payment_related_queries'
@@ -15,7 +15,7 @@ export type SupportTicketStatus =
   | 'removed';
 
 export interface ISupportTicket extends Document {
-  _id: string;
+  _id: Types.ObjectId;
   userId?: mongoose.Types.ObjectId; // Optional for non-logged-in users
   ticketNumber: string; // Unique ticket number
   category: SupportTicketCategory;
