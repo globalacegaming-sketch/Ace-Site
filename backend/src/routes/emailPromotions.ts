@@ -5,6 +5,7 @@ import emailService from '../services/emailService';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { buildSafeUploadFilename, isAllowedUpload } from '../config/uploadSafety';
 import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
 import logger from '../utils/logger';
 import * as SibApiV3Sdk from 'sib-api-v3-sdk';
@@ -78,9 +79,7 @@ fs.mkdirSync(emailUploadsDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, emailUploadsDir),
   filename: (_req, file, cb) => {
-    const timestamp = Date.now();
-    const sanitizedOriginalName = file.originalname.replace(/\s+/g, '-');
-    cb(null, `${timestamp}-${sanitizedOriginalName}`);
+    cb(null, buildSafeUploadFilename(file.originalname, file.mimetype));
   }
 });
 
@@ -88,7 +87,7 @@ const emailAttachmentUpload = multer({
   storage,
   limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    if (isAllowedUpload(file.mimetype, ALLOWED_MIME_TYPES)) {
       cb(null, true);
     } else {
       cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`));

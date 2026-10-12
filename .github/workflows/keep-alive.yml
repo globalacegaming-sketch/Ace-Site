@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Render Service
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://global-ace-gaming-backend.onrender.com' }}
         run: |
-          curl -f https://your-backend-url.onrender.com/ping || echo "Ping failed"
-          curl -f https://your-backend-url.onrender.com/health || echo "Health check failed"
+          curl -fsS --retry 3 --retry-delay 20 --max-time 60 "$BACKEND_URL/health"

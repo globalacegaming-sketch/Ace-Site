@@ -699,6 +699,10 @@ const AceadminDashboard: React.FC = () => {
       toast.error('Password is required for new agents');
       return;
     }
+    if (agentForm.password && agentForm.password.length < 10) {
+      toast.error('Agent password must be at least 10 characters');
+      return;
+    }
 
     setSavingAgent(true);
     try {
@@ -2166,7 +2170,7 @@ const AceadminDashboard: React.FC = () => {
                     type={showAgentPassword ? 'text' : 'password'}
                     value={agentForm.password}
                     onChange={(e) => setAgentForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder={editingAgent ? '••••••' : 'Enter password'}
+                    placeholder={editingAgent ? '••••••' : 'At least 10 characters'}
                     className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
                   />
                   <button

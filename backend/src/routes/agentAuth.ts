@@ -3,16 +3,18 @@ import jwt from 'jsonwebtoken';
 import { adminAuthLimiter } from '../middleware/rateLimiter';
 import Agent, { AGENT_PERMISSIONS } from '../models/Agent';
 import logger from '../utils/logger';
+import { AGENT_JWT_SECRET } from '../config/secrets';
+import { authenticateAgentToken, invalidateAgentStatus } from '../utils/agentToken';
 
 const router = Router();
 
-const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const MIN_AGENT_PASSWORD_LENGTH = 10;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Middleware: requireSuperAdmin
 // Verifies the JWT has role: 'super_admin'
 // ──────────────────────────────────────────────────────────────────────────────
-const requireSuperAdmin = (req: Request, res: Response, next: NextFunction): void => {
+const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -21,19 +23,21 @@ const requireSuperAdmin = (req: Request, res: Response, next: NextFunction): voi
       return;
     }
 
-    const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
+    const agent = await authenticateAgentToken(authHeader.substring(7));
+    if (!agent) {
+      res.status(401).json({ success: false, message: 'Invalid or expired token' });
+      return;
+    }
 
-    if (decoded.role !== 'super_admin') {
+    if (agent.role !== 'super_admin') {
       res.status(403).json({ success: false, message: 'Super admin access required' });
       return;
     }
 
-    // Attach agent info to request for downstream use
-    (req as any).agentAuth = decoded;
+    (req as any).agentAuth = agent;
     next();
   } catch (error) {
-    res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    next(error);
   }
 };
 
@@ -124,23 +128,20 @@ router.get('/verify', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: 'No token provided' });
     }
 
-    const token = authHeader.substring(7);
-
-    try {
-      const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-
-      return res.json({
-        success: true,
-        message: 'Token is valid',
-        data: {
-          username: decoded.username,
-          displayName: decoded.displayName,
-          role: decoded.role,
-        },
-      });
-    } catch {
+    const agent = await authenticateAgentToken(authHeader.substring(7));
+    if (!agent) {
       return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
+
+    return res.json({
+      success: true,
+      message: 'Token is valid',
+      data: {
+        username: agent.username,
+        displayName: agent.displayName,
+        role: agent.role,
+      },
+    });
   } catch (error: any) {
     logger.error('Token verification error:', error);
     return res.status(500).json({
@@ -183,8 +184,8 @@ router.post('/agents', requireSuperAdmin, async (req: Request, res: Response) =>
       return res.status(400).json({ success: false, message: 'agentName and password are required' });
     }
 
-    if (password.length < 4) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 4 characters' });
+    if (typeof password !== 'string' || password.length < MIN_AGENT_PASSWORD_LENGTH) {
+      return res.status(400).json({ success: false, message: `Password must be at least ${MIN_AGENT_PASSWORD_LENGTH} characters` });
     }
 
     const validRoles = ['super_admin', 'admin', 'agent'];
@@ -285,10 +286,14 @@ router.put('/agents/:id', requireSuperAdmin, async (req: Request, res: Response)
     }
     if (isActive !== undefined) agent.isActive = isActive;
     if (password) {
+      if (typeof password !== 'string' || password.length < MIN_AGENT_PASSWORD_LENGTH) {
+        return res.status(400).json({ success: false, message: `Password must be at least ${MIN_AGENT_PASSWORD_LENGTH} characters` });
+      }
       agent.passwordHash = password; // pre-save hook will bcrypt this
     }
 
     await agent.save();
+    invalidateAgentStatus(agent._id.toString());
 
     logger.info('✅ Agent updated:', { agentName: agent.agentName, role: agent.role });
 
@@ -342,6 +347,7 @@ router.delete('/agents/:id', requireSuperAdmin, async (req: Request, res: Respon
       (AGENT_PERMISSIONS as readonly string[]).includes(p),
     );
     await agent.save();
+    invalidateAgentStatus(agent._id.toString());
 
     logger.info('✅ Agent deactivated:', { agentName: agent.agentName });
 

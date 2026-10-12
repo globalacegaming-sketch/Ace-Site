@@ -8,6 +8,7 @@ import Label from '../models/Label';
 import User from '../models/User';
 import { requireAnyAdminAuth, requireAdminRole } from '../middleware/anyAdminAuth';
 import logger from '../utils/logger';
+import { escapeRegex } from '../utils/sanitize';
 
 const router = Router();
 
@@ -39,7 +40,7 @@ router.post('/', requireAdminRole, async (req: Request, res: Response) => {
     }
 
     // Check for duplicate name (case-insensitive)
-    const existing = await Label.findOne({ name: { $regex: new RegExp(`^${name.trim()}$`, 'i') } });
+    const existing = await Label.findOne({ name: { $regex: new RegExp(`^${escapeRegex(name.trim())}$`, 'i') } });
     if (existing) {
       return res.status(409).json({ success: false, message: 'A label with this name already exists' });
     }
@@ -87,7 +88,7 @@ router.put('/:id', requireAdminRole, async (req: Request, res: Response) => {
     if (update.name) {
       const existing = await Label.findOne({
         _id: { $ne: labelId },
-        name: { $regex: new RegExp(`^${update.name}$`, 'i') },
+        name: { $regex: new RegExp(`^${escapeRegex(update.name)}$`, 'i') },
       });
       if (existing) {
         return res.status(409).json({ success: false, message: 'A label with this name already exists' });

@@ -7,7 +7,7 @@ import Agent, { AGENT_PERMISSIONS } from '../models/Agent';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { createAdminSession, revokeAdminSession } from '../services/adminSessionService';
-import { requireAdminAuth } from '../middleware/adminAuth';
+import { requireAdminAuth, requireAgentPermission, requireAdminSessionRole } from '../middleware/adminAuth';
 import { adminAuthLimiter } from '../middleware/rateLimiter';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
@@ -159,6 +159,38 @@ router.post('/logout', requireAdminAuth, async (req: Request, res: Response) => 
 // All other admin routes require admin session
 router.use(requireAdminAuth);
 
+// ── Guard against double deposits/redeems (double clicks, retries after a timeout) ──
+type MoneyOp = 'deposit' | 'redeem';
+const DUPLICATE_MONEY_OP_WINDOW_MS = 60_000;
+const moneyOpsInFlight = new Set<string>();
+const recentMoneyOps = new Map<string, number>();
+
+const beginMoneyOp = (op: MoneyOp, userId: string, amount: number): string | null => {
+  const now = Date.now();
+  for (const [key, at] of recentMoneyOps) {
+    if (now - at > DUPLICATE_MONEY_OP_WINDOW_MS) recentMoneyOps.delete(key);
+  }
+
+  const userKey = `${op}:${userId}`;
+  if (moneyOpsInFlight.has(userKey)) {
+    return `Another ${op} for this player is still in progress.`;
+  }
+  if (recentMoneyOps.has(`${userKey}:${amount}`)) {
+    return `An identical ${op} for this player was submitted less than a minute ago. Check the balance before trying again.`;
+  }
+
+  moneyOpsInFlight.add(userKey);
+  return null;
+};
+
+/** `attempted` = the provider may have applied the operation (success or unknown outcome). */
+const endMoneyOp = (op: MoneyOp, userId: string, amount: number, attempted: boolean): void => {
+  moneyOpsInFlight.delete(`${op}:${userId}`);
+  if (attempted) {
+    recentMoneyOps.set(`${op}:${userId}:${amount}`, Date.now());
+  }
+};
+
 // Get agent balance (from FortunePanda)
 router.get('/agent-balance', async (req: Request, res: Response) => {
   try {
@@ -198,7 +230,7 @@ router.get('/agent-balance', async (req: Request, res: Response) => {
 });
 
 // Get user info from FortunePanda API
-router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) => {
+router.get('/users/:userId/fortune-panda', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId);
@@ -279,7 +311,7 @@ router.get('/users/:userId/fortune-panda', async (req: Request, res: Response) =
 });
 
 // Sync all users from FortunePanda
-router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => {
+router.post('/users/sync-fortune-panda', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     // Include users with username (even if password is missing)
     const users = await User.find({
@@ -393,7 +425,7 @@ router.post('/users/sync-fortune-panda', async (req: Request, res: Response) => 
 });
 
 // Refresh a single user's balance from FortunePanda
-router.post('/users/:userId/sync-balance', async (req: Request, res: Response) => {
+router.post('/users/:userId/sync-balance', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId);
@@ -431,7 +463,7 @@ router.post('/users/:userId/sync-balance', async (req: Request, res: Response) =
 });
 
 // Get all users list (from database, but can be synced with FortunePanda)
-router.get('/users', async (req: Request, res: Response) => {
+router.get('/users', requireAgentPermission('users', 'loans'), async (req: Request, res: Response) => {
   try {
     const users = await User.find({})
       .select('-password -fortunePandaPassword')
@@ -452,7 +484,7 @@ router.get('/users', async (req: Request, res: Response) => {
 });
 
 // Get single user details
-router.get('/users/:userId', async (req: Request, res: Response) => {
+router.get('/users/:userId', requireAgentPermission('users', 'loans'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId)
@@ -475,7 +507,7 @@ router.get('/users/:userId', async (req: Request, res: Response) => {
 });
 
 // Adjust internal wallet balance (from agent/admin panel). For deducting when user plays or manual adjust.
-router.put('/users/:userId/wallet-adjust', async (req: Request, res: Response) => {
+router.put('/users/:userId/wallet-adjust', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { amount, note } = req.body;
@@ -522,7 +554,7 @@ router.put('/users/:userId/wallet-adjust', async (req: Request, res: Response) =
 });
 
 // Agent Deposit (Load money to user account)
-router.post('/deposit', async (req: Request, res: Response) => {
+router.post('/deposit', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId, amount } = req.body;
 
@@ -559,7 +591,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
     // Try to find user by ID
     let user;
     try {
-      user = await User.findById(userId);
+      user = await User.findById(userId).select('+fortunePandaPassword');
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('❌ Error finding user by ID:', errorMessage);
@@ -571,17 +603,9 @@ router.post('/deposit', async (req: Request, res: Response) => {
 
     if (!user) {
       logger.error('❌ User not found in database:', userId);
-      // Check if any user exists with this ID format
-      const allUsers = await User.find({}).select('_id username').limit(5);
-      logger.debug('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
       return res.status(404).json({
         success: false,
-        message: `User not found with ID: ${userId}`,
-        debug: {
-          userId,
-          userIdType: typeof userId,
-          sampleUserIds: allUsers.map(u => u._id.toString())
-        }
+        message: 'User not found'
       });
     }
 
@@ -620,10 +644,27 @@ router.post('/deposit', async (req: Request, res: Response) => {
     });
 
     // Call recharge API directly (no password needed, uses agent authentication via sign)
-    const result = await fortunePandaService.agentDeposit(
-      user.fortunePandaUsername, // Use account name directly as stored
-      validatedAmount.toString()
-    );
+    const opUserId = user._id.toString();
+    const blocked = beginMoneyOp('deposit', opUserId, validatedAmount);
+    if (blocked) {
+      return res.status(409).json({ success: false, message: blocked });
+    }
+
+    let result;
+    try {
+      result = await fortunePandaService.agentDeposit(
+        user.fortunePandaUsername, // Use account name directly as stored
+        validatedAmount.toString()
+      );
+    } catch (callError) {
+      endMoneyOp('deposit', opUserId, validatedAmount, true);
+      throw callError;
+    }
+    endMoneyOp('deposit', opUserId, validatedAmount, result.success || !!result.ambiguous);
+
+    if (result.ambiguous) {
+      return res.status(502).json({ success: false, ambiguous: true, message: result.message });
+    }
 
     logger.debug('📥 FortunePanda agentDeposit result:', {
       success: result.success,
@@ -683,7 +724,7 @@ router.post('/deposit', async (req: Request, res: Response) => {
 });
 
 // Agent Redeem (Withdraw money from user account)
-router.post('/redeem', async (req: Request, res: Response) => {
+router.post('/redeem', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId, amount } = req.body;
 
@@ -720,7 +761,7 @@ router.post('/redeem', async (req: Request, res: Response) => {
     // Try to find user by ID
     let user;
     try {
-      user = await User.findById(userId);
+      user = await User.findById(userId).select('+fortunePandaPassword');
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('❌ Error finding user by ID:', errorMessage);
@@ -732,17 +773,9 @@ router.post('/redeem', async (req: Request, res: Response) => {
 
     if (!user) {
       logger.error('❌ User not found in database:', userId);
-      // Check if any user exists with this ID format
-      const allUsers = await User.find({}).select('_id username').limit(5);
-      logger.debug('📋 Sample user IDs in database:', allUsers.map(u => ({ id: u._id.toString(), username: u.username })));
       return res.status(404).json({
         success: false,
-        message: `User not found with ID: ${userId}`,
-        debug: {
-          userId,
-          userIdType: typeof userId,
-          sampleUserIds: allUsers.map(u => u._id.toString())
-        }
+        message: 'User not found'
       });
     }
 
@@ -781,10 +814,27 @@ router.post('/redeem', async (req: Request, res: Response) => {
     });
 
     // Call redeem API directly (no password needed, uses agent authentication via sign)
-    const result = await fortunePandaService.agentRedeem(
-      user.fortunePandaUsername, // Use account name directly as stored
-      validatedAmount.toString()
-    );
+    const opUserId = user._id.toString();
+    const blocked = beginMoneyOp('redeem', opUserId, validatedAmount);
+    if (blocked) {
+      return res.status(409).json({ success: false, message: blocked });
+    }
+
+    let result;
+    try {
+      result = await fortunePandaService.agentRedeem(
+        user.fortunePandaUsername, // Use account name directly as stored
+        validatedAmount.toString()
+      );
+    } catch (callError) {
+      endMoneyOp('redeem', opUserId, validatedAmount, true);
+      throw callError;
+    }
+    endMoneyOp('redeem', opUserId, validatedAmount, result.success || !!result.ambiguous);
+
+    if (result.ambiguous) {
+      return res.status(502).json({ success: false, ambiguous: true, message: result.message });
+    }
 
     logger.debug('📥 FortunePanda agentRedeem result:', {
       success: result.success,
@@ -844,7 +894,7 @@ router.post('/redeem', async (req: Request, res: Response) => {
 });
 
 // Get Trade Record
-router.get('/trades', async (req: Request, res: Response) => {
+router.get('/trades', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId, fromDate, toDate } = req.query;
 
@@ -894,7 +944,7 @@ router.get('/trades', async (req: Request, res: Response) => {
 });
 
 // Get JP Record (Jackpot Record)
-router.get('/jackpots', async (req: Request, res: Response) => {
+router.get('/jackpots', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId, fromDate, toDate } = req.query;
 
@@ -944,7 +994,7 @@ router.get('/jackpots', async (req: Request, res: Response) => {
 });
 
 // Get Game Record
-router.get('/game-records', async (req: Request, res: Response) => {
+router.get('/game-records', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId, fromDate, toDate, kindId } = req.query;
 
@@ -1027,7 +1077,7 @@ router.get('/game-records', async (req: Request, res: Response) => {
 });
 
 // Manually verify user email (admin only)
-router.put('/users/:userId/verify-email', async (req: Request, res: Response) => {
+router.put('/users/:userId/verify-email', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
 
@@ -1070,7 +1120,7 @@ router.put('/users/:userId/verify-email', async (req: Request, res: Response) =>
 });
 
 // Reset user password (admin only)
-router.put('/users/:userId/reset-password', async (req: Request, res: Response) => {
+router.put('/users/:userId/reset-password', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { newPassword } = req.body;
@@ -1151,7 +1201,7 @@ router.put('/users/:userId/reset-password', async (req: Request, res: Response) 
 });
 
 // Set/Update FortunePanda password for a user
-router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Response) => {
+router.put('/users/:userId/fortune-panda-password', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { password } = req.body;
@@ -1206,7 +1256,7 @@ router.put('/users/:userId/fortune-panda-password', async (req: Request, res: Re
 });
 
 // Ban user (permanent ban with IP blocking)
-router.put('/users/:userId/ban', async (req: Request, res: Response) => {
+router.put('/users/:userId/ban', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { reason } = req.body;
@@ -1314,7 +1364,7 @@ router.put('/users/:userId/ban', async (req: Request, res: Response) => {
 });
 
 // Fix single user's Fortune Panda account — creates a brand new FP account and links it, ignoring the old one
-router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Response) => {
+router.post('/users/:userId/fix-fortune-panda', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId);
@@ -1384,7 +1434,7 @@ router.post('/users/:userId/fix-fortune-panda', async (req: Request, res: Respon
 });
 
 // Fix duplicate Fortune Panda usernames and retry account creation
-router.post('/fix-fortune-panda-usernames', async (req: Request, res: Response) => {
+router.post('/fix-fortune-panda-usernames', requireAdminSessionRole, async (req: Request, res: Response) => {
   try {
     logger.info('🔧 Starting Fortune Panda username fix process...');
 
@@ -1531,7 +1581,7 @@ router.post('/fix-fortune-panda-usernames', async (req: Request, res: Response) 
 });
 
 // Unban user
-router.put('/users/:userId/unban', async (req: Request, res: Response) => {
+router.put('/users/:userId/unban', requireAgentPermission('users'), async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
 
@@ -1581,7 +1631,7 @@ router.put('/users/:userId/unban', async (req: Request, res: Response) => {
 });
 
 // Delete user account and all associated data
-router.delete('/users/:userId', async (req: Request, res: Response) => {
+router.delete('/users/:userId', requireAdminSessionRole, async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { confirmUsername } = req.body;

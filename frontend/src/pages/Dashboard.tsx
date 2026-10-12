@@ -204,7 +204,7 @@ function GameCarousel({ title, games, icon, loading = false }: { title: string; 
 
 const Dashboard = () => {
   const { user, lastRechargeStatus, token } = useAuthStore();
-  const { balance, fetchBalance } = useBalancePolling(30000);
+  const { balance, fetchBalance } = useBalancePolling(30000, { poll: false });
   const [loanBadge, setLoanBadge] = useState(false);
   const { recentGames, randomGames, gamesLoading } = useGameCarousels();
 

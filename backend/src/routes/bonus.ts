@@ -6,11 +6,23 @@ import ChatMessage from '../models/ChatMessage';
 import { getSocketServerInstance } from '../utils/socketManager';
 import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
 import { bonusImageUpload } from '../config/bonusUploads';
+import { requireAgentAuth } from '../middleware/agentAuth';
+import { authenticate, optionalAuthenticate } from '../middleware/auth';
 
 const router = Router();
 
+/** Public view of a bonus: claim history is reduced to the viewer's own claims. */
+const toPublicBonus = (bonus: IBonus, viewerId?: string) => {
+  const { claims = [], claimedBy = [], ...rest } = bonus.toObject() as IBonus & { claims?: IBonus['claims']; claimedBy?: string[] };
+  return {
+    ...rest,
+    claims: viewerId ? claims.filter((c) => c.userId === viewerId) : [],
+    claimedBy: viewerId && claimedBy.includes(viewerId) ? [viewerId] : [],
+  };
+};
+
 // Get all active bonuses (public) — includes upcoming & recently expired
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', optionalAuthenticate, async (req: Request, res: Response) => {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -25,10 +37,12 @@ router.get('/', async (req: Request, res: Response) => {
       .sort({ order: 1, createdAt: -1 })
       .select('-__v');
 
+    const viewerId = req.user?._id?.toString();
+
     return res.json({
       success: true,
       message: 'Bonuses retrieved successfully',
-      data: bonuses
+      data: bonuses.map((bonus) => toPublicBonus(bonus, viewerId))
     });
   } catch (error: any) {
     console.error('Error fetching bonuses:', error);
@@ -41,7 +55,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // Get all bonuses (admin/agent only)
-router.get('/all', async (req: Request, res: Response) => {
+router.get('/all', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const bonuses = await Bonus.find()
       .sort({ order: 1, createdAt: -1 })
@@ -63,7 +77,7 @@ router.get('/all', async (req: Request, res: Response) => {
 });
 
 // Get single bonus by ID
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', optionalAuthenticate, async (req: Request, res: Response) => {
   try {
     const bonus = await Bonus.findById(req.params.id).select('-__v');
 
@@ -77,7 +91,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       message: 'Bonus retrieved successfully',
-      data: bonus
+      data: toPublicBonus(bonus, req.user?._id?.toString())
     });
   } catch (error: any) {
     console.error('Error fetching bonus:', error);
@@ -90,7 +104,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Upload bonus image to Cloudinary (admin/agent only)
-router.post('/upload-image', bonusImageUpload.single('image'), async (req: Request, res: Response) => {
+router.post('/upload-image', requireAgentAuth, bonusImageUpload.single('image'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No image file provided' });
@@ -120,7 +134,7 @@ router.post('/upload-image', bonusImageUpload.single('image'), async (req: Reque
 });
 
 // Create new bonus (admin/agent only)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const {
       title,
@@ -177,7 +191,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Update bonus (admin/agent only)
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const {
       title,
@@ -234,7 +248,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 // Delete bonus (admin/agent only)
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const bonus = await Bonus.findByIdAndDelete(req.params.id);
 
@@ -260,17 +274,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // Claim bonus (user endpoint)
-router.post('/:id/claim', async (req: Request, res: Response) => {
+router.post('/:id/claim', authenticate, async (req: Request, res: Response) => {
   try {
-    const { userId } = req.body;
+    const userId = req.user!._id.toString();
     const bonusId = req.params.id;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required'
-      });
-    }
 
     const bonus = await Bonus.findById(bonusId);
 
@@ -346,11 +353,36 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
       }
     }
 
-    // Record the claim
-    if (!bonus.claims) bonus.claims = [];
-    bonus.claims.push({ userId, claimedAt: new Date() });
-    if (!bonus.claimedBy.includes(userId)) bonus.claimedBy.push(userId);
-    await bonus.save();
+    // Record the claim atomically: the filter re-checks eligibility so concurrent requests cannot double-claim.
+    const claimFilter: Record<string, unknown> = { _id: bonus._id, isActive: true };
+    if (cooldownHrs > 0) {
+      const cooldownCutoff = new Date(Date.now() - cooldownHrs * 60 * 60 * 1000);
+      claimFilter.claims = { $not: { $elemMatch: { userId, claimedAt: { $gt: cooldownCutoff } } } };
+      if (maxClaims > 0) {
+        claimFilter.$expr = {
+          $lt: [
+            { $size: { $filter: { input: { $ifNull: ['$claims', []] }, as: 'c', cond: { $eq: ['$$c.userId', userId] } } } },
+            maxClaims
+          ]
+        };
+      }
+    } else {
+      claimFilter.claimedBy = { $ne: userId };
+    }
+
+    const claimed = await Bonus.findOneAndUpdate(
+      claimFilter,
+      { $push: { claims: { userId, claimedAt: new Date() } }, $addToSet: { claimedBy: userId } },
+      { new: true }
+    );
+
+    if (!claimed) {
+      return res.status(409).json({
+        success: false,
+        message: 'You have already claimed this bonus',
+        alreadyClaimed: true
+      });
+    }
 
     // Send special system message to admin chat about bonus claim
     try {

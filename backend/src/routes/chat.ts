@@ -123,7 +123,7 @@ router.post(
       // Build replyTo snapshot if replying to a message
       let replyTo: { messageId: string; message?: string; senderName?: string; senderType?: string } | undefined;
       if (replyToMessageId && typeof replyToMessageId === 'string' && /^[0-9a-fA-F]{24}$/.test(replyToMessageId)) {
-        const originalMsg = await ChatMessage.findById(replyToMessageId).lean();
+        const originalMsg = await ChatMessage.findOne({ _id: replyToMessageId, userId: req.user._id }).lean();
         if (originalMsg) {
           replyTo = {
             messageId: replyToMessageId,

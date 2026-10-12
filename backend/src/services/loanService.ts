@@ -11,6 +11,7 @@ import User from '../models/User';
 import emailService from './emailService';
 import { buildLoanEmail } from '../templates/email/emailLayout';
 import { getSocketServerInstance } from '../utils/socketManager';
+import { escapeRegex } from '../utils/sanitize';
 
 const PAYMENT_METHOD_TO_LEDGER_TYPE: Record<PaymentMethod, LedgerType> = {
   CASH: 'REPAY_CASH',
@@ -162,6 +163,10 @@ class LoanService {
   async submitLoanRequest(userId: string, amount: number) {
     const account = await this.getOrCreateAccount(userId);
 
+    if (account.status === 'SUSPENDED') {
+      throw new Error('Your loan account is suspended. Please contact support.');
+    }
+
     if (amount < 10 || amount > 100) {
       throw new Error('Loan amount must be between $10 and $100.');
     }
@@ -181,13 +186,18 @@ class LoanService {
       throw new Error('You already have a pending loan request.');
     }
 
-    const request = await LoanRequest.create({
-      userId,
-      requestedAmount: amount,
-      status: 'PENDING',
-    });
-
-    return request;
+    try {
+      return await LoanRequest.create({
+        userId,
+        requestedAmount: amount,
+        status: 'PENDING',
+      });
+    } catch (error: any) {
+      if (error?.code === 11000) {
+        throw new Error('You already have a pending loan request.');
+      }
+      throw error;
+    }
   }
 
   async approveLoanRequest(
@@ -207,6 +217,7 @@ class LoanService {
 
       const account = await LoanAccount.findOne({ userId: request.userId }).session(session);
       if (!account) throw new Error('Loan account not found.');
+      if (account.status === 'SUSPENDED') throw new Error('This loan account is suspended.');
 
       const available = account.loanLimit - account.activeBalance;
       if (request.requestedAmount > available) {
@@ -295,6 +306,9 @@ class LoanService {
       let account = await LoanAccount.findOne({ userId }).session(session);
       if (!account) {
         [account] = await LoanAccount.create([{ userId, loanLimit: 20, activeBalance: 0 }], { session });
+      }
+      if (account.status === 'SUSPENDED') {
+        throw new Error('This loan account is suspended.');
       }
 
       const existingOverdue = await Loan.findOne({ userId, status: 'OVERDUE' }).session(session);
@@ -687,8 +701,8 @@ class LoanService {
 
     const users = await User.find({
       $or: [
-        { username: { $regex: query, $options: 'i' } },
-        { email: { $regex: query, $options: 'i' } },
+        { username: { $regex: escapeRegex(query), $options: 'i' } },
+        { email: { $regex: escapeRegex(query), $options: 'i' } },
       ],
     })
       .select('_id')

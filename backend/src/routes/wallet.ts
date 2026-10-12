@@ -5,7 +5,7 @@ import { authenticate } from '../middleware/auth';
 import { paymentCreateLimiter } from '../middleware/rateLimiter';
 import Wallet from '../models/Wallet';
 import CryptoTransaction from '../models/CryptoTransaction';
-import { createInvoice, NowPaymentsIPNPayload, isPaymentCompleted, verifyIpnSignature } from '../services/nowPaymentsService';
+import { createInvoice } from '../services/nowPaymentsService';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
 
@@ -29,12 +29,11 @@ const PAY_CURRENCY_MAP: Record<string, string> = {
  */
 async function getOrCreateWallet(userId: mongoose.Types.ObjectId | string) {
   const id = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-  let w = await Wallet.findOne({ userId: id });
-  if (!w) {
-    w = await Wallet.create({ userId: id, balance: 0, currency: 'USD' });
-    logger.info('Wallet created for user', { userId: id.toString() });
-  }
-  return w;
+  return await Wallet.findOneAndUpdate(
+    { userId: id },
+    { $setOnInsert: { userId: id, balance: 0, currency: 'USD' } },
+    { upsert: true, new: true }
+  );
 }
 
 // --- GET /api/wallet/balance ---

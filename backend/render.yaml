@@ -11,8 +11,10 @@ services:
       - key: PORT
         value: 10000
       - key: FRONTEND_URL
-        value: https://your-frontend-url.vercel.app
+        value: https://www.globalacegaming.com
       - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
         generateValue: true
       - key: MONGODB_URI
         fromDatabase:
@@ -31,7 +33,7 @@ services:
       - key: AGENT_PASSWORD
         sync: false
       - key: AGENT_JWT_SECRET
-        sync: false
+        generateValue: true
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_FROM_EMAIL

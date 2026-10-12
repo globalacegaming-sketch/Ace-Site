@@ -102,7 +102,7 @@ const Register = () => {
 
       if (result.fortunePanda) {
         toast.success(
-          `Fortune Panda Account Created!\nUsername: ${result.fortunePanda.username}\nPassword: ${result.fortunePanda.password}`,
+          `Fortune Panda Account Created!\nUsername: ${result.fortunePanda.username}`,
           { duration: 10000 },
         );
       }

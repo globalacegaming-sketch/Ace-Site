@@ -7,73 +7,7 @@ import Referral from '../models/Referral';
 import { authenticate } from '../middleware/auth';
 import logger from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
-
-// ── Lightweight TOTP helpers (no heavy otplib dependency) ──
-function generateBase32Secret(bytes = 20): string {
-  const buf = crypto.randomBytes(bytes);
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let out = '';
-  let bits = 0;
-  let value = 0;
-  for (const b of buf) {
-    value = (value << 8) | b;
-    bits += 8;
-    while (bits >= 5) {
-      out += alphabet[(value >> (bits - 5)) & 0x1f];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) out += alphabet[(value << (5 - bits)) & 0x1f];
-  return out;
-}
-
-function base32Decode(str: string): Buffer {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = 0;
-  let value = 0;
-  const out: number[] = [];
-  for (const c of str.toUpperCase().replace(/=+$/, '')) {
-    const idx = alphabet.indexOf(c);
-    if (idx < 0) continue;
-    value = (value << 5) | idx;
-    bits += 5;
-    if (bits >= 8) {
-      out.push((value >> (bits - 8)) & 0xff);
-      bits -= 8;
-    }
-  }
-  return Buffer.from(out);
-}
-
-function generateTOTP(secret: string, time?: number): string {
-  const t = Math.floor((time ?? Date.now() / 1000) / 30);
-  const buf = Buffer.alloc(8);
-  buf.writeUInt32BE(0, 0);
-  buf.writeUInt32BE(t, 4);
-  const key = base32Decode(secret);
-  const hmac = crypto.createHmac('sha1', key).update(buf).digest();
-  const offset = hmac[hmac.length - 1] & 0x0f;
-  const code =
-    ((hmac[offset] & 0x7f) << 24) |
-    ((hmac[offset + 1] & 0xff) << 16) |
-    ((hmac[offset + 2] & 0xff) << 8) |
-    (hmac[offset + 3] & 0xff);
-  return (code % 1_000_000).toString().padStart(6, '0');
-}
-
-function verifyTOTP(token: string, secret: string, window = 1): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  for (let i = -window; i <= window; i++) {
-    if (generateTOTP(secret, now + i * 30) === token) return true;
-  }
-  return false;
-}
-
-function buildOtpauthURI(email: string, secret: string): string {
-  const issuer = encodeURIComponent('Global Ace Gaming');
-  const account = encodeURIComponent(email);
-  return `otpauth://totp/${issuer}:${account}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
-}
+import { generateBase32Secret, verifyTOTP, buildOtpauthURI, verifySecondFactor } from '../utils/totp';
 
 const router = Router();
 
@@ -258,6 +192,10 @@ router.post('/2fa/setup', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = req.user!._id;
 
+    if (req.user!.twoFactorEnabled) {
+      return sendError(res, 'Two-factor authentication is already enabled. Disable it first to set it up again.', 400);
+    }
+
     // Generate a new TOTP secret
     const secret = generateBase32Secret();
 
@@ -328,6 +266,22 @@ router.post('/2fa/verify', authenticate, async (req: Request, res: Response) => 
 router.post('/2fa/disable', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = req.user!._id;
+    const { password, code } = req.body ?? {};
+
+    if (typeof password !== 'string' || !password || typeof code !== 'string' || !code) {
+      return sendError(res, 'Your password and a 2FA code (or backup code) are required', 400);
+    }
+
+    const user = await User.findById(userId).select('+password +twoFactorSecret');
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+    if (!(await user.comparePassword(password))) {
+      return sendError(res, 'Incorrect password', 401);
+    }
+    if (user.twoFactorEnabled && !(await verifySecondFactor(user, code))) {
+      return sendError(res, 'Invalid 2FA code', 401);
+    }
 
     await User.findByIdAndUpdate(userId, {
       twoFactorEnabled: false,
@@ -498,8 +452,8 @@ router.post('/streak/claim', authenticate, async (req: Request, res: Response) =
   try {
     if (!req.user) return sendError(res, 'Not authenticated', 401);
 
-    const { day } = req.body;
-    if (!day || !STREAK_REWARDS[day]) {
+    const day = Number(req.body?.day);
+    if (!Number.isInteger(day) || !STREAK_REWARDS[day]) {
       return sendError(res, 'Invalid streak day', 400);
     }
 
@@ -534,10 +488,17 @@ router.post('/streak/claim', authenticate, async (req: Request, res: Response) =
       });
     }
 
-    await User.updateOne({ _id: user._id }, updateOps);
+    // Conditional update so concurrent requests can't claim the same day twice
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: user._id, loginStreakRewardsClaimed: { $ne: day } },
+      updateOps,
+      { new: true, projection: { bonusSpins: 1 } }
+    );
+    if (!updatedUser) {
+      return sendError(res, 'Reward already claimed for this day', 400);
+    }
 
     // Return updated bonusSpins count so the frontend can reflect it immediately
-    const updatedUser = await User.findById(user._id).select('bonusSpins');
     const bonusSpins = (updatedUser as any)?.bonusSpins || 0;
 
     return sendSuccess(res, `Claimed: ${reward.label}`, { day, reward, bonusSpins });

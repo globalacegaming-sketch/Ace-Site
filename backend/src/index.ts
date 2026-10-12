@@ -25,7 +25,6 @@ import contentRoutes from './routes/content';
 import adminRoutes from './routes/admin';
 import fortunePandaRoutes from './routes/fortunePanda';
 import fortunePandaUserRoutes from './routes/fortunePandaUser';
-import proxyRoutes from './routes/proxy';
 import platformRoutes from './routes/platform';
 import bonusRoutes from './routes/bonus';
 import agentAuthRoutes from './routes/agentAuth';
@@ -58,11 +57,15 @@ import Agent from './models/Agent';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { requestIdMiddleware } from './middleware/requestId';
+import { requireAgentAuth, requireAgentAdminRole } from './middleware/agentAuth';
+import { INLINE_EXTENSIONS } from './config/uploadSafety';
+import { stripMongoOperators } from './middleware/stripMongoOperators';
 import { generalLimiter, speedLimiter } from './middleware/rateLimiter';
 import { setSocketServerInstance } from './utils/socketManager';
 import { verifyToken } from './utils/jwt';
 import User from './models/User';
 import { validateAdminSession } from './services/adminSessionService';
+import { getAgentStatus } from './utils/agentToken';
 import logger from './utils/logger';
 import timeout from 'connect-timeout';
 
@@ -293,6 +296,7 @@ app.use('/api', healthRoutes);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(stripMongoOperators);
 
 // ── Mount session middleware (with path filter) ──
 // Session middleware reads the cookie, then loads the session from MongoDB.
@@ -391,6 +395,11 @@ app.use(
       // Always set these headers for static files
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (!INLINE_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+        res.setHeader('Content-Disposition', 'attachment');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      }
     }
   })
 );
@@ -413,22 +422,18 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
     service: 'Global Ace Gaming Backend',
-    version: '1.0.0',
-    cors: {
-      allowedOrigins: allowedOrigins,
-      requestOrigin: req.headers.origin
-    }
+    version: '1.0.0'
   });
 });
 
 
 // Agent login health check endpoint
-app.post('/api/health/agent/relogin', async (req, res) => {
+app.post('/api/health/agent/relogin', requireAgentAuth, requireAgentAdminRole, async (req, res) => {
   try {
     const result = await agentLoginService.forceReLogin();
     res.json({
@@ -464,7 +469,6 @@ app.use('/api/admin/notes', userNoteRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/fortune-panda', fortunePandaRoutes);
 app.use('/api/fortune-panda-user', fortunePandaUserRoutes);
-app.use('/api', proxyRoutes);
 app.use('/api/platforms', platformRoutes);
 app.use('/api/bonuses', bonusRoutes);
 app.use('/api/agent-auth', agentAuthRoutes);
@@ -500,18 +504,15 @@ io.use(async (socket, next) => {
     };
     const session = (socket.request as any).session;
 
+    const isActiveAgent = async (adminId: string): Promise<boolean> =>
+      !!(await getAgentStatus(adminId))?.isActive;
+
     // ── 1. Admin token from auth payload (agent dashboard sends this) ──
-    const queryAdminToken = socket.handshake.query.adminToken;
-    const adminToken =
-      typeof auth.adminToken === 'string'
-        ? auth.adminToken
-        : typeof queryAdminToken === 'string'
-          ? queryAdminToken
-          : undefined;
+    const adminToken = typeof auth.adminToken === 'string' ? auth.adminToken : undefined;
 
     if (typeof adminToken === 'string') {
       const adminSession = validateAdminSession(adminToken);
-      if (adminSession) {
+      if (adminSession && await isActiveAgent(adminSession.adminId)) {
         logger.info(`🔌 Socket auth: admin token OK (agent: ${adminSession.agentName})`);
         socket.data.role = 'admin';
         socket.data.adminSession = adminSession;
@@ -521,7 +522,7 @@ io.use(async (socket, next) => {
       // Try the admin session cookie before giving up, but NEVER fall
       // through to user-session auth — that would connect an agent
       // dashboard as a regular user and break real-time chat.
-      if (session?.adminSession && session.adminSession.expiresAt > Date.now()) {
+      if (session?.adminSession && session.adminSession.expiresAt > Date.now() && await isActiveAgent(session.adminSession.adminId)) {
         logger.info(`🔌 Socket auth: admin token stale, but admin session cookie OK (agent: ${session.adminSession.agentName})`);
         socket.data.role = 'admin';
         socket.data.adminSession = session.adminSession;
@@ -532,7 +533,7 @@ io.use(async (socket, next) => {
     }
 
     // ── 2. Admin session from cookie (no adminToken sent) ──
-    if (session?.adminSession && session.adminSession.expiresAt > Date.now()) {
+    if (session?.adminSession && session.adminSession.expiresAt > Date.now() && await isActiveAgent(session.adminSession.adminId)) {
       logger.info(`🔌 Socket auth: admin session cookie OK (agent: ${session.adminSession.agentName})`);
       socket.data.role = 'admin';
       socket.data.adminSession = session.adminSession;
@@ -556,7 +557,7 @@ io.use(async (socket, next) => {
       return next();
     }
 
-    // ── 4. Bearer / query token (user JWT) ──
+    // ── 4. Bearer token (user JWT) from auth payload or Authorization header ──
     const headerAuth = typeof socket.handshake.headers.authorization === 'string'
       ? socket.handshake.headers.authorization
       : undefined;
@@ -564,15 +565,7 @@ io.use(async (socket, next) => {
       ? headerAuth.substring(7)
       : undefined;
 
-    const queryToken = socket.handshake.query.token;
-    const tokenCandidate =
-      typeof auth.token === 'string'
-        ? auth.token
-        : typeof queryToken === 'string'
-          ? queryToken
-          : bearerToken;
-
-    const token = typeof tokenCandidate === 'string' ? tokenCandidate : undefined;
+    const token = typeof auth.token === 'string' ? auth.token : bearerToken;
 
     if (!token || typeof token !== 'string') {
       return next(new Error('Unauthorized'));

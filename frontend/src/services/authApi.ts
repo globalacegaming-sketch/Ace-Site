@@ -24,7 +24,6 @@ export type AuthBackendResponse = {
     expiresAt?: string;
     fortunePanda?: {
       username: string;
-      password: string;
     };
   };
 };
@@ -41,7 +40,7 @@ export type RegisterSuccess = {
   user: User;
   accessToken: string;
   expiresAt: string;
-  fortunePanda?: { username: string; password: string };
+  fortunePanda?: { username: string };
 };
 
 /* ------------------------------------------------------------------------- */
@@ -54,6 +53,7 @@ export type RegisterSuccess = {
  * Lets callers distinguish:
  *   - `apiCode === 'ACCOUNT_BANNED'`   -> server-side ban
  *   - `apiCode === 'EMAIL_NOT_VERIFIED'` -> bounce to /verify-code
+ *   - `apiCode === 'TWO_FACTOR_REQUIRED' | 'TWO_FACTOR_INVALID'` -> ask for an authenticator code
  *   - `httpStatus === 429`              -> rate limited
  */
 export class LoginError extends Error {
@@ -121,6 +121,7 @@ export async function loginAccount(payload: {
   email: string;
   password: string;
   rememberMe?: boolean;
+  twoFactorCode?: string;
 }): Promise<LoginSuccess> {
   const res = await fetch(apiUrl('/auth/login'), {
     method: 'POST',

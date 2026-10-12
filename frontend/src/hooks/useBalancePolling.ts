@@ -3,7 +3,14 @@ import { useAuthStore } from '../stores/authStore';
 import fortunePandaApi from '../services/fortunePandaApi';
 import toast from 'react-hot-toast';
 
-export const useBalancePolling = (intervalMs: number = 20000) => {
+/**
+ * `poll: false` reads the shared store balance and exposes `fetchBalance` without starting
+ * another interval (Layout already polls for every page rendered inside it).
+ */
+export const useBalancePolling = (
+  intervalMs: number = 20000,
+  { poll = true }: { poll?: boolean } = {},
+) => {
   const {
     isAuthenticated,
     fortunePandaBalance,
@@ -60,7 +67,7 @@ export const useBalancePolling = (intervalMs: number = 20000) => {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && poll) {
       startPolling();
     } else {
       stopPolling();
@@ -69,7 +76,7 @@ export const useBalancePolling = (intervalMs: number = 20000) => {
     return () => {
       stopPolling();
     };
-  }, [isAuthenticated, intervalMs]);
+  }, [isAuthenticated, intervalMs, poll]);
 
   return {
     balance: fortunePandaBalance,

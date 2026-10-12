@@ -51,7 +51,7 @@ function saveReminder(id: string) {
 
 const Offers = () => {
   const API_BASE_URL = getApiBaseUrl();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, token } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'current' | 'upcoming' | 'expired'>('current');
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +88,10 @@ const Offers = () => {
   const loadBonuses = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/bonuses`);
+      const response = await axios.get(`${API_BASE_URL}/bonuses`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        withCredentials: true
+      });
       if (response.data.success) {
         setBonuses(response.data.data || []);
       }
@@ -106,7 +109,6 @@ const Offers = () => {
       return;
     }
 
-    const userId = (user as any)._id || user.id;
     const state = getClaimState(bonus);
 
     if (!state.canClaim) {
@@ -119,7 +121,11 @@ const Offers = () => {
       setClaiming(bonus._id);
       const claimResponse = await axios.post(
         `${API_BASE_URL}/bonuses/${bonus._id}/claim`,
-        { userId: userId }
+        {},
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          withCredentials: true
+        }
       );
 
       if (claimResponse.data.success) {

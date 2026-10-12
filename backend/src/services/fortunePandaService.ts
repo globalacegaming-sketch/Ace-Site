@@ -12,6 +12,16 @@ interface FortunePandaConfig {
   baseUrl: string;
 }
 
+export interface MoneyOpResult {
+  success: boolean;
+  message: string;
+  data?: any;
+  /** The provider never answered (timeout / network error); the operation may or may not have been applied. */
+  ambiguous?: boolean;
+}
+
+const isNoResponseError = (error: unknown): boolean => axios.isAxiosError(error) && !error.response;
+
 class FortunePandaService {
   private config: FortunePandaConfig;
   private agentKeyCache: string | null = null;
@@ -596,7 +606,7 @@ class FortunePandaService {
 
   // Agent Deposit (Load money to user account)
   // Format: ?action=recharge&account=test01&amount=1&agentName=agent01&time=1598452539&sign=7b35f60db33dcfd237fdb48cb5de97c5
-  async agentDeposit(account: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
+  async agentDeposit(account: string, amount: string): Promise<MoneyOpResult> {
     try {
       if (!this.agentKeyCache) {
         await this.loginAgent();
@@ -687,6 +697,14 @@ class FortunePandaService {
         };
       }
     } catch (error) {
+      if (isNoResponseError(error)) {
+        logger.error('FortunePanda recharge: no response from provider, outcome unknown', { account, amount });
+        return {
+          success: false,
+          ambiguous: true,
+          message: 'Fortune Panda did not respond. The deposit may have gone through - check the player balance before retrying.'
+        };
+      }
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to deposit'
@@ -696,7 +714,7 @@ class FortunePandaService {
 
   // Agent Redeem (Withdraw money from user account)
   // Format: ?action=redeem&account=test01&amount=1&agentName=agent01&time=1598452539&sign=7b35f60db33dcfd237fdb48cb5de97c5
-  async agentRedeem(account: string, amount: string): Promise<{ success: boolean; message: string; data?: any }> {
+  async agentRedeem(account: string, amount: string): Promise<MoneyOpResult> {
     try {
       if (!this.agentKeyCache) {
         await this.loginAgent();
@@ -787,6 +805,14 @@ class FortunePandaService {
         };
       }
     } catch (error) {
+      if (isNoResponseError(error)) {
+        logger.error('FortunePanda redeem: no response from provider, outcome unknown', { account, amount });
+        return {
+          success: false,
+          ambiguous: true,
+          message: 'Fortune Panda did not respond. The redeem may have gone through - check the player balance before retrying.'
+        };
+      }
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to redeem'

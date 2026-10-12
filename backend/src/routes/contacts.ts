@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express';
 import User from '../models/User';
 import logger from '../utils/logger';
+import { requireAgentAuth } from '../middleware/agentAuth';
 
 const router = Router();
+
+router.use(requireAgentAuth);
 
 // Get contacts (users) - only specific fields, no passwords
 router.get('/', async (req: Request, res: Response) => {

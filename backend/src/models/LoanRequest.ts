@@ -49,5 +49,10 @@ const LoanRequestSchema = new Schema<ILoanRequest>(
 LoanRequestSchema.index({ userId: 1, status: 1 });
 LoanRequestSchema.index({ status: 1, createdAt: -1 });
 LoanRequestSchema.index({ createdAt: -1 });
+// At most one pending request per user, enforced by the database
+LoanRequestSchema.index(
+  { userId: 1 },
+  { unique: true, partialFilterExpression: { status: 'PENDING' }, name: 'one_pending_request_per_user' }
+);
 
 export default mongoose.model<ILoanRequest>('LoanRequest', LoanRequestSchema);

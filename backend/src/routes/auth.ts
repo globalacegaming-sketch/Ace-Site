@@ -12,6 +12,11 @@ import { sendSuccess, sendError } from '../utils/response';
 import { getClientIP } from '../utils/requestUtils';
 import { isIPBanned } from '../utils/ipBanUtils';
 import { generateUniqueUsername } from '../utils/username';
+import { verifySecondFactor } from '../utils/totp';
+
+/** Reset tokens are stored hashed so a database leak can't be used to reset passwords. */
+const hashResetToken = (token: string): string =>
+  crypto.createHash('sha256').update(token).digest('hex');
 
 const router = Router();
 
@@ -249,8 +254,7 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
         createdAt: user.createdAt
       },
       fortunePanda: {
-        username: fortunePandaUsername,
-        password: fortunePandaPassword
+        username: fortunePandaUsername
       },
       ...tokens
     }, 201);
@@ -263,10 +267,10 @@ router.post('/register', registerLimiter, async (req: Request, res: Response) =>
 // Login user - apply authentication rate limiter
 router.post('/login', authLimiter, async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, twoFactorCode } = req.body;
 
     // Validate required fields
-    if (!email || !password) {
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
       return sendError(res, 'Email and password are required', 400);
     }
 
@@ -281,7 +285,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     }
 
     // Find user by email and include password for comparison
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select('+password +twoFactorSecret');
 
     if (!user) {
       return sendError(res, 'Invalid email or password', 401);
@@ -309,6 +313,23 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
 
     if (!isPasswordValid) {
       return sendError(res, 'Invalid email or password', 401);
+    }
+
+    if (user.twoFactorEnabled) {
+      if (!twoFactorCode) {
+        return res.status(401).json({
+          success: false,
+          code: 'TWO_FACTOR_REQUIRED',
+          message: 'Enter the code from your authenticator app'
+        });
+      }
+      if (!(await verifySecondFactor(user, twoFactorCode))) {
+        return res.status(401).json({
+          success: false,
+          code: 'TWO_FACTOR_INVALID',
+          message: 'Invalid two-factor code'
+        });
+      }
     }
 
     // ── Update login streak ──
@@ -530,7 +551,7 @@ router.post('/forgot-password', passwordResetLimiter, async (req: Request, res: 
   try {
     const { email } = req.body;
 
-    if (!email) {
+    if (!email || typeof email !== 'string') {
       return res.status(400).json({
         success: false,
         message: 'Email is required'
@@ -548,7 +569,7 @@ router.post('/forgot-password', passwordResetLimiter, async (req: Request, res: 
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    user.passwordResetToken = resetToken;
+    user.passwordResetToken = hashResetToken(resetToken);
     user.passwordResetExpires = resetExpires;
     await user.save({ validateBeforeSave: false });
 
@@ -575,7 +596,7 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
   try {
     const { token, password } = req.body;
 
-    if (!token || !password) {
+    if (!token || !password || typeof token !== 'string' || typeof password !== 'string') {
       return sendError(res, 'Token and password are required', 400);
     }
 
@@ -585,7 +606,7 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
 
     // Find user with valid reset token
     const user = await User.findOne({
-      passwordResetToken: token,
+      passwordResetToken: hashResetToken(token),
       passwordResetExpires: { $gt: new Date() }
     }).select('+passwordResetToken +passwordResetExpires');
 
@@ -611,7 +632,7 @@ router.post('/verify-email', async (req: Request, res: Response) => {
   try {
     const { code, email } = req.body;
 
-    if (!code || !email) {
+    if (!code || !email || typeof code !== 'string' || typeof email !== 'string') {
       return sendError(res, 'Verification code and email are required', 400);
     }
 

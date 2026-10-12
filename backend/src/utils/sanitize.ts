@@ -60,6 +60,20 @@ export const sanitizeUrl = (input: string | undefined | null): string => {
   return validator.escape(trimmed);
 };
 
+/** True only for absolute http:// or https:// URLs (rejects javascript:, data:, etc.). */
+export const isHttpUrl = (input: unknown): input is string => {
+  if (typeof input !== 'string') return false;
+  try {
+    const url = new URL(input.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+};
+
+/** Escape user input for literal use inside a RegExp. */
+export const escapeRegex = (input: string): string => input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Sanitize object with string properties recursively
  */

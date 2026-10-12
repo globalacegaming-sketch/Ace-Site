@@ -1,7 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-
-const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+import { authenticateAgentToken, ADMIN_ROLES } from '../utils/agentToken';
 
 declare global {
   namespace Express {
@@ -16,7 +14,7 @@ declare global {
   }
 }
 
-export const requireAgentAuth = (req: Request, res: Response, next: NextFunction): void => {
+export const requireAgentAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -27,35 +25,35 @@ export const requireAgentAuth = (req: Request, res: Response, next: NextFunction
     return;
   }
 
-  const token = authHeader.substring(7);
-
   try {
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-    
-    // Accept any agent-system JWT: super_admin, admin, or agent roles
-    const validRoles = ['super_admin', 'admin', 'agent'];
-    if (decoded.type !== 'agent' || !validRoles.includes(decoded.role)) {
-      res.status(403).json({
+    const agent = await authenticateAgentToken(authHeader.substring(7));
+    if (!agent) {
+      res.status(401).json({
         success: false,
-        message: 'Invalid token type. Agent token required.'
+        message: 'Invalid or expired agent token. Please login again.'
       });
       return;
     }
 
-    // Add agent session to request
     req.agentSession = {
-      username: decoded.username,
-      displayName: decoded.displayName,
-      role: decoded.role,
-      userId: decoded.userId || decoded.agentId
+      username: agent.username,
+      displayName: agent.displayName,
+      role: agent.role,
+      userId: agent.agentId
     };
 
     next();
   } catch (error) {
-    res.status(401).json({
-      success: false,
-      message: 'Invalid or expired agent token. Please login again.'
-    });
+    next(error);
   }
 };
 
+/** Use after requireAgentAuth to restrict a route to super_admin / admin tokens. */
+export const requireAgentAdminRole = (req: Request, res: Response, next: NextFunction): void => {
+  const role = req.agentSession?.role;
+  if (role && (ADMIN_ROLES as readonly string[]).includes(role)) {
+    next();
+    return;
+  }
+  res.status(403).json({ success: false, message: 'Admin or super admin access required.' });
+};

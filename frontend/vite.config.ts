@@ -46,33 +46,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Runtime caching strategies
         runtimeCaching: [
-          // API responses — network-first with 24 h fallback
+          // API responses carry per-user data (balances, profile, chat) — never cache them
           {
             urlPattern: /\/api\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24, // 24 h
-              },
-              networkTimeoutSeconds: 10,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          // Game list API (fortune-panda)
-          {
-            urlPattern: /\/fortune-panda/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'game-api-cache',
-              expiration: {
-                maxEntries: 30,
-                maxAgeSeconds: 60 * 60, // 1 h
-              },
-              networkTimeoutSeconds: 8,
-              cacheableResponse: { statuses: [0, 200] },
-            },
+            handler: 'NetworkOnly',
           },
           // External images (game logos, Cloudinary, placeholders) — cache-first
           {

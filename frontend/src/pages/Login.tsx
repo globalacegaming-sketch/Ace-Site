@@ -40,6 +40,8 @@ const Login = () => {
   const { stopMusic, startMusic } = useMusic();
   const [formError, setFormError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   const {
     register,
@@ -76,6 +78,7 @@ const Login = () => {
         email: data.email,
         password: data.password,
         rememberMe,
+        twoFactorCode: twoFactorRequired ? twoFactorCode.trim() : undefined,
       });
 
       login({
@@ -103,6 +106,17 @@ const Login = () => {
         // Email verification gate — bounce directly to the code form.
         if (e.apiCode === 'EMAIL_NOT_VERIFIED') {
           navigate('/verify-code', { state: { email: data.email } });
+          return;
+        }
+        if (e.apiCode === 'TWO_FACTOR_REQUIRED') {
+          setTwoFactorRequired(true);
+          setFormError(null);
+          return;
+        }
+        if (e.apiCode === 'TWO_FACTOR_INVALID') {
+          setTwoFactorRequired(true);
+          setTwoFactorCode('');
+          setFormError(e.message);
           return;
         }
         if (e.httpStatus === 429) {
@@ -196,6 +210,25 @@ const Login = () => {
               error={errors.password?.message}
             />
 
+            {twoFactorRequired ? (
+              <AuthTextField
+                id="twoFactorCode"
+                label="Authenticator code"
+                leftIcon="tag"
+                type="text"
+                inputMode="text"
+                autoComplete="one-time-code"
+                enterKeyHint="done"
+                placeholder="6-digit code or backup code"
+                maxLength={8}
+                autoFocus
+                value={twoFactorCode}
+                onChange={(e) =>
+                  setTwoFactorCode(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 8))
+                }
+              />
+            ) : null}
+
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <label
                 className="flex cursor-pointer items-center gap-2.5"
@@ -218,8 +251,12 @@ const Login = () => {
               </Link>
             </div>
 
-            <button type="submit" disabled={isSubmitting} className={btnPrimary}>
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
+            <button
+              type="submit"
+              disabled={isSubmitting || (twoFactorRequired && twoFactorCode.trim().length < 6)}
+              className={btnPrimary}
+            >
+              {isSubmitting ? 'Signing in…' : twoFactorRequired ? 'Verify and sign in' : 'Sign in'}
             </button>
           </form>
 

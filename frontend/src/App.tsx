@@ -300,7 +300,7 @@ function App() {
             <Route path="/404" element={<NotFound />} />
 
             {/* Catch all route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
         

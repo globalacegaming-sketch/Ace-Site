@@ -1,6 +1,29 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
+import axios from 'axios';
+import { getApiBaseUrl } from '../utils/api';
+
+const parseHttpUrl = (value: string): URL | null => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Only hosts used by an active platform's game link may be launched. */
+const fetchAllowedGameHosts = async (): Promise<Set<string>> => {
+  const res = await axios.get(`${getApiBaseUrl()}/platforms`);
+  const platforms: Array<{ gameLink?: string }> = res.data?.data ?? [];
+  const hosts = new Set<string>();
+  for (const p of platforms) {
+    const parsed = p.gameLink ? parseHttpUrl(p.gameLink) : null;
+    if (parsed) hosts.add(parsed.hostname.toLowerCase());
+  }
+  return hosts;
+};
 
 const GameLaunch = () => {
   const [searchParams] = useSearchParams();
@@ -14,23 +37,42 @@ const GameLaunch = () => {
     const url = searchParams.get('url');
     const name = searchParams.get('name');
     
-    if (url) {
-      const decodedUrl = decodeURIComponent(url);
-      setGameUrl(decodedUrl);
-      setGameName(name ? decodeURIComponent(name) : 'Game');
+    const parsed = url ? parseHttpUrl(url) : null;
+    if (!parsed) {
       setLoading(false);
-      
-      // Automatically redirect to game URL after a brief delay
-      // This works better than iframe since many game providers block iframe embedding
-      setRedirecting(true);
-      const redirectTimer = setTimeout(() => {
-        window.location.href = decodedUrl;
-      }, 1500); // 1.5 second delay to show loading message
-      
-      return () => clearTimeout(redirectTimer);
-    } else {
-      setLoading(false);
+      return;
     }
+
+    let cancelled = false;
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    fetchAllowedGameHosts()
+      .then((allowedHosts) => {
+        if (cancelled) return;
+        if (!allowedHosts.has(parsed.hostname.toLowerCase())) {
+          setLoading(false);
+          return;
+        }
+        const safeUrl = parsed.toString();
+        setGameUrl(safeUrl);
+        setGameName(name || 'Game');
+        setLoading(false);
+
+        // Automatically redirect to game URL after a brief delay
+        // This works better than iframe since many game providers block iframe embedding
+        setRedirecting(true);
+        redirectTimer = setTimeout(() => {
+          window.location.href = safeUrl;
+        }, 1500); // 1.5 second delay to show loading message
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (redirectTimer) clearTimeout(redirectTimer);
+    };
   }, [searchParams]);
 
   const handleOpenInNewTab = () => {
@@ -59,7 +101,7 @@ const GameLaunch = () => {
       <div className="min-h-screen casino-bg-primary flex items-center justify-center">
         <div className="casino-bg-secondary rounded-3xl shadow-xl p-10 text-center max-w-md w-full casino-border">
           <h2 className="text-2xl font-bold casino-text-primary mb-4">Game Not Found</h2>
-          <p className="casino-text-secondary mb-6">No game URL provided.</p>
+          <p className="casino-text-secondary mb-6">This game link is missing or not allowed.</p>
           <button
             onClick={handleGoBack}
             className="btn-casino-primary px-6 py-3 rounded-xl"

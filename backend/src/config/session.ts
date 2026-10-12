@@ -11,6 +11,7 @@
 import session from 'express-session';
 import MongoStore from 'connect-mongo';
 import logger from '../utils/logger';
+import { SESSION_SECRET } from './secrets';
 
 // ── Extend the express-session SessionData type ─────────────────────────────
 // This tells TypeScript what custom properties we store on each session.
@@ -41,7 +42,6 @@ declare module 'express-session' {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const SESSION_SECRET = process.env.SESSION_SECRET || 'change-this-session-secret-in-production';
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/global-ace-gaming';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -49,14 +49,6 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 // This matches the default JWT_EXPIRES_IN so existing tokens & new sessions
 // expire at the same time, avoiding confusion.
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-
-// ── Warn about default secret in production ─────────────────────────────────
-if (IS_PRODUCTION && SESSION_SECRET === 'change-this-session-secret-in-production') {
-  logger.warn(
-    '⚠️  SESSION_SECRET is using the default value! ' +
-    'Set a strong random string in your environment variables for production.'
-  );
-}
 
 // ── Build the session middleware ─────────────────────────────────────────────
 export const sessionMiddleware = session({

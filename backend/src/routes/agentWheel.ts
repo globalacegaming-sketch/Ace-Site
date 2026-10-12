@@ -1,5 +1,5 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { validateAdminSession } from '../services/adminSessionService';
+import { Router, Request, Response } from 'express';
+import { requireAdminOrAgentAuth } from '../middleware/adminOrAgentAuth';
 import WheelCampaign from '../models/WheelCampaign';
 import WheelSlice from '../models/WheelSlice';
 import WheelBudget from '../models/WheelBudget';
@@ -7,7 +7,6 @@ import WheelFairnessRules from '../models/WheelFairnessRules';
 import WheelSpin from '../models/WheelSpin';
 import User from '../models/User';
 import logger from '../utils/logger';
-import jwt from 'jsonwebtoken';
 import { WHEEL_SEGMENTS } from '../config/wheelSegments';
 
 // Build a rewardType → display label lookup from the single source of truth
@@ -20,52 +19,7 @@ for (const seg of WHEEL_SEGMENTS) {
 
 const router = Router();
 
-// Middleware to accept both admin and agent authentication
-const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({
-      success: false,
-      message: 'Access denied. No token provided.'
-    });
-    return;
-  }
-
-  const token = authHeader.substring(7);
-  
-  // Try admin auth first
-  const adminSession = validateAdminSession(token);
-  if (adminSession) {
-    (req as any).adminSession = adminSession;
-    return next();
-  }
-  
-  // Try JWT auth (agent, admin, or super_admin)
-  try {
-    const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-    
-    if (decoded.type === 'agent') {
-      (req as any).agentSession = {
-        username: decoded.username,
-        displayName: decoded.displayName,
-        role: decoded.role,
-        userId: decoded.userId || decoded.agentId
-      };
-      return next();
-    }
-  } catch (error: any) {
-    // JWT auth failed
-  }
-  
-  res.status(401).json({
-    success: false,
-    message: 'Invalid or expired session. Please login again.'
-  });
-};
-
-router.use(requireAdminOrAgentAuth);
+router.use(requireAdminOrAgentAuth());
 
 // Get campaign configuration
 router.get('/campaign', async (req: Request, res: Response) => {
@@ -290,14 +244,29 @@ router.put('/budget', async (req: Request, res: Response) => {
       });
     }
     let budget = await WheelBudget.findOne({ campaignId: campaign._id });
-    const budgetData = req.body;
-    
-    // Calculate budget remaining if total budget changed (clamp to 0 if already overspent)
-    if (budgetData.totalBudget && budget) {
-      budgetData.budgetRemaining = Math.max(0, budgetData.totalBudget - budget.budgetSpent);
-    } else if (budgetData.totalBudget && !budget) {
-      budgetData.budgetRemaining = budgetData.totalBudget;
-      budgetData.budgetSpent = 0;
+
+    // Only settings are editable; spent/remaining/spin counters are maintained by the server
+    const EDITABLE_BUDGET_FIELDS = [
+      'mode',
+      'totalBudget',
+      'targetSpins',
+      'targetExpensePerDay',
+      'targetExpensePerSpins',
+      'targetExpenseSpinsInterval'
+    ] as const;
+    const budgetData: Record<string, unknown> = {};
+    for (const field of EDITABLE_BUDGET_FIELDS) {
+      if (req.body?.[field] !== undefined) budgetData[field] = req.body[field];
+    }
+
+    if (budgetData.totalBudget !== undefined) {
+      const totalBudget = Number(budgetData.totalBudget);
+      if (!Number.isFinite(totalBudget) || totalBudget < 0) {
+        return res.status(400).json({ success: false, message: 'totalBudget must be a non-negative number' });
+      }
+      budgetData.totalBudget = totalBudget;
+      // Recalculate remaining (clamp to 0 if already overspent)
+      budgetData.budgetRemaining = Math.max(0, totalBudget - (budget?.budgetSpent ?? 0));
     }
 
     if (!budget) {
@@ -363,14 +332,15 @@ router.put('/fairness-rules', async (req: Request, res: Response) => {
         message: 'Campaign not found'
       });
     }
+    const { _id, __v, campaignId, createdAt, updatedAt, ...rulesData } = req.body ?? {};
     let rules = await WheelFairnessRules.findOne({ campaignId: campaign._id });
     if (!rules) {
       rules = await WheelFairnessRules.create({
-        campaignId: campaign._id,
-        ...req.body
+        ...rulesData,
+        campaignId: campaign._id
       });
     } else {
-      Object.assign(rules, req.body);
+      Object.assign(rules, rulesData);
       await rules.save();
     }
     return res.json({

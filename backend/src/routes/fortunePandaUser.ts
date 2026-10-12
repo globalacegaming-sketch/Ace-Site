@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import fortunePandaService from '../services/fortunePandaService';
-import { authenticate } from '../middleware/auth';
+import { authenticateWithGameCredentials } from '../middleware/auth';
 import logger from '../utils/logger';
 import User from '../models/User';
 
@@ -33,7 +33,7 @@ router.get('/games', async (req: Request, res: Response) => {
 });
 
 // All other routes require user authentication
-router.use(authenticate);
+router.use(authenticateWithGameCredentials);
 
 // Test endpoint to check authentication
 router.get('/test-auth', async (req: Request, res: Response) => {

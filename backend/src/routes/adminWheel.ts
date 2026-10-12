@@ -1,62 +1,25 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { validateAdminSession } from '../services/adminSessionService';
 import WheelConfig from '../models/WheelConfig';
 import WheelSpin from '../models/WheelSpin';
 import User from '../models/User';
 import logger from '../utils/logger';
-import jwt from 'jsonwebtoken';
+import { requireAdminOrAgentAuth } from '../middleware/adminOrAgentAuth';
+import { ADMIN_ROLES } from '../utils/agentToken';
 
 const router = Router();
 
-// Middleware to accept both admin and agent authentication
-const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
+router.use(requireAdminOrAgentAuth());
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({
-      success: false,
-      message: 'Access denied. No token provided.'
-    });
+const MAX_BONUS_SPINS = 100;
+
+const requireAdminRoleOnly = (req: Request, res: Response, next: NextFunction): void => {
+  const role = req.adminSession?.role ?? req.agentSession?.role;
+  if (role && (ADMIN_ROLES as readonly string[]).includes(role)) {
+    next();
     return;
   }
-
-  const token = authHeader.substring(7);
-
-  // Try admin auth first
-  const adminSession = validateAdminSession(token);
-  if (adminSession) {
-    (req as any).adminSession = adminSession;
-    return next();
-  }
-
-  // Try JWT auth (agent, admin, or super_admin)
-  try {
-    const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-
-    if (decoded.type === 'agent') {
-      (req as any).agentSession = {
-        username: decoded.username,
-        displayName: decoded.displayName,
-        role: decoded.role,
-        userId: decoded.userId || decoded.agentId
-      };
-      return next();
-    }
-    logger.warn('Wheel auth: Invalid token type', { role: decoded.role, type: decoded.type });
-  } catch (error: any) {
-    logger.debug('Wheel auth: JWT verification failed', { error: (error as Error).message });
-  }
-
-  logger.warn('Wheel auth: Both admin and agent auth failed');
-  res.status(401).json({
-    success: false,
-    message: 'Invalid or expired session. Please login again.'
-  });
+  res.status(403).json({ success: false, message: 'Admin role required.' });
 };
-
-// Use middleware that accepts both admin and agent
-router.use(requireAdminOrAgentAuth);
 
 // Get wheel configuration
 router.get('/config', async (req: Request, res: Response) => {
@@ -270,7 +233,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 });
 
 // ── POST /reset-all-bonus-spins — reset every user's bonus spins to 0 ────────
-router.post('/reset-all-bonus-spins', requireAdminOrAgentAuth, async (req: Request, res: Response) => {
+router.post('/reset-all-bonus-spins', requireAdminRoleOnly, async (req: Request, res: Response) => {
   try {
     const result = await User.updateMany({}, { $set: { bonusSpins: 0 } });
     logger.info('Admin reset ALL users bonus spins to 0', { modifiedCount: result.modifiedCount });
@@ -286,15 +249,15 @@ router.post('/reset-all-bonus-spins', requireAdminOrAgentAuth, async (req: Reque
 });
 
 // ── PUT /user/:userId/bonus-spins — set a user's bonus spin count ────────────
-router.put('/user/:userId/bonus-spins', requireAdminOrAgentAuth, async (req: Request, res: Response) => {
+router.put('/user/:userId/bonus-spins', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { bonusSpins } = req.body;
 
-    if (bonusSpins === undefined || typeof bonusSpins !== 'number' || bonusSpins < 0) {
+    if (!Number.isInteger(bonusSpins) || bonusSpins < 0 || bonusSpins > MAX_BONUS_SPINS) {
       return res.status(400).json({
         success: false,
-        message: 'bonusSpins must be a non-negative number'
+        message: `bonusSpins must be a whole number between 0 and ${MAX_BONUS_SPINS}`
       });
     }
 

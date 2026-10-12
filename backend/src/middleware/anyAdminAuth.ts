@@ -10,11 +10,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { validateAdminSession } from '../services/adminSessionService';
+import { validateAdminSession, revokeAdminSession } from '../services/adminSessionService';
+import { authenticateAgentToken, getAgentStatus } from '../utils/agentToken';
 import logger from '../utils/logger';
-
-const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 export interface CallerIdentity {
   id: string;       // agentId / adminId
@@ -31,62 +29,70 @@ declare global {
   }
 }
 
-export const requireAnyAdminAuth = (req: Request, res: Response, next: NextFunction): void => {
-  // ── 1. Try session-based auth (AceAgent panel) ──
-  if (req.session?.adminSession) {
-    const s = req.session.adminSession;
-    if (s.expiresAt > Date.now()) {
-      req.adminSession = s;
+export const requireAnyAdminAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    // ── 1. Try session-based auth (AceAgent panel) ──
+    if (req.session?.adminSession) {
+      const s = req.session.adminSession;
+      if (s.expiresAt > Date.now()) {
+        const status = await getAgentStatus(s.adminId);
+        if (status?.isActive) {
+          req.adminSession = { ...s, role: status.role, permissions: status.permissions };
+          req.callerIdentity = {
+            id: s.adminId,
+            name: s.agentName,
+            role: status.role,
+            permissions: status.permissions,
+          };
+          return next();
+        }
+      }
+      delete req.session.adminSession;
+    }
+
+    // ── 2. Try Bearer token ──
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, message: 'Access denied. No admin session or token provided.' });
+      return;
+    }
+
+    const token = authHeader.substring(7);
+
+    // 2a. Try in-memory admin session validation (AceAgent fallback)
+    const memSession = validateAdminSession(token);
+    if (memSession) {
+      const status = await getAgentStatus(memSession.adminId);
+      if (status?.isActive) {
+        req.adminSession = { ...memSession, role: status.role, permissions: status.permissions };
+        req.callerIdentity = {
+          id: memSession.adminId,
+          name: memSession.agentName,
+          role: status.role,
+          permissions: status.permissions,
+        };
+        return next();
+      }
+      revokeAdminSession(token);
+    }
+
+    // 2b. Try agent JWT verification (AceAdmin panel). Player tokens lack type: 'agent' and are rejected.
+    const agent = await authenticateAgentToken(token);
+    if (agent) {
       req.callerIdentity = {
-        id: s.adminId,
-        name: s.agentName,
-        role: s.role,
-        permissions: s.permissions || [],
+        id: agent.agentId,
+        name: agent.username,
+        role: agent.role,
+        permissions: agent.permissions,
       };
       return next();
     }
-    // Expired – clear
-    delete req.session.adminSession;
+
+    logger.warn('❌ anyAdminAuth: all auth methods failed');
+    res.status(401).json({ success: false, message: 'Invalid or expired authentication. Please login again.' });
+  } catch (error) {
+    next(error);
   }
-
-  // ── 2. Try Bearer token ──
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'Access denied. No admin session or token provided.' });
-    return;
-  }
-
-  const token = authHeader.substring(7);
-
-  // 2a. Try in-memory admin session validation (AceAgent fallback)
-  const memSession = validateAdminSession(token);
-  if (memSession) {
-    req.adminSession = memSession;
-    req.callerIdentity = {
-      id: memSession.adminId,
-      name: memSession.agentName,
-      role: memSession.role,
-      permissions: memSession.permissions || [],
-    };
-    return next();
-  }
-
-  // 2b. Try JWT verification (AceAdmin panel)
-  try {
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-    req.callerIdentity = {
-      id: decoded.agentId || decoded.userId || '',
-      name: decoded.username || '',
-      role: decoded.role || '',
-      permissions: [],
-    };
-    return next();
-  } catch {
-    // JWT invalid
-  }
-
-  logger.warn('❌ anyAdminAuth: all auth methods failed');
-  res.status(401).json({ success: false, message: 'Invalid or expired authentication. Please login again.' });
 };
 
 // Helper: restrict to admin/super_admin roles (no agents)

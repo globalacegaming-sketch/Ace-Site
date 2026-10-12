@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth';
 import { requireAgentAuth } from '../middleware/agentAuth';
 import SupportTicket, { SupportTicketCategory, SupportTicketStatus } from '../models/SupportTicket';
 import User from '../models/User';
+import { escapeRegex } from '../utils/sanitize';
 import { supportAttachmentUpload, getSupportAttachmentUrl } from '../config/supportUploads';
 import { verifyToken } from '../utils/jwt';
 import * as supportEmailService from '../services/supportEmailService';
@@ -420,11 +421,12 @@ router.get('/', requireAgentAuth, async (req: Request, res: Response) => {
     }
 
     if (search) {
+      const searchRegex = new RegExp(escapeRegex(String(search).slice(0, 100)), 'i');
       query.$or = [
-        { ticketNumber: { $regex: search, $options: 'i' } },
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { ticketNumber: searchRegex },
+        { name: searchRegex },
+        { email: searchRegex },
+        { description: searchRegex }
       ];
     }
 
@@ -689,7 +691,7 @@ router.get('/search-users', requireAgentAuth, async (req: Request, res: Response
     if (!q || typeof q !== 'string' || q.trim().length < 2) {
       return res.json({ success: true, data: [] });
     }
-    const regex = new RegExp(q.trim(), 'i');
+    const regex = new RegExp(escapeRegex(q.trim().slice(0, 100)), 'i');
     const users = await User.find({
       $or: [
         { username: regex },

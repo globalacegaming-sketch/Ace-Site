@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireAgentAuth } from '../middleware/agentAuth';
 import Notice, { INotice } from '../models/Notice';
 import Notification from '../models/Notification';
 import User from '../models/User';
@@ -38,7 +39,7 @@ router.get('/active', async (req: Request, res: Response) => {
 });
 
 // Get all notices (admin/agent only)
-router.get('/all', async (req: Request, res: Response) => {
+router.get('/all', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const notices = await Notice.find()
       .sort({ priority: 1, createdAt: -1 })
@@ -60,7 +61,7 @@ router.get('/all', async (req: Request, res: Response) => {
 });
 
 // Get single notice by ID
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const notice = await Notice.findById(req.params.id).select('-__v');
 
@@ -87,7 +88,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Create new notice (admin/agent only)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { title, message, type, isActive, priority, expiresAt } = req.body;
 
@@ -122,8 +123,8 @@ router.post('/', async (req: Request, res: Response) => {
         const users = await User.find({ isActive: true }).select('_id');
         const notifications = users.map(user => ({
           userId: user._id,
-          title: title,
-          message: message,
+          title: sanitizedTitle,
+          message: sanitizedMessage,
           type: type || 'info',
           noticeId: notice._id,
           isRead: false
@@ -135,8 +136,8 @@ router.post('/', async (req: Request, res: Response) => {
           // Emit notification event to all connected users via Socket.IO
           const io = getSocketServerInstance();
           const notificationPayload = {
-            title: title,
-            message: message,
+            title: sanitizedTitle,
+            message: sanitizedMessage,
             type: type || 'info',
             noticeId: notice._id.toString(),
             createdAt: new Date().toISOString()
@@ -169,7 +170,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Update notice (admin/agent only)
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { title, message, type, isActive, priority, expiresAt } = req.body;
 
@@ -207,7 +208,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 // Delete notice (admin/agent only)
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const notice = await Notice.findByIdAndDelete(req.params.id);
 

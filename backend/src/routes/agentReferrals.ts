@@ -1,53 +1,14 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { validateAdminSession } from '../services/adminSessionService';
+import { Router, Request, Response } from 'express';
 import Referral from '../models/Referral';
 import User from '../models/User';
 import ChatMessage from '../models/ChatMessage';
 import { getSocketServerInstance } from '../utils/socketManager';
 import logger from '../utils/logger';
-import jwt from 'jsonwebtoken';
+import { requireAdminOrAgentAuth } from '../middleware/adminOrAgentAuth';
 
 const router = Router();
 
-// ── Middleware: accept both admin and agent auth ──
-const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
-    return;
-  }
-
-  const token = authHeader.substring(7);
-
-  // Try admin auth first
-  const adminSession = validateAdminSession(token);
-  if (adminSession) {
-    (req as any).adminSession = adminSession;
-    return next();
-  }
-
-  // Try agent auth
-  try {
-    const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-
-    if (decoded.role === 'agent' && decoded.type === 'agent') {
-      (req as any).agentSession = {
-        username: decoded.username,
-        displayName: decoded.displayName,
-        role: decoded.role,
-      };
-      return next();
-    }
-  } catch {
-    // Agent auth failed
-  }
-
-  res.status(401).json({ success: false, message: 'Invalid or expired session. Please login again.' });
-};
-
-router.use(requireAdminOrAgentAuth);
+router.use(requireAdminOrAgentAuth({ jwtRoles: ['agent'], permission: 'referrals' }));
 
 // ── GET / — List all referrals with populated user data ──
 router.get('/', async (req: Request, res: Response) => {

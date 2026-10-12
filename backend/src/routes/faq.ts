@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireAgentAuth } from '../middleware/agentAuth';
 import FAQ, { IFAQ } from '../models/FAQ';
 import { sanitizeString, sanitizeText } from '../utils/sanitize';
 
@@ -27,7 +28,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // Get all FAQs (admin/agent only)
-router.get('/all', async (req: Request, res: Response) => {
+router.get('/all', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const faqs = await FAQ.find()
       .sort({ order: 1, createdAt: -1 })
@@ -49,7 +50,7 @@ router.get('/all', async (req: Request, res: Response) => {
 });
 
 // Get single FAQ by ID
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const faq = await FAQ.findById(req.params.id).select('-__v');
 
@@ -76,7 +77,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Create new FAQ (admin/agent only)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { question, answer, category, order, isActive } = req.body;
 
@@ -118,7 +119,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Update FAQ (admin/agent only)
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { question, answer, category, order, isActive } = req.body;
 
@@ -155,7 +156,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 // Delete FAQ (admin/agent only)
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const faq = await FAQ.findByIdAndDelete(req.params.id);
 

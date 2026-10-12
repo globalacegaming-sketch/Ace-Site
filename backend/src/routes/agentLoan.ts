@@ -1,43 +1,9 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { validateAdminSession } from '../services/adminSessionService';
+import { Router, Request, Response } from 'express';
 import loanService from '../services/loanService';
 import type { PaymentMethod } from '../models/LoanLedger';
-import jwt from 'jsonwebtoken';
+import { requireAdminOrAgentAuth } from '../middleware/adminOrAgentAuth';
 
 const router = Router();
-
-const requireAdminOrAgentAuth = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader === 'Bearer ' || authHeader === 'Bearer null') {
-    res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
-    return;
-  }
-
-  const token = authHeader.substring(7);
-
-  const adminSession = validateAdminSession(token);
-  if (adminSession) {
-    (req as any).adminSession = adminSession;
-    return next();
-  }
-
-  try {
-    const AGENT_JWT_SECRET = process.env.AGENT_JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    const decoded = jwt.verify(token, AGENT_JWT_SECRET) as any;
-    const validRoles = ['super_admin', 'admin', 'agent'];
-    if (decoded.type === 'agent' && validRoles.includes(decoded.role)) {
-      (req as any).agentSession = {
-        username: decoded.username,
-        displayName: decoded.displayName,
-        role: decoded.role,
-        userId: decoded.userId || decoded.agentId,
-      };
-      return next();
-    }
-  } catch { /* agent auth failed */ }
-
-  res.status(401).json({ success: false, message: 'Invalid or expired session. Please login again.' });
-};
 
 const getAgentId = (req: Request): string => {
   const admin = (req as any).adminSession;
@@ -47,7 +13,7 @@ const getAgentId = (req: Request): string => {
   return 'unknown';
 };
 
-router.use(requireAdminOrAgentAuth);
+router.use(requireAdminOrAgentAuth({ permission: 'loans' }));
 
 router.post('/manual-issue', async (req: Request, res: Response) => {
   try {

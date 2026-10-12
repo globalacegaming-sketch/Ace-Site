@@ -188,5 +188,12 @@ export function verifyIpnSignature(rawBody: string, signature: string): boolean 
 export function isPaymentCompleted(status: string | undefined): boolean {
   if (!status) return false;
   const s = status.toLowerCase();
-  return s === 'finished' || s === 'confirmed' || s === 'sending';
+  return s === 'finished' || s === 'confirmed';
+}
+
+/** Terminal statuses where the payment will never complete. */
+export function isPaymentFailed(status: string | undefined): boolean {
+  if (!status) return false;
+  const s = status.toLowerCase();
+  return s === 'failed' || s === 'expired' || s === 'refunded';
 }

@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { requireAgentAuth } from '../middleware/agentAuth';
+import { isHttpUrl } from '../utils/sanitize';
 import Platform, { IPlatform } from '../models/Platform';
 
 const router = Router();
@@ -26,7 +28,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // Get all platforms (admin/agent only)
-router.get('/all', async (req: Request, res: Response) => {
+router.get('/all', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const platforms = await Platform.find()
       .sort({ order: 1, createdAt: -1 })
@@ -48,7 +50,7 @@ router.get('/all', async (req: Request, res: Response) => {
 });
 
 // Get single platform by ID
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const platform = await Platform.findById(req.params.id).select('-__v');
 
@@ -75,7 +77,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Create new platform (admin/agent only)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { name, description, image, gameLink, order, isActive } = req.body;
 
@@ -84,6 +86,10 @@ router.post('/', async (req: Request, res: Response) => {
         success: false,
         message: 'Name, description, image, and gameLink are required'
       });
+    }
+
+    if (!isHttpUrl(gameLink)) {
+      return res.status(400).json({ success: false, message: 'gameLink must be an http(s) URL' });
     }
 
     const platform = new Platform({
@@ -113,7 +119,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Update platform (admin/agent only)
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const { name, description, image, gameLink, order, isActive } = req.body;
 
@@ -124,6 +130,10 @@ router.put('/:id', async (req: Request, res: Response) => {
         success: false,
         message: 'Platform not found'
       });
+    }
+
+    if (gameLink && !isHttpUrl(gameLink)) {
+      return res.status(400).json({ success: false, message: 'gameLink must be an http(s) URL' });
     }
 
     if (name) platform.name = name;
@@ -151,7 +161,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 // Delete platform (admin/agent only)
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAgentAuth, async (req: Request, res: Response) => {
   try {
     const platform = await Platform.findByIdAndDelete(req.params.id);
 

@@ -34,6 +34,9 @@ export default function TwoFactorSetup() {
   const [setupStarted, setSetupStarted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [showDisableForm, setShowDisableForm] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableCode, setDisableCode] = useState('');
 
   // Check if 2FA is already enabled on mount
   useEffect(() => {
@@ -95,13 +98,24 @@ export default function TwoFactorSetup() {
 
   // Disable 2FA
   const handleDisable = useCallback(async () => {
+    if (!disablePassword || disableCode.trim().length < 6) {
+      toast.error('Enter your password and a 2FA code');
+      return;
+    }
     setLoading(true);
     try {
-      const res = await axios.post(`${getApiBaseUrl()}/user/2fa/disable`, {}, { headers });
+      const res = await axios.post(
+        `${getApiBaseUrl()}/user/2fa/disable`,
+        { password: disablePassword, code: disableCode.trim() },
+        { headers },
+      );
       if (res.data.success) {
         setState({ enabled: false, qrDataUrl: null, secret: null, backupCodes: null });
         setSetupStarted(false);
         setOtp('');
+        setShowDisableForm(false);
+        setDisablePassword('');
+        setDisableCode('');
         toast.success('Two-factor authentication disabled');
       }
     } catch (err: any) {
@@ -109,7 +123,7 @@ export default function TwoFactorSetup() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [disablePassword, disableCode]);
 
   const copyBackupCodes = useCallback(() => {
     if (state.backupCodes) {
@@ -156,13 +170,50 @@ export default function TwoFactorSetup() {
             </button>
           </div>
         )}
-        <button
-          onClick={handleDisable}
-          disabled={loading}
-          className="text-sm text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 touch-manipulation"
-        >
-          {loading ? 'Disabling...' : 'Disable 2FA'}
-        </button>
+        {showDisableForm ? (
+          <div className="space-y-2 max-w-xs">
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={disablePassword}
+              onChange={(e) => setDisablePassword(e.target.value)}
+              className="input-casino w-full px-4 py-3 rounded-lg"
+              placeholder="Current password"
+            />
+            <input
+              type="text"
+              autoComplete="one-time-code"
+              maxLength={8}
+              value={disableCode}
+              onChange={(e) => setDisableCode(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 8))}
+              className="input-casino w-full px-4 py-3 rounded-lg font-mono tracking-widest"
+              placeholder="2FA code or backup code"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={handleDisable}
+                disabled={loading || !disablePassword || disableCode.trim().length < 6}
+                className="text-sm text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 touch-manipulation"
+              >
+                {loading ? 'Disabling...' : 'Confirm disable'}
+              </button>
+              <button
+                onClick={() => setShowDisableForm(false)}
+                disabled={loading}
+                className="text-sm casino-text-secondary hover:casino-text-primary transition-colors touch-manipulation"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowDisableForm(true)}
+            className="text-sm text-red-400 hover:text-red-300 transition-colors touch-manipulation"
+          >
+            Disable 2FA
+          </button>
+        )}
       </div>
     );
   }

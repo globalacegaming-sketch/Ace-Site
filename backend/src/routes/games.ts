@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import agentLoginService from '../services/agentLoginService';
 import logger from '../utils/logger';
+import { requireAgentAuth, requireAgentAdminRole } from '../middleware/agentAuth';
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.get('/fortune-panda', async (req: Request, res: Response) => {
 });
 
 // Get agent session status (for monitoring)
-router.get('/agent-status', async (req: Request, res: Response) => {
+router.get('/agent-status', requireAgentAuth, requireAgentAdminRole, async (req: Request, res: Response) => {
   try {
     const status = agentLoginService.getSessionStatus();
     const config = agentLoginService.getConfig();
@@ -64,7 +65,7 @@ router.get('/agent-status', async (req: Request, res: Response) => {
 });
 
 // Force agent re-login (for maintenance)
-router.post('/agent-relogin', async (req: Request, res: Response) => {
+router.post('/agent-relogin', requireAgentAuth, requireAgentAdminRole, async (req: Request, res: Response) => {
   try {
     const result = await agentLoginService.forceReLogin();
     

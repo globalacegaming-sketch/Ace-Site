@@ -2,10 +2,10 @@ import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import ChatMessage, { IChatMessage, ChatMessageStatus } from '../models/ChatMessage';
 import User from '../models/User';
-import { requireAdminAuth } from '../middleware/adminAuth';
+import { requireAdminAuth, requireAgentPermission } from '../middleware/adminAuth';
 import { chatAttachmentUpload, getChatAttachmentUrl } from '../config/chatUploads';
 import { getSocketServerInstance } from '../utils/socketManager';
-import { sanitizeText } from '../utils/sanitize';
+import { sanitizeText, escapeRegex } from '../utils/sanitize';
 import cloudinary, { isCloudinaryEnabled } from '../config/cloudinary';
 import fs from 'fs';
 import logger from '../utils/logger';
@@ -43,7 +43,7 @@ const serializePlainMessage = (message: Record<string, unknown>) => {
 const buildSearchFilter = (search?: string) => {
   if (!search) return undefined;
 
-  const regex = new RegExp(search, 'i');
+  const regex = new RegExp(escapeRegex(search.slice(0, 100)), 'i');
   return {
     $or: [
       { name: regex },
@@ -90,7 +90,7 @@ const fixUserMessageName = async (msg: any): Promise<void> => {
   }
 };
 
-router.use(requireAdminAuth);
+router.use(requireAdminAuth, requireAgentPermission('chat'));
 
 // New endpoint to get conversation summaries (list of all users with their last message)
 router.get('/conversations', async (req: Request, res: Response) => {
