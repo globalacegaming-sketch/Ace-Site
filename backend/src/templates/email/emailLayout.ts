@@ -1,5 +1,6 @@
 import { escape as escapeHtml } from 'validator';
 import { getEmailLogoSrc } from './emailLogo';
+import { sanitizePromotionalHtml } from './sanitizePromotionalHtml';
 export const SITE_NAME = 'Global Ace Gaming';
 export const TAGLINE = "America's Ace Gaming";
 export const SUPPORT_EMAIL = 'support@globalacegaming.com';
@@ -126,6 +127,8 @@ export interface EmailShellOptions {
   extraContentHtml?: string;
   /** Include full footer with nav links & social — default true for promo, false for transactional */
   fullFooter?: boolean;
+  /** Richer letter layout for promotional mail. Transactional mail stays on the plain shell. */
+  presentation?: 'standard' | 'promo';
 }
 
 function buildFooter(fullFooter: boolean): string {
@@ -184,15 +187,34 @@ function buildFooter(fullFooter: boolean): string {
 /** Table-based shell — Gmail & Outlook safe. */
 export function buildEmailShell(opts: EmailShellOptions): string {
   const c = EMAIL_COLORS;
+  const promo = opts.presentation === 'promo';
   const accent = accentFor(opts.accentTone ?? 'gold');
   const subtitle = opts.subtitle
-    ? `<p style="margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:${c.textSecondary};line-height:1.35;">${escapeHtml(opts.subtitle)}</p>`
+    ? `<p style="margin:8px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:${promo ? 15 : 16}px;color:${c.textSecondary};line-height:1.4;">${escapeHtml(opts.subtitle)}</p>`
     : '';
   const extra = opts.extraContentHtml ?? '';
   const footer = buildFooter(opts.fullFooter !== false);
   const pageTitle = escapeHtml(opts.pageTitle);
   const headline = escapeHtml(opts.headline);
   const logoSrc = getEmailLogoSrc();
+  const logoSize = promo ? 112 : 160;
+  const preheaderSource = promo
+    ? opts.bodyHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140)
+    : '';
+  const preheader = preheaderSource
+    ? `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;color:${c.primaryDark};">${escapeHtml(preheaderSource)}</div>`
+    : '';
+  const goldRule = promo
+    ? `<table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" style="margin:16px auto 0;"><tr><td style="width:56px;height:3px;background-color:${c.highlightGold};font-size:0;line-height:0;border-radius:3px;">&nbsp;</td></tr></table>`
+    : '';
+  const bodyInner = promo
+    ? `<table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:${c.cardBg};border:1px solid ${c.border};border-radius:12px;"><tr><td style="padding:22px 20px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.75;color:${c.textPrimary};">${opts.bodyHtml}</td></tr></table>`
+    : opts.bodyHtml;
+  const contentPadding = promo ? '8px 20px 28px' : '24px 32px 32px';
+  const headerPadding = promo ? '28px 24px 8px' : '20px 24px 18px';
+  const cardStyle = promo
+    ? `max-width:600px;width:100%;background-color:${c.secondaryDark};border:1px solid ${c.border};border-radius:16px;overflow:hidden;`
+    : `max-width:600px;width:100%;background-color:${c.secondaryDark};border:1px solid ${c.border};`;
 
   return `<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -225,29 +247,31 @@ export function buildEmailShell(opts: EmailShellOptions): string {
   </style>
 </head>
 <body style="margin:0;padding:0;background-color:${c.primaryDark};font-family:Arial,Helvetica,sans-serif;">
+  ${preheader}
   <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:${c.primaryDark};">
     <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table role="presentation" class="email-container" width="600" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background-color:${c.secondaryDark};border:1px solid ${c.border};">
+      <td align="center" style="padding:${promo ? '28px 12px' : '24px 12px'};">
+        <table role="presentation" class="email-container" width="600" border="0" cellspacing="0" cellpadding="0" style="${cardStyle}">
           <!-- Header -->
           <tr>
-            <td class="email-header" align="center" style="padding:20px 24px 18px;text-align:center;background-color:${c.secondaryDark};border-top:4px solid ${accent};">
-              <img src="${logoSrc}" alt="${SITE_NAME}" width="160" height="160" style="width:160px;max-width:160px;height:auto;margin:0 auto 8px;display:block;line-height:0;font-size:0;" />
-              <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" style="margin:0 auto 8px;">
+            <td class="email-header" align="center" style="padding:${headerPadding};text-align:center;background-color:${c.secondaryDark};border-top:4px solid ${accent};">
+              <img src="${logoSrc}" alt="${SITE_NAME}" width="${logoSize}" height="${logoSize}" style="width:${logoSize}px;max-width:${logoSize}px;height:auto;margin:0 auto 10px;display:block;line-height:0;font-size:0;" />
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" align="center" style="margin:0 auto 12px;">
                 <tr>
                   <td align="center" style="padding:5px 16px;background-color:#14120A;border:1px solid #665928;border-radius:50px;line-height:1.2;">
                     <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${c.highlightGold};line-height:1.2;">${TAGLINE}</p>
                   </td>
                 </tr>
               </table>
-              <h1 style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:1.25;color:${c.textPrimary};font-weight:bold;">${headline}</h1>
+              <h1 style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:${promo ? 28 : 24}px;line-height:1.25;color:${c.textPrimary};font-weight:bold;">${headline}</h1>
               ${subtitle}
+              ${goldRule}
             </td>
           </tr>
           <!-- Body -->
           <tr>
-            <td class="email-content" align="left" style="padding:24px 32px 32px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;color:${c.textPrimary};">
-              ${opts.bodyHtml}
+            <td class="email-content" align="left" style="padding:${contentPadding};font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.75;color:${c.textPrimary};">
+              ${bodyInner}
             </td>
           </tr>
           ${extra}
@@ -267,6 +291,19 @@ export function buildEmailShell(opts: EmailShellOptions): string {
 
 // --- Promotional ---
 
+function renderPromotionalContent(content: string): string {
+  const trimmed = (content || '').trim();
+  if (!trimmed) return '';
+  if (!/<\/?[a-z][\s\S]*>/i.test(trimmed)) {
+    return `<p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;color:${EMAIL_COLORS.textPrimary};">${textToHtmlLines(trimmed)}</p>`;
+  }
+  const safe = sanitizePromotionalHtml(trimmed);
+  if (safe) return safe;
+  const plain = trimmed.replace(/<[^>]+>/g, '').trim();
+  if (!plain) return '';
+  return `<p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;color:${EMAIL_COLORS.textPrimary};">${textToHtmlLines(plain)}</p>`;
+}
+
 export function buildPromotionalEmail(options: {
   content: string;
   subject: string;
@@ -275,12 +312,7 @@ export function buildPromotionalEmail(options: {
   attachmentHtml?: string;
 }): string {
   const headline = options.headerTitle || 'Important Message';
-  const htmlContent = textToHtmlLines(options.content);
-
-  const bodyHtml = `
-<p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;color:${EMAIL_COLORS.textPrimary};">
-  ${htmlContent}
-</p>`;
+  const bodyHtml = renderPromotionalContent(options.content);
 
   return buildEmailShell({
     pageTitle: options.subject || headline,
@@ -290,6 +322,7 @@ export function buildPromotionalEmail(options: {
     accentTone: 'gold',
     extraContentHtml: options.attachmentHtml,
     fullFooter: true,
+    presentation: 'promo',
   });
 }
 

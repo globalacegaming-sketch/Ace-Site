@@ -90,6 +90,9 @@ const AceagentDashboard: React.FC = () => {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   /** Filled by AdminChatPanel so the toolbar Refresh button can reload conversations. */
   const chatRefreshRef = useRef<(() => void) | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  /** True while the on-screen keyboard is covering the page, so the tab bar can yield that space. */
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   // ── Permissions ────────────────────────────────────────────────────────────
   const [permissions, setPermissions] = useState<AgentPermission[]>([
@@ -404,7 +407,7 @@ const AceagentDashboard: React.FC = () => {
           `Synced ${successful} of ${total} users from FortunePanda${failed > 0 ? ` (${failed} failed)` : ''}`,
           { id: 'sync-users' }
         );
-        loadUsers(true);
+        loadUsers();
         loadAgentBalance();
       } else {
         toast.error(response.data.message || 'Failed to sync users', { id: 'sync-users' });
@@ -416,33 +419,7 @@ const AceagentDashboard: React.FC = () => {
     }
   };
 
-  const autoSyncBalancesFromFP = async () => {
-    try {
-      const token = getAdminToken();
-      if (!token) return;
-
-      const response = await axios.post(
-        `${API_BASE_URL}/admin/users/sync-fortune-panda`,
-        {},
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      );
-
-      if (response.data.success && response.data.data?.synced) {
-        const synced: { userId: string; balance: string }[] = response.data.data.synced;
-        setUsers(prev => prev.map(u => {
-          const match = synced.find(s => s.userId === u._id);
-          return match ? { ...u, fortunePandaBalance: parseFloat(match.balance) } : u;
-        }));
-        if (response.data.data.synced[0]?.agentBalance) {
-          setAgentBalance(response.data.data.synced[0].agentBalance);
-        }
-      }
-    } catch {
-      // Silent background sync — don't show errors to user
-    }
-  };
-
-  const loadUsers = async (skipAutoSync = false) => {
+  const loadUsers = async () => {
     try {
       setLoading(true);
       const token = getAdminToken();
@@ -458,9 +435,6 @@ const AceagentDashboard: React.FC = () => {
 
       if (response.data.success) {
         setUsers(response.data.data || []);
-        if (!skipAutoSync) {
-          autoSyncBalancesFromFP();
-        }
       } else {
         toast.error(response.data.message || 'Failed to load users');
       }
@@ -840,48 +814,63 @@ const AceagentDashboard: React.FC = () => {
 
   const adminToken = getAdminToken();
 
-  // Prevent body scroll and ensure proper height
+  // Keep the dashboard exactly as tall as the visible screen. 100vh on phones includes
+  // the area behind the browser bar, which pushed the composer off-screen; focusing it
+  // then scrolled the player header away. Tracking the visual viewport also lifts the
+  // whole screen above the keyboard.
   useEffect(() => {
-    // Prevent body scroll
+    const shell = shellRef.current;
+    const vv = window.visualViewport;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
-    document.body.style.height = '100vh';
     document.documentElement.style.overflow = 'hidden';
-    document.documentElement.style.height = '100vh';
-    
+
+    let frame = 0;
+    const apply = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!shell || !vv) return;
+        shell.style.height = `${vv.height}px`;
+        shell.style.top = `${vv.offsetTop}px`;
+        const obscured = window.innerHeight - vv.height - vv.offsetTop;
+        setKeyboardOpen(obscured > 120);
+      });
+    };
+    apply();
+    vv?.addEventListener('resize', apply);
+    vv?.addEventListener('scroll', apply);
+    window.addEventListener('orientationchange', apply);
+
     return () => {
-      // Cleanup on unmount
-      document.body.style.overflow = '';
-      document.body.style.height = '';
-      document.documentElement.style.overflow = '';
-      document.documentElement.style.height = '';
+      cancelAnimationFrame(frame);
+      vv?.removeEventListener('resize', apply);
+      vv?.removeEventListener('scroll', apply);
+      window.removeEventListener('orientationchange', apply);
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (shell) {
+        shell.style.height = '';
+        shell.style.top = '';
+      }
     };
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
+    <div
+      ref={shellRef}
+      className="fixed inset-x-0 top-0 flex h-[100dvh] w-full flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"
+    >
       <AdminSessionManager />
       <style>{`
-        /* Hide scrollbar for Chrome, Safari and Opera */
-        .hide-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        /* Hide scrollbar for IE, Edge and Firefox */
-        .hide-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        /* Prevent body scroll */
-        body {
-          overflow: hidden;
-          height: 100vh;
-        }
-        html {
-          overflow: hidden;
-          height: 100vh;
-        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
       {/* Navbar Header - Single Row Layout */}
-      <nav className="bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white shadow-xl flex-shrink-0">
+      <nav
+        className="flex-shrink-0 bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white shadow-xl"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
         <div className="max-w-full mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex flex-row items-center justify-between gap-2 lg:gap-4 py-2 sm:py-2.5">
             {/* Left Section: Title */}
@@ -980,11 +969,11 @@ const AceagentDashboard: React.FC = () => {
       </nav>
 
       <div
-        className={`flex-1 min-h-0 max-w-full mx-auto w-full px-3 sm:px-4 lg:px-8 ${
+        className={`mx-auto flex w-full min-h-0 max-w-full flex-1 flex-col ${
           activeTab === 'chat'
-            // Chat tab: only the message list scrolls, and the composer sits above the mobile tab bar
-            ? 'overflow-hidden flex flex-col py-2 sm:py-4 lg:py-6 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] sm:pb-6'
-            : 'overflow-y-auto py-3 sm:py-4 lg:py-6 pb-20 sm:pb-6'
+            // Edge to edge on a phone so the header and composer both stay on screen
+            ? 'overflow-hidden px-0 py-0 sm:px-4 sm:py-4 lg:px-8 lg:py-6'
+            : 'overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-6'
         }`}
       >
 
@@ -1719,8 +1708,12 @@ const AceagentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Mobile Bottom Navigation Bar - permission-filtered */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl z-40 sm:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {/* Mobile bottom tabs — in the column (not fixed) so they can't cover the composer.
+          Hidden while the keyboard is open so the message box stays in reach. */}
+      <div
+        className={`${keyboardOpen ? 'hidden' : 'flex'} sm:hidden shrink-0 flex-col border-t border-gray-200 bg-white shadow-2xl`}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         <div className="flex items-center justify-around h-16 px-2 max-w-full">
           {hasPermission('users') && (
             <button

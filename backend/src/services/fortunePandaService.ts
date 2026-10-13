@@ -96,6 +96,13 @@ class FortunePandaService {
     return Date.now();
   }
 
+  /** True only when FortunePanda rejected the signature, not when the member account is missing. */
+  private isExpiredAgentKey(data: { code?: string | number; msg?: string } | undefined): boolean {
+    const msg = String(data?.msg || '').toLowerCase();
+    if (msg.includes('does not exist') || msg.includes('not exist')) return false;
+    return msg.includes('invalid sign') || msg.includes('sign error') || msg.includes('agentkey') || msg.includes('agent key');
+  }
+
   // Generate signature for API calls (exact format from Fortune Panda Demo API)
   private generateSignature(agentName: string, time: number, agentKey: string): string {
     // Exact format from demo: md5(agentName.toLowerCase() + time + agentKey.toLowerCase())
@@ -422,9 +429,9 @@ class FortunePandaService {
             ...response.data
           }
         };
-      } else if (response.data && (response.data.code === '201' || response.data.code === 201 || response.data.msg?.includes('invalid sign'))) {
-        // AgentKey expired, re-login and retry
-        // AgentKey expired, retrying with fresh login
+      } else if (this.isExpiredAgentKey(response.data)) {
+        // A bad signature means the agent key expired. Code 201 is also "account does not
+        // exist", and treating that as a bad key logged in again for every missing member.
         await this.loginAgent();
         
         // Retry with fresh agentKey

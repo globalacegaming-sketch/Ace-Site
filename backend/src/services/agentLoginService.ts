@@ -24,6 +24,7 @@ class AgentLoginService {
   private agentSession: AgentSession | null = null;
   private refreshInterval: NodeJS.Timeout | null = null;
   private isInitialized: boolean = false;
+  private loginInFlight: Promise<{ success: boolean; message: string; data?: any }> | null = null;
   private readonly SESSION_BUFFER_TIME = 5 * 60 * 1000; // 5 minutes buffer
   private readonly REFRESH_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours (more aggressive than 12h)
   private readonly MAX_RETRIES = 3;
@@ -167,8 +168,22 @@ class AgentLoginService {
     return this.agentSession.isActive && (now + this.SESSION_BUFFER_TIME) < this.agentSession.expiresAt;
   }
 
-  // Login agent and get agentKey
+  // Login agent and get agentKey.
+  // Concurrent callers share one login — a second login invalidates the key the first one just received.
   async loginAgent(): Promise<{ success: boolean; message: string; data?: any }> {
+    if (this.loginInFlight) {
+      return this.loginInFlight;
+    }
+
+    this.loginInFlight = this.performAgentLogin();
+    try {
+      return await this.loginInFlight;
+    } finally {
+      this.loginInFlight = null;
+    }
+  }
+
+  private async performAgentLogin(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       logger.debug('🔐 Logging into agent...');
       
@@ -247,6 +262,38 @@ class AgentLoginService {
     }
   }
 
+  private isSignatureError(body: any): boolean {
+    if (!body || typeof body !== 'object') return false;
+    const code = String(body.code ?? '');
+    const msg = String(body.msg ?? body.message ?? '').toLowerCase();
+    return code === '201' || msg.includes('invalid sign') || msg.includes('signature');
+  }
+
+  private extractGameArray(body: any): any[] | null {
+    if (Array.isArray(body)) return body;
+    if (Array.isArray(body?.data)) return body.data;
+    if (Array.isArray(body?.data?.data)) return body.data.data;
+    return null;
+  }
+
+  private async requestGameList(agentKey: string): Promise<any> {
+    const time = this.getCurrentTimestamp();
+    const sign = this.generateSignature(this.config.agentName, time, agentKey);
+    const response = await axios.post(this.config.apiUrl, null, {
+      params: {
+        action: 'getgamelist',
+        agentName: this.config.agentName,
+        time,
+        sign
+      },
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      }
+    });
+    return response.data;
+  }
+
   // Get game list with automatic session management
   async getGameList(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
@@ -261,80 +308,42 @@ class AgentLoginService {
         const loginResult = await this.loginAgent();
         if (!loginResult.success) {
           logger.error('❌ Re-login failed:', loginResult.message);
-        return {
-          success: false,
-          message: `Failed to authenticate agent: ${loginResult.message}`
-        };
+          return {
+            success: false,
+            message: `Failed to authenticate agent: ${loginResult.message}`
+          };
         }
       }
 
-      // Generate fresh timestamp and signature
-      const time = this.getCurrentTimestamp();
-      const sign = this.generateSignature(
-        this.config.agentName,
-        time,
-        this.agentSession!.agentKey
-      );
+      let body = await this.requestGameList(this.agentSession!.agentKey);
+      logger.debug('GetGameList response:', body);
 
-      const params = {
-        action: 'getgamelist',
-        agentName: this.config.agentName,
-        time,
-        sign
-      };
-
-      logger.debug('GetGameList params:', { ...params, sign: '[HIDDEN]' });
-
-      const response = await axios.post(this.config.apiUrl, null, {
-        params,
-        timeout: 30000,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        }
-      });
-
-      logger.debug('GetGameList response:', response.data);
-
-      // Check if the response indicates session issues
-      if (response.data && (response.data.code === '201' || response.data.msg?.includes('invalid sign'))) {
+      // A rejected signature is not an empty lobby — log in again and ask once more.
+      if (this.isSignatureError(body)) {
         logger.debug('🔄 API returned session error, forcing re-login...');
-        // Force re-login and retry once
-        await this.loginAgent();
-        
-        // Retry with new session
-        const newTime = this.getCurrentTimestamp();
-        const newSign = this.generateSignature(
-          this.config.agentName,
-          newTime,
-          this.agentSession!.agentKey
-        );
+        const loginResult = await this.loginAgent();
+        if (!loginResult.success || !this.agentSession?.agentKey) {
+          return {
+            success: false,
+            message: loginResult.message || 'Failed to authenticate agent'
+          };
+        }
+        body = await this.requestGameList(this.agentSession.agentKey);
+        logger.debug('GetGameList retry response:', body);
+      }
 
-        const retryParams = {
-          action: 'getgamelist',
-          agentName: this.config.agentName,
-          time: newTime,
-          sign: newSign
-        };
-
-        const retryResponse = await axios.post(this.config.apiUrl, null, {
-          params: retryParams,
-          timeout: 30000,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          }
-        });
-
+      const games = this.extractGameArray(body);
+      if (!games) {
         return {
-          success: true,
-          message: 'Game list retrieved successfully (after re-login)',
-          data: retryResponse.data
+          success: false,
+          message: body?.msg || body?.message || 'Failed to get game list'
         };
       }
 
       return {
         success: true,
         message: 'Game list retrieved successfully',
-        data: response.data
+        data: games
       };
     } catch (error) {
       logger.error('❌ Get game list error:', error);

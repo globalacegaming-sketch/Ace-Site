@@ -59,6 +59,16 @@ function getApiPublicBase(): string {
   return raw.replace(/\/$/, '');
 }
 
+/** Absolute URL for an inbox. Relative /uploads paths cannot load in email clients. */
+export function toAbsolutePublicUrl(urlOrPath: string): string {
+  const value = (urlOrPath || '').trim();
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+  const pathPart = value.startsWith('/') ? value : `/${value}`;
+  return `${getApiPublicBase()}${pathPart}`;
+}
+
 /** Absolute path to bundled logo file, if present. */
 export function getEmailLogoFilePath(): string | null {
   return resolveLogoPath();

@@ -30,6 +30,24 @@ interface Game {
   gameLogo: string;
 }
 
+/** Survives Strict Mode remounts so an older response cannot clear the loading state. */
+let gamesFetchSeq = 0;
+
+function extractGameList(payload: unknown): Game[] | null {
+  if (Array.isArray(payload)) return payload as Game[];
+  if (!payload || typeof payload !== 'object') return null;
+
+  const nested = (payload as { data?: unknown }).data;
+  if (Array.isArray(nested)) return nested as Game[];
+
+  if (nested && typeof nested === 'object') {
+    const deeper = (nested as { data?: unknown }).data;
+    if (Array.isArray(deeper)) return deeper as Game[];
+  }
+
+  return null;
+}
+
 const CATEGORY_MAP: Record<string, string[]> = {
   Slots: ['SLOT'],
   Fishing: ['FISH'],
@@ -56,22 +74,48 @@ const Games = () => {
   const navigate = useNavigate();
 
   const fetchGames = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const GAMES_API_URL = getGamesApiUrl();
-      const response = await axios.get(GAMES_API_URL);
+    const requestId = ++gamesFetchSeq;
+    setLoading(true);
+    setError(null);
 
-      if (response.data.success) {
-        const gamesData = response.data.data?.data || response.data.data;
-        setGames(Array.isArray(gamesData) ? gamesData : []);
-      } else {
-        setError(response.data.message || 'Failed to fetch games');
+    let failure = 'Failed to load games. Please try again later.';
+
+    try {
+      // Stay on the skeleton across a few attempts. A slow or rejected
+      // first response is not an empty lobby.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (requestId !== gamesFetchSeq) return;
+
+        try {
+          const response = await axios.get(getGamesApiUrl());
+          if (requestId !== gamesFetchSeq) return;
+
+          if (response.data?.success) {
+            const gamesData = extractGameList(response.data.data);
+            if (gamesData) {
+              setGames(gamesData);
+              return;
+            }
+            failure = response.data.data?.msg || response.data.message || failure;
+          } else {
+            failure = response.data?.message || 'Failed to fetch games';
+          }
+        } catch {
+          failure = 'Failed to load games. Please try again later.';
+        }
+
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+        }
       }
-    } catch {
-      setError('Failed to load games. Please try again later.');
+
+      if (requestId === gamesFetchSeq) {
+        setError(failure);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === gamesFetchSeq) {
+        setLoading(false);
+      }
     }
   }, []);
 

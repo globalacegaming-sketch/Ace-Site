@@ -76,31 +76,34 @@ const MORE_EMOJIS  = ['😮', '🎉', '👏', '🙏', '😍', '💯', '👎', '�
  * Canned replies for the money flows players start from the site
  * (Deposit / Withdraw / Bonus). Inserted into the composer; the agent edits and sends.
  */
+/** Highlighted in the composer so the agent can type the dollar amount over it. */
+const AMOUNT_PLACEHOLDER = '$[amount]';
+
 const CANNED_REPLIES: { label: string; text: (name: string) => string }[] = [
   {
     label: 'Payment options',
-    text: (name) =>
-      `Hi ${name}! Happy to help with your deposit. Which payment method would you like to use? Let me know the amount and I'll send the details.`,
+    text: () =>
+      'We currently have Chime, Cash App, Apple Pay, Google Pay, and debit and credit cards through Paydora.',
   },
   {
-    label: 'Send screenshot',
-    text: (name) =>
-      `Thanks ${name}! Please send a screenshot of the payment confirmation here and I'll credit your account right away.`,
+    label: 'Credit with bonus',
+    text: () =>
+      `${AMOUNT_PLACEHOLDER} Credits including a 20% Special VIP bonus is successfully added! 🤞 Good luck!`,
   },
   {
     label: 'Credit added',
-    text: (name) =>
-      `All set, ${name} — your deposit has been credited. Refresh your balance and good luck!`,
+    text: () =>
+      `${AMOUNT_PLACEHOLDER} credits have been successfully added 🤞 Good luck!`,
   },
   {
-    label: 'Bonus added',
-    text: (name) =>
-      `Done, ${name} — your bonus has been added to your account. Refresh your balance to see it. Have fun!`,
+    label: 'VIP/Post bonus',
+    text: () =>
+      'A $5 VIP Bonus has been successfully added to your account! 🎉🤞 Good luck!',
   },
   {
     label: 'Processing withdrawal',
     text: (name) =>
-      `Got it, ${name}. Your withdrawal is being processed now. Please share the account or wallet details you'd like it sent to.`,
+      `Congratulations ${name} 🥳🥳! Allow me a moment to proceed with your winnings real quick`,
   },
 ];
 
@@ -519,8 +522,14 @@ const AdminChatPanel = ({
       const el = composerRef.current;
       if (!el) return;
       el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+      // Select the amount placeholder so the agent can type the dollar amount straight away
+      const amountAt = el.value.lastIndexOf(AMOUNT_PLACEHOLDER);
+      if (amountAt !== -1) {
+        el.setSelectionRange(amountAt, amountAt + AMOUNT_PLACEHOLDER.length);
+      } else {
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      }
       resizeComposer();
     });
   }, [resizeComposer]);
@@ -1553,11 +1562,11 @@ const AdminChatPanel = ({
   }, []);
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-2 sm:gap-4 lg:gap-6">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden lg:flex-row lg:gap-6">
       {/* Conversations Sidebar */}
-      <div className={`bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-lg flex flex-col transition-all duration-300 w-full ${
+      <div className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden border-0 bg-white shadow-lg transition-all duration-300 sm:rounded-2xl sm:border sm:border-gray-200 lg:w-1/3 lg:flex-none ${
         showConversations ? 'flex' : 'hidden'
-      } lg:flex lg:w-1/3`}>
+      } lg:flex`}>
         <div className="p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-indigo-50 to-purple-50">
           {/* Socket Connection Status + Online Agents */}
           <div className="mb-2 sm:mb-3 flex items-center justify-between">
@@ -1604,7 +1613,7 @@ const AdminChatPanel = ({
               placeholder="Search by user or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white text-gray-900 placeholder-gray-400"
+              className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-base text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-indigo-500 sm:rounded-xl sm:py-2.5 sm:pl-10 sm:text-sm"
             />
           </div>
           <div className="flex gap-2 mb-2 sm:mb-3 overflow-x-auto scrollbar-hide -mx-1 px-1">
@@ -1742,7 +1751,7 @@ const AdminChatPanel = ({
       </div>
 
       {/* Chat Area */}
-      <div className={`bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-lg flex flex-col flex-1 min-h-0 w-full ${showConversations && !selectedUserId ? 'hidden' : 'flex'} lg:flex lg:w-2/3`}>
+      <div className={`flex min-h-0 w-full flex-1 flex-col overflow-hidden border-0 bg-white shadow-lg sm:rounded-2xl sm:border sm:border-gray-200 ${showConversations && !selectedUserId ? 'hidden' : 'flex'} lg:flex lg:w-2/3`}>
         {selectedUserId ? (
           <>
             {(() => {
@@ -1869,7 +1878,7 @@ const AdminChatPanel = ({
             <div 
               ref={messagesContainerRef}
               onScroll={handleAdminScroll}
-              className="flex-1 overflow-y-auto p-3 sm:p-4 bg-white sm:bg-gray-50 min-h-0 relative"
+              className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white p-3 sm:bg-gray-50 sm:p-4"
             >
               {loadingConversation ? (
                 <div className="space-y-4 py-4">
@@ -2210,7 +2219,7 @@ const AdminChatPanel = ({
               </button>
             </div>
 
-            <div className="border-t border-gray-200 bg-white p-3 sm:p-4 space-y-2 sm:space-y-3 flex-shrink-0">
+            <div className="flex-shrink-0 space-y-1.5 border-t border-gray-200 bg-white p-2 sm:space-y-3 sm:p-4">
               {/* Reply preview */}
               {replyingTo && (
                 <div className={`flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl border-l-2 border-indigo-500 ${closingReply ? 'animate-slide-out-right' : 'animate-slide-up'}`}>
@@ -2319,6 +2328,13 @@ const AdminChatPanel = ({
                     onChange={(e) => { setMessageInput(e.target.value); emitTyping(); }}
                     onPaste={handlePaste}
                     onKeyDown={handleKeyDown}
+                    onFocus={() => {
+                      // iOS scrolls the page to reveal a focused field, which slides the
+                      // player header off the top. The shell is already sized to the visible
+                      // area, so put the page back.
+                      window.scrollTo(0, 0);
+                      requestAnimationFrame(() => window.scrollTo(0, 0));
+                    }}
                     rows={1}
                     placeholder="Type your message…"
                     className="w-full min-h-[44px] rounded-xl border border-gray-200 px-3 sm:px-4 py-2.5 sm:py-3 text-base md:text-sm leading-snug text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-white sm:bg-gray-50"

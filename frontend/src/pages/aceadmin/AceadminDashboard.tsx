@@ -3,7 +3,7 @@ import {
   Plus, Trash2, X, Save, Loader2, LogOut, Gift,
   Users, Mail, HelpCircle, Bell, Menu, User,
   ChevronDown, FileText,
-  Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2,
+  Send, Upload, Wrench, Shield, Eye, EyeOff, UserPlus, Edit2, Search,
   ToggleLeft, ToggleRight, Tag, LayoutDashboard,
   LifeBuoy, Disc3, MonitorPlay, Banknote, Activity} from 'lucide-react';
 import axios from 'axios';
@@ -15,6 +15,7 @@ import WheelManagementPanel from '../../components/wheel/WheelManagementPanel';
 import SupportTicketSection from '../../components/support/SupportTicketSection';
 import AgentLoanPanel from '../../components/admin/AgentLoanPanel';
 import AnalyticsDashboard from '../../components/admin/AnalyticsDashboard';
+import { EmailComposer, emailHtmlHasContent } from '../../components/admin/email/EmailComposer';
 import {
   LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -184,7 +185,7 @@ const AceadminDashboard: React.FC = () => {
     headerTitle: '',
     headerSubtitle: '',
     emailBody: '',
-    recipientOption: 'all' as 'all' | 'selected' | 'byLabel',
+    recipientOption: 'selected' as 'all' | 'selected' | 'byLabel',
     selectedRecipients: [] as string[],
     selectedLabelIds: [] as string[],
     labelMatch: 'any' as 'any' | 'all',
@@ -194,10 +195,12 @@ const AceadminDashboard: React.FC = () => {
   const [emailPreview, setEmailPreview] = useState(false);
   const [emailPreviewHtml, setEmailPreviewHtml] = useState<string>('');
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [recipientQuery, setRecipientQuery] = useState('');
+  const previewOpenedForContent = useRef(false);
 
   // Fetch email preview function (must be at component level for hooks)
   const fetchEmailPreview = useCallback(async () => {
-    if (!emailForm.emailBody.trim()) {
+    if (!emailHtmlHasContent(emailForm.emailBody)) {
       setEmailPreviewHtml('');
       return;
     }
@@ -241,14 +244,21 @@ const AceadminDashboard: React.FC = () => {
 
   // Fetch preview when form changes (must be at component level)
   useEffect(() => {
-    if (emailPreview && emailForm.emailBody.trim()) {
+    if (emailHtmlHasContent(emailForm.emailBody)) {
       const timeoutId = setTimeout(() => {
         fetchEmailPreview();
       }, 500); // Debounce by 500ms
 
       return () => clearTimeout(timeoutId);
     }
-  }, [emailForm.subject, emailForm.headerTitle, emailForm.headerSubtitle, emailForm.emailBody, emailPreview, emailAttachment, API_BASE_URL, fetchEmailPreview]);
+  }, [emailForm.subject, emailForm.headerTitle, emailForm.headerSubtitle, emailForm.emailBody, emailAttachment, API_BASE_URL, fetchEmailPreview]);
+
+  useEffect(() => {
+    if (!previewOpenedForContent.current && emailHtmlHasContent(emailForm.emailBody)) {
+      previewOpenedForContent.current = true;
+      setEmailPreview(true);
+    }
+  }, [emailForm.emailBody]);
 
   // Modal states
   const [showPlatformModal, setShowPlatformModal] = useState(false);
@@ -318,7 +328,7 @@ const AceadminDashboard: React.FC = () => {
   useEffect(() => {
     const session = localStorage.getItem('agent_session');
     if (!session) {
-      toast.error('Please login to access agent dashboard');
+      toast.error('Please sign in to continue');
       navigate('/aceadmin/login');
       return;
     }
@@ -530,7 +540,7 @@ const AceadminDashboard: React.FC = () => {
   };
 
   const fixFortunePandaAccount = async (userId: string) => {
-    if (!window.confirm('This will assign a new unique Fortune Panda username and create/retry the account. Continue?')) {
+    if (!window.confirm('This assigns a new game account name and creates the account if it is missing. Continue?')) {
       return;
     }
 
@@ -546,13 +556,13 @@ const AceadminDashboard: React.FC = () => {
       );
 
       if (response.data.success) {
-        toast.success(`Fortune Panda account fixed! New username: ${response.data.data?.newUsername || 'N/A'}`);
+        toast.success(`Game account fixed. New name: ${response.data.data?.newUsername || 'N/A'}`);
         loadContacts(); // Refresh to show updated FP name
       } else {
         toast.error(response.data.message || 'Failed to fix account');
       }
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || 'Failed to fix Fortune Panda account';
+      const errorMsg = error.response?.data?.message || 'Failed to fix the game account';
       toast.error(errorMsg);
     } finally {
       setFixingFpAccount(null);
@@ -1080,16 +1090,16 @@ const AceadminDashboard: React.FC = () => {
 
     return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h2 className="text-2xl font-bold text-gray-900">Users</h2>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Members</h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className="text-sm text-gray-500 whitespace-nowrap">{filtered.length} of {contacts.length}</span>
           <input
-            type="text"
+            type="search"
             value={userSearchQuery}
             onChange={(e) => setUserSearchQuery(e.target.value)}
-            placeholder="Search users..."
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 text-black"
+            placeholder="Search name, email, or phone"
+            className="w-full min-h-[44px] rounded-lg border border-gray-300 px-3 text-base text-black focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-64 sm:text-sm"
           />
         </div>
       </div>
@@ -1101,7 +1111,7 @@ const AceadminDashboard: React.FC = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Username</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">FP Name</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Game account</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Phone</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Referral Code</th>
@@ -1123,8 +1133,8 @@ const AceadminDashboard: React.FC = () => {
                       <button
                         onClick={() => fixFortunePandaAccount(contact._id)}
                         disabled={fixingFpAccount === contact._id}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                        title="Assign new unique Fortune Panda username and create account"
+                        className="inline-flex min-h-[36px] items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Assign a new game account name and create the account"
                       >
                         {fixingFpAccount === contact._id ? (
                           <>
@@ -1134,7 +1144,7 @@ const AceadminDashboard: React.FC = () => {
                         ) : (
                           <>
                             <Wrench className="w-3 h-3" />
-                            Fix FP
+                            Fix account
                           </>
                         )}
                       </button>
@@ -1165,27 +1175,28 @@ const AceadminDashboard: React.FC = () => {
                 <button
                   onClick={() => fixFortunePandaAccount(contact._id)}
                   disabled={fixingFpAccount === contact._id}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded bg-blue-600 px-3 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {fixingFpAccount === contact._id ? (
                     <><Loader2 className="w-3 h-3 animate-spin" /> Fixing...</>
                   ) : (
-                    <><Wrench className="w-3 h-3" /> Fix FP</>
+                    <><Wrench className="w-3 h-3" /> Fix account</>
                   )}
                 </button>
                 <button
                   onClick={() => { setDeletingUser(contact); setDeleteConfirmInput(''); }}
-                  className="px-2.5 py-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700 flex items-center gap-1"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
+                  aria-label="Delete member"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-1 text-xs text-gray-500">
-              <span>FP: {contact.fpName}</span>
-              <span>{contact.email}</span>
-              <span>{contact.phone}</span>
-              <span>Ref: {contact.referralCode}</span>
+            <div className="space-y-1 text-sm text-gray-600">
+              <p className="break-all">{contact.email}</p>
+              <p>{contact.phone || 'No phone'}</p>
+              <p className="font-mono text-xs text-gray-500">{contact.fpName || 'No game account'}</p>
+              <p>Referral {contact.referralCode || '—'}</p>
             </div>
           </div>
         ))}
@@ -1275,8 +1286,16 @@ const AceadminDashboard: React.FC = () => {
         toast.error('Subject is required');
         return;
       }
-      if (!emailForm.emailBody.trim()) {
+      if (!emailHtmlHasContent(emailForm.emailBody)) {
         toast.error('Email body is required');
+        return;
+      }
+      if (emailForm.recipientOption === 'selected' && emailForm.selectedRecipients.length === 0) {
+        toast.error('Select at least one contact');
+        return;
+      }
+      if (emailForm.recipientOption === 'byLabel' && emailForm.selectedLabelIds.length === 0) {
+        toast.error('Select at least one label');
         return;
       }
 
@@ -1289,12 +1308,17 @@ const AceadminDashboard: React.FC = () => {
         formData.append('headerTitle', emailForm.headerTitle || 'Important Message');
         formData.append('headerSubtitle', emailForm.headerSubtitle || 'Stay Updated With Us');
         formData.append('emailBody', emailForm.emailBody);
-        
-        if (emailForm.recipientOption === 'selected' && emailForm.selectedRecipients.length > 0) {
+
+        formData.append(
+          'audience',
+          emailForm.recipientOption === 'byLabel' ? 'labels' : emailForm.recipientOption
+        );
+
+        if (emailForm.recipientOption === 'selected') {
           formData.append('recipientIds', JSON.stringify(emailForm.selectedRecipients));
         }
-        
-        if (emailForm.recipientOption === 'byLabel' && emailForm.selectedLabelIds.length > 0) {
+
+        if (emailForm.recipientOption === 'byLabel') {
           formData.append('labelIds', JSON.stringify(emailForm.selectedLabelIds));
           formData.append('labelMatch', emailForm.labelMatch);
         }
@@ -1322,7 +1346,7 @@ const AceadminDashboard: React.FC = () => {
             headerTitle: '',
             headerSubtitle: '',
             emailBody: '',
-            recipientOption: 'all',
+            recipientOption: 'selected',
             selectedRecipients: [],
             selectedLabelIds: [],
             labelMatch: 'any',
@@ -1343,28 +1367,85 @@ const AceadminDashboard: React.FC = () => {
       }
     };
 
+    const uploadEmailImage = async (file: File) => {
+      const token = getAgentToken();
+      const formData = new FormData();
+      formData.append('image', file);
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/email-promotions/images`,
+          formData,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const url = response.data?.data?.url;
+        if (!response.data?.success || typeof url !== 'string') {
+          throw new Error(response.data?.message || 'Could not add that image');
+        }
+        return url as string;
+      } catch (error: any) {
+        const message = error?.response?.data?.message;
+        if (typeof message === 'string' && message) {
+          throw new Error(message);
+        }
+        throw error instanceof Error ? error : new Error('Could not add that image');
+      }
+    };
+
+    const fieldClass = 'w-full min-h-11 px-4 text-base border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black';
+    const labelRecipientCount = emailForm.selectedLabelIds.length === 0
+      ? 0
+      : contacts.filter((contact) => {
+          const ids = (contact.labels || []).map((label) => label._id);
+          return emailForm.labelMatch === 'all'
+            ? emailForm.selectedLabelIds.every((id) => ids.includes(id))
+            : emailForm.selectedLabelIds.some((id) => ids.includes(id));
+        }).length;
+    const sendTargetCount = emailForm.recipientOption === 'all'
+      ? contacts.length
+      : emailForm.recipientOption === 'selected'
+        ? emailForm.selectedRecipients.length
+        : labelRecipientCount;
+    const sendLabel = emailForm.recipientOption === 'all'
+      ? `Send to all ${contacts.length} members`
+      : sendTargetCount === 1
+        ? 'Send to 1 member'
+        : `Send to ${sendTargetCount} members`;
+    const audienceHint = emailForm.recipientOption === 'all'
+      ? `This email goes to every member (${contacts.length}).`
+      : emailForm.recipientOption === 'selected'
+        ? sendTargetCount === 0
+          ? 'Check the people who should get this.'
+          : `This email goes to ${sendTargetCount} selected ${sendTargetCount === 1 ? 'member' : 'members'}.`
+        : emailForm.selectedLabelIds.length === 0
+          ? 'Pick at least one label.'
+          : `This email goes to ${sendTargetCount} ${sendTargetCount === 1 ? 'member' : 'members'} with the selected labels.`;
+    const recipientNeedle = recipientQuery.trim().toLowerCase();
+    const visibleContacts = recipientNeedle
+      ? contacts.filter((contact) => {
+          const name = `${contact.firstName || ''} ${contact.lastName || ''} ${contact.username || ''}`.toLowerCase();
+          return contact.email.toLowerCase().includes(recipientNeedle) || name.includes(recipientNeedle);
+        })
+      : contacts;
+
     return (
-    <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-900">Email Promotions</h2>
+    <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Email Promotions</h2>
+            <p className="mt-1 text-sm text-gray-500">Write the message, then check it in the preview.</p>
+          </div>
           <button
-            onClick={() => {
-              setEmailPreview(!emailPreview);
-              if (!emailPreview && emailForm.emailBody.trim()) {
-                fetchEmailPreview();
-              }
-            }}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2"
+            type="button"
+            onClick={() => setEmailPreview((open) => !open)}
+            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-gray-100 px-4 text-sm font-medium text-gray-700 hover:bg-gray-200 lg:hidden"
           >
-            {emailPreview ? 'Hide' : 'Show'} Preview
+            {emailPreview ? 'Hide preview' : 'Show preview'}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Form */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-              {/* Email Subject */}
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,400px)] lg:gap-6">
+          <div className="min-w-0 space-y-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Email Subject *
@@ -1374,58 +1455,49 @@ const AceadminDashboard: React.FC = () => {
                   value={emailForm.subject}
                   onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
                   placeholder="Enter email subject (appears in inbox)"
-                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
+                  className={fieldClass}
                 />
               </div>
 
-              {/* Header Section */}
-              <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Header Section</h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Header Title
-                    </label>
-                    <input
-                      type="text"
-                      value={emailForm.headerTitle}
-                      onChange={(e) => setEmailForm({...emailForm, headerTitle: e.target.value})}
-                      placeholder="e.g., Important Announcement, Special Offer, etc."
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Large title displayed at the top of the email</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Header Subtitle (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={emailForm.headerSubtitle}
-                      onChange={(e) => setEmailForm({...emailForm, headerSubtitle: e.target.value})}
-                      placeholder="e.g., Stay Updated With Us, Limited Time Only, etc."
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Optional subtitle shown below the main title. Note: "Americas Ace Gaming" tagline always appears above.</p>
-                  </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Header Title
+                  </label>
+                  <input
+                    type="text"
+                    value={emailForm.headerTitle}
+                    onChange={(e) => setEmailForm({...emailForm, headerTitle: e.target.value})}
+                    placeholder="Important Announcement"
+                    className={fieldClass}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Large title at the top of the email</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Header Subtitle (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={emailForm.headerSubtitle}
+                    onChange={(e) => setEmailForm({...emailForm, headerSubtitle: e.target.value})}
+                    placeholder="Stay Updated With Us"
+                    className={fieldClass}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Shown under the title. "America's Ace Gaming" always appears above it.</p>
                 </div>
               </div>
 
-              {/* Email Content */}
-              <div className="border-t border-gray-200 pt-6">
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Email Content / Body *
                 </label>
-                <textarea
+                <EmailComposer
                   value={emailForm.emailBody}
-                  onChange={(e) => setEmailForm({...emailForm, emailBody: e.target.value})}
-                  placeholder="Enter your email content here..."
-                  rows={12}
-                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-black"
+                  onChange={(html) => setEmailForm({ ...emailForm, emailBody: html })}
+                  uploadImage={uploadEmailImage}
                 />
-                <p className="text-xs text-gray-500 mt-1">Main email content. Use line breaks to separate paragraphs</p>
+                <p className="text-xs text-gray-500 mt-2">Use the name button to insert {'{Name}'}. Each member sees their own first name. If we do not have one, it reads “there”. Inboxes keep Arial, Georgia, Verdana, and Courier.</p>
               </div>
 
               {/* Attachment */}
@@ -1442,233 +1514,247 @@ const AceadminDashboard: React.FC = () => {
                       className="hidden"
                       accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
                     />
-                    <div className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                      <Upload className="w-5 h-5 text-gray-400" />
-                      <span className="text-sm text-gray-600">
+                    <div className="flex min-h-11 items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                      <Upload className="w-5 h-5 shrink-0 text-gray-400" />
+                      <span className="text-base text-gray-600 truncate">
                         {emailAttachment ? emailAttachment.name : 'Click to upload attachment'}
                       </span>
                     </div>
                   </label>
                   {emailAttachment && (
                     <button
+                      type="button"
+                      aria-label="Remove attachment"
                       onClick={() => {
                         setEmailAttachment(null);
                         const fileInput = document.getElementById('email-attachment') as HTMLInputElement;
                         if (fileInput) fileInput.value = '';
                       }}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      className="inline-flex h-11 w-11 items-center justify-center text-red-600 hover:bg-red-50 rounded-lg"
                     >
                       <X className="w-5 h-5" />
                     </button>
                   )}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Supported: Images, PDF, Word, Excel (Max 10MB)
+                  Separate file at the bottom of the email. Images, PDF, Word, Excel (Max 10MB). Use Image in the editor to place a picture in the message.
                 </p>
               </div>
 
-              {/* Recipient Selection */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Recipients
                 </label>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={emailForm.recipientOption === 'all'}
-                      onChange={() => setEmailForm({...emailForm, recipientOption: 'all'})}
-                      className="w-4 h-4 text-blue-600"
-                    />
-                    <span className="text-sm text-gray-700">All contacts ({contacts.length})</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={emailForm.recipientOption === 'selected'}
-                      onChange={() => setEmailForm({...emailForm, recipientOption: 'selected'})}
-                      className="w-4 h-4 text-blue-600"
-                    />
-                    <span className="text-sm text-gray-700">Selected contacts</span>
-                  </label>
-                  {emailForm.recipientOption === 'selected' && (
-                    <div className="ml-7 mt-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 space-y-2">
-                      {contacts.map((contact) => (
-                        <label key={contact._id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                          <input
-                            type="checkbox"
-                            checked={emailForm.selectedRecipients.includes(contact._id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEmailForm({
-                                  ...emailForm,
-                                  selectedRecipients: [...emailForm.selectedRecipients, contact._id]
-                                });
-                              } else {
-                                setEmailForm({
-                                  ...emailForm,
-                                  selectedRecipients: emailForm.selectedRecipients.filter(id => id !== contact._id)
-                                });
-                              }
-                            }}
-                            className="w-4 h-4 text-blue-600"
-                          />
-                          <span className="text-sm text-gray-700">{contact.email}</span>
-                        </label>
-                      ))}
-                      {contacts.length === 0 && (
-                        <p className="text-sm text-gray-500 text-center py-2">No contacts available</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* By Label option */}
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={emailForm.recipientOption === 'byLabel'}
-                      onChange={() => setEmailForm({...emailForm, recipientOption: 'byLabel'})}
-                      className="w-4 h-4 text-blue-600"
-                    />
-                    <span className="text-sm text-gray-700">By Label</span>
-                  </label>
-                  {emailForm.recipientOption === 'byLabel' && (
-                    <div className="ml-7 mt-2 border border-gray-200 rounded-lg p-3 space-y-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-medium text-gray-500">Match:</span>
-                        <button
-                          onClick={() => setEmailForm({...emailForm, labelMatch: 'any'})}
-                          className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
-                            emailForm.labelMatch === 'any'
-                              ? 'bg-blue-100 text-blue-700 font-medium'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                        >
-                          Any label
-                        </button>
-                        <button
-                          onClick={() => setEmailForm({...emailForm, labelMatch: 'all'})}
-                          className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
-                            emailForm.labelMatch === 'all'
-                              ? 'bg-blue-100 text-blue-700 font-medium'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                        >
-                          All labels
-                        </button>
-                      </div>
-                      <div className="space-y-1.5">
-                        {labels.length === 0 ? (
-                          <p className="text-sm text-gray-500 text-center py-2">No labels created. Go to Label Management to create labels.</p>
-                        ) : (
-                          labels.map(label => (
-                            <label key={label._id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
-                              <input
-                                type="checkbox"
-                                checked={emailForm.selectedLabelIds.includes(label._id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setEmailForm({
-                                      ...emailForm,
-                                      selectedLabelIds: [...emailForm.selectedLabelIds, label._id]
-                                    });
-                                  } else {
-                                    setEmailForm({
-                                      ...emailForm,
-                                      selectedLabelIds: emailForm.selectedLabelIds.filter(id => id !== label._id)
-                                    });
-                                  }
-                                }}
-                                className="w-4 h-4 text-blue-600"
-                              />
-                              <span
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: label.color }}
-                              />
-                              <span className="text-sm text-gray-700">{label.name}</span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                      {emailForm.selectedLabelIds.length > 0 && (
-                        <p className="text-xs text-gray-400">
-                          Emails will be sent to users with {emailForm.labelMatch === 'all' ? 'ALL' : 'ANY'} of the selected labels
-                        </p>
-                      )}
-                    </div>
-                  )}
+                <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1">
+                  {([
+                    ['all', `All (${contacts.length})`],
+                    ['selected', `Selected (${emailForm.selectedRecipients.length})`],
+                    ['byLabel', 'By label'],
+                  ] as const).map(([option, label]) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setEmailForm({ ...emailForm, recipientOption: option })}
+                      className={`min-h-11 rounded-lg px-2 text-sm font-medium transition-colors ${
+                        emailForm.recipientOption === option
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
+                <p className="mt-2 text-sm text-gray-600">{audienceHint}</p>
+                {emailForm.recipientOption === 'selected' && (
+                  <div className="mt-3 space-y-2">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="search"
+                        value={recipientQuery}
+                        onChange={(e) => setRecipientQuery(e.target.value)}
+                        placeholder="Search name or email"
+                        aria-label="Search contacts"
+                        className="w-full min-h-11 rounded-lg border-2 border-gray-200 pl-10 pr-4 text-base text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                      {visibleContacts.map((contact) => {
+                        const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ');
+                        return (
+                          <label key={contact._id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded px-2 hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={emailForm.selectedRecipients.includes(contact._id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEmailForm({
+                                    ...emailForm,
+                                    selectedRecipients: [...emailForm.selectedRecipients, contact._id]
+                                  });
+                                } else {
+                                  setEmailForm({
+                                    ...emailForm,
+                                    selectedRecipients: emailForm.selectedRecipients.filter(id => id !== contact._id)
+                                  });
+                                }
+                              }}
+                              className="h-4 w-4 text-blue-600"
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm text-gray-800">{contact.email}</span>
+                              {name ? <span className="block truncate text-xs text-gray-500">{name}</span> : null}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {contacts.length === 0 && (
+                        <p className="py-3 text-center text-sm text-gray-500">No contacts available</p>
+                      )}
+                      {contacts.length > 0 && visibleContacts.length === 0 && (
+                        <p className="py-3 text-center text-sm text-gray-500">No matching contacts</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {emailForm.recipientOption === 'byLabel' && (
+                  <div className="mt-3 space-y-3 rounded-lg border border-gray-200 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-gray-500">Match</span>
+                      <button
+                        type="button"
+                        onClick={() => setEmailForm({...emailForm, labelMatch: 'any'})}
+                        className={`min-h-11 rounded-full px-4 text-sm transition-colors ${
+                          emailForm.labelMatch === 'any'
+                            ? 'bg-blue-100 text-blue-700 font-medium'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        Any label
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEmailForm({...emailForm, labelMatch: 'all'})}
+                        className={`min-h-11 rounded-full px-4 text-sm transition-colors ${
+                          emailForm.labelMatch === 'all'
+                            ? 'bg-blue-100 text-blue-700 font-medium'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        All labels
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {labels.length === 0 ? (
+                        <p className="py-2 text-center text-sm text-gray-500">No labels created. Go to Label Management to create labels.</p>
+                      ) : (
+                        labels.map(label => (
+                          <label key={label._id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded px-1 hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={emailForm.selectedLabelIds.includes(label._id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEmailForm({
+                                    ...emailForm,
+                                    selectedLabelIds: [...emailForm.selectedLabelIds, label._id]
+                                  });
+                                } else {
+                                  setEmailForm({
+                                    ...emailForm,
+                                    selectedLabelIds: emailForm.selectedLabelIds.filter(id => id !== label._id)
+                                  });
+                                }
+                              }}
+                              className="h-4 w-4 text-blue-600"
+                            />
+                            <span
+                              className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                              style={{ backgroundColor: label.color }}
+                            />
+                            <span className="text-sm text-gray-700">{label.name}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    {emailForm.selectedLabelIds.length > 0 && (
+                      <p className="text-xs text-gray-400">
+                        Emails will be sent to users with {emailForm.labelMatch === 'all' ? 'ALL' : 'ANY'} of the selected labels
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Send Button */}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={handleSendEmail}
-                  disabled={sendingEmail || !emailForm.subject.trim() || !emailForm.emailBody.trim()}
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {sendingEmail ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5" />
-                      Send Promotional Email
-                    </>
-                  )}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={sendingEmail || sendTargetCount === 0 || !emailForm.subject.trim() || !emailHtmlHasContent(emailForm.emailBody)}
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-3 font-semibold text-white transition-all hover:from-indigo-700 hover:to-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingEmail ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5" />
+                    {sendLabel}
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Preview */}
-          <div className="lg:col-span-1">
-            {emailPreview && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
-                  {loadingPreview && (
-                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                  )}
-                </div>
-                {emailPreviewHtml ? (
-                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-lg">
-                    <iframe
-                      srcDoc={emailPreviewHtml}
-                      className="w-full"
-                      style={{ 
-                        minHeight: '600px',
-                        border: 'none',
-                        width: '100%'
-                      }}
-                      title="Email Preview"
-                    />
-                  </div>
-                ) : emailForm.emailBody.trim() ? (
-                  <div className="border border-gray-200 rounded-xl p-8 text-center text-gray-500">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">Loading preview...</p>
-                  </div>
-                ) : (
-                  <div className="border border-gray-200 rounded-xl p-8 text-center text-gray-500">
-                    <Mail className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                    <p className="text-sm">Enter email content to see preview</p>
-                  </div>
-                )}
-                {emailAttachment && emailPreviewHtml && (
-                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-blue-600" />
-                      <span className="text-xs text-blue-700 font-medium">
-                        Attachment: {emailAttachment.name}
-                      </span>
-                    </div>
-                  </div>
+          <div className={`${emailPreview ? 'block' : 'hidden'} min-w-0 lg:block`}>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
+                {loadingPreview && (
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                 )}
               </div>
-            )}
+              {emailPreviewHtml ? (
+                <div className="overflow-hidden rounded-xl border border-gray-200 shadow-lg">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 text-left">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">To</p>
+                    <p className="text-sm font-medium text-gray-900">Alex</p>
+                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Subject</p>
+                    <p className="text-sm text-gray-900">
+                      {(emailForm.subject || 'Email preview').replace(/\{\s*name\s*\}/gi, 'Alex')}
+                    </p>
+                    <p className="mt-2 text-xs text-gray-500">This is what a member named Alex would open. Everyone else sees their own first name.</p>
+                  </div>
+                  <iframe
+                    srcDoc={emailPreviewHtml}
+                    className="h-[min(70dvh,640px)] w-full border-0 bg-[#0A0A0F]"
+                    title="Email Preview"
+                  />
+                </div>
+              ) : emailHtmlHasContent(emailForm.emailBody) ? (
+                <div className="rounded-xl border border-gray-200 p-8 text-center text-gray-500">
+                  <Loader2 className="mx-auto mb-2 h-8 w-8 animate-spin text-gray-400" />
+                  <p className="text-sm">Loading preview...</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-200 p-8 text-center text-gray-500">
+                  <Mail className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+                  <p className="text-sm">Enter email content to see preview</p>
+                </div>
+              )}
+              {emailAttachment && emailPreviewHtml && (
+                <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <span className="text-xs font-medium text-blue-700">
+                      Attachment: {emailAttachment.name}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -2460,7 +2546,7 @@ const AceadminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex relative">
+    <div className="flex h-[100dvh] max-h-[100dvh] overflow-hidden bg-gray-100 relative">
       {/* Overlay for mobile when sidebar is open */}
       {sidebarOpen && (
         <div 
@@ -2470,14 +2556,14 @@ const AceadminDashboard: React.FC = () => {
       )}
       
       {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-64' : 'w-0 lg:w-20'} bg-gray-800 text-white transition-all duration-300 flex flex-col fixed h-screen z-50 overflow-hidden`}>
-        <div className="p-4 border-b border-gray-700">
+      <div className={`${sidebarOpen ? 'w-64' : 'w-0 lg:w-20'} bg-gray-800 text-white transition-all duration-300 flex flex-col fixed inset-y-0 left-0 z-50 h-[100dvh] overflow-hidden`}>
+        <div className="border-b border-gray-700 p-4" style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center justify-between">
             <h2 className={`${sidebarOpen ? 'block' : 'hidden'} font-bold text-lg whitespace-nowrap`}>GAG Admin</h2>
             {sidebarOpen && (
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-1 hover:bg-gray-700 rounded transition-colors"
+                className="flex h-11 w-11 items-center justify-center rounded hover:bg-gray-700 transition-colors lg:hidden"
                 aria-label="Close sidebar"
               >
                 <X className="w-5 h-5" />
@@ -2502,7 +2588,7 @@ const AceadminDashboard: React.FC = () => {
               setActiveSection('dashboard');
               if (isMobile) setSidebarOpen(false);
             }}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+            className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
               activeSection === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-700'
             }`}
           >
@@ -2520,7 +2606,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('platforms');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'platforms' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2533,7 +2619,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('faqs');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'faqs' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2546,7 +2632,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('notifications');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'notifications' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2565,7 +2651,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('users');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'users' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2578,7 +2664,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('labels');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'labels' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2591,7 +2677,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('loans');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'loans' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2610,7 +2696,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('email-promotions');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'email-promotions' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2623,7 +2709,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('bonuses');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'bonuses' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2636,7 +2722,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('wheel');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'wheel' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2655,7 +2741,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('support-tickets');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'support-tickets' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2674,7 +2760,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('agents');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'agents' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2687,7 +2773,7 @@ const AceadminDashboard: React.FC = () => {
                 setActiveSection('analytics');
                 if (isMobile) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 min-h-[44px] rounded-lg transition-colors ${
                 activeSection === 'analytics' ? 'bg-blue-600' : 'hover:bg-gray-700'
               }`}
             >
@@ -2700,7 +2786,7 @@ const AceadminDashboard: React.FC = () => {
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            className="flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-700"
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
             <span className={`${sidebarOpen ? 'block' : 'hidden'} whitespace-nowrap`}>Logout</span>
@@ -2709,19 +2795,19 @@ const AceadminDashboard: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col transition-[margin] duration-300 ease-in-out ml-0 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
+      <div className={`flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-in-out ml-0 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sticky top-0 z-30" style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 sm:gap-4">
+        <header className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 sm:px-6" style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
                 aria-label="Toggle sidebar"
               >
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
-              <span className="text-gray-700 font-medium text-sm sm:text-base">{SECTION_TITLES[activeSection]}</span>
+              <span className="truncate text-base font-medium text-gray-700">{SECTION_TITLES[activeSection]}</span>
             </div>
             <div className="relative" ref={dropdownRef}>
               <button
@@ -2754,7 +2840,7 @@ const AceadminDashboard: React.FC = () => {
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6">
           <div className="max-w-7xl mx-auto">
             {loading && (
               <div className="flex justify-center items-center py-20">
