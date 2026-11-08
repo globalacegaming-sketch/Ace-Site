@@ -1339,7 +1339,7 @@ const AceadminDashboard: React.FC = () => {
         );
 
         if (response.data.success) {
-          toast.success(response.data.message || 'Emails sent successfully!');
+          toast.success(response.data.message || 'Emails sent successfully!', { duration: 8000 });
           // Reset form
           setEmailForm({
             subject: '',

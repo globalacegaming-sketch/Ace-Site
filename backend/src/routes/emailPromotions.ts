@@ -15,11 +15,13 @@ import { applyRecipientName, containsNameToken, displayFirstName, PREVIEW_FIRST_
 import { buildPromotionalAttachmentHtml } from '../templates/email/promotionalAttachment';
 import { getEmailLogoFilePath, prepareHtmlWithInlineLogo, toAbsolutePublicUrl } from '../templates/email/emailLogo';
 
-// Extend Express Request interface to include timedout property from connect-timeout middleware
+// connect-timeout stamps the request when the global limit (30s) is hit and
+// answers the client with "Response timeout". clearTimeout() cancels that.
 declare global {
   namespace Express {
     interface Request {
       timedout?: boolean;
+      clearTimeout?: () => void;
     }
   }
 }
@@ -68,6 +70,160 @@ const isBrevoAuthFailure = (error: unknown): boolean => {
   const message = brevoErrorMessage(error).toLowerCase();
   return status === 401 || message.includes('api key') || message.includes('unauthorized');
 };
+
+const brevoStatus = (error: unknown): number => {
+  const record = error && typeof error === 'object'
+    ? error as { status?: number; response?: { status?: number; statusCode?: number } }
+    : undefined;
+  return record?.status || record?.response?.status || record?.response?.statusCode || 0;
+};
+
+const isRetryableBrevoError = (error: unknown): boolean => {
+  const status = brevoStatus(error);
+  if (status === 429 || status >= 500) return true;
+  const code = error && typeof error === 'object' ? String((error as { code?: string }).code || '') : '';
+  return ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ESOCKETTIMEDOUT', 'EAI_AGAIN'].includes(code);
+};
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The global request timeout is 30s and it used to abort the send, so the
+ * first recipients were delivered and everyone after that was skipped.
+ * This route answers quickly and finishes delivery on its own.
+ */
+const releaseRequestTimeout = (req: Request) => {
+  if (typeof req.clearTimeout === 'function') req.clearTimeout();
+};
+
+// Brevo allows 99 addresses across to + cc + bcc. One slot is the visible To
+// (the sender), so members stay on Bcc and cannot see each other.
+const MAX_BCC_PER_BATCH = 98;
+
+type LogoAttachment = { name: string; content: string } | null;
+
+type BatchOutcome = { status: 'ok' | 'auth' | 'fail'; sent: number };
+
+async function sendBrevoBatch(
+  apiInstance: SibApiV3Sdk.TransactionalEmailsApi,
+  sender: { name: string; email: string },
+  batch: string[],
+  subject: string,
+  html: string,
+  attachment: LogoAttachment,
+): Promise<BatchOutcome> {
+  const batchEmail = new SibApiV3Sdk.SendSmtpEmail();
+  batchEmail.sender = sender;
+  batchEmail.to = [{ email: sender.email }];
+  batchEmail.bcc = batch.map((email) => ({ email }));
+  batchEmail.subject = subject;
+  batchEmail.htmlContent = html;
+  if (attachment) batchEmail.attachment = [attachment];
+  batchEmail.tags = ['promotional'];
+
+  const attempt = () => apiInstance.sendTransacEmail(batchEmail);
+
+  try {
+    await attempt();
+    return { status: 'ok', sent: batch.length };
+  } catch (error: unknown) {
+    if (isBrevoAuthFailure(error)) return { status: 'auth', sent: 0 };
+
+    const message = brevoErrorMessage(error);
+    // One bad address makes Brevo reject the whole batch. Split to deliver the
+    // valid ones. Content or sender errors are not recipient problems, so those
+    // stay a single failure instead of fanning out into one request per person.
+    const recipientProblem = brevoStatus(error) === 400
+      && /recipient|email address|not valid|invalid email/i.test(message);
+    if ((message.toLowerCase().includes('too many recipients') || recipientProblem) && batch.length > 1) {
+      const mid = Math.ceil(batch.length / 2);
+      const first = await sendBrevoBatch(apiInstance, sender, batch.slice(0, mid), subject, html, attachment);
+      if (first.status === 'auth') return first;
+      const second = await sendBrevoBatch(apiInstance, sender, batch.slice(mid), subject, html, attachment);
+      const sent = first.sent + second.sent;
+      if (second.status === 'auth') return { status: 'auth', sent };
+      return { status: sent === batch.length ? 'ok' : 'fail', sent };
+    }
+
+    // Retry the same batch once. Do not fall back to one-by-one sends:
+    // a slow Brevo response used to be treated as a failure and then resent
+    // per person, which both duplicated mail and ran out the request timer.
+    if (isRetryableBrevoError(error)) {
+      logger.warn(`Promotional batch hit a retryable error (${message}). Retrying once.`);
+      await delay(2000);
+      try {
+        await attempt();
+        return { status: 'ok', sent: batch.length };
+      } catch (retryError: unknown) {
+        if (isBrevoAuthFailure(retryError)) return { status: 'auth', sent: 0 };
+        logger.error(`Promotional batch failed after retry: ${brevoErrorMessage(retryError)}`);
+        return { status: 'fail', sent: 0 };
+      }
+    }
+
+    logger.error(`Promotional batch failed: ${message}`);
+    return { status: 'fail', sent: 0 };
+  }
+}
+
+function deliverPromotionalEmails(params: {
+  apiInstance: SibApiV3Sdk.TransactionalEmailsApi;
+  sender: { name: string; email: string };
+  variants: Array<{ emails: string[]; subject: string; html: string }>;
+  attachment: LogoAttachment;
+  attachmentPath?: string;
+  total: number;
+  priorSuccessful?: number;
+}): void {
+  void (async () => {
+    let successful = params.priorSuccessful ?? 0;
+    let authStopped = false;
+    try {
+      for (const variant of params.variants) {
+        if (authStopped) break;
+        for (let offset = 0; offset < variant.emails.length; offset += MAX_BCC_PER_BATCH) {
+          const batch = variant.emails.slice(offset, offset + MAX_BCC_PER_BATCH);
+          const outcome = await sendBrevoBatch(
+            params.apiInstance,
+            params.sender,
+            batch,
+            variant.subject,
+            variant.html,
+            params.attachment,
+          );
+          successful += outcome.sent;
+          logger.info(`Promotional batch sent ${outcome.sent}/${batch.length}`, {
+            subject: variant.subject,
+            status: outcome.status,
+          });
+          if (outcome.status === 'auth') {
+            authStopped = true;
+            break;
+          }
+          if (offset + MAX_BCC_PER_BATCH < variant.emails.length) await delay(400);
+        }
+        if (!authStopped) await delay(400);
+      }
+
+      logger.info('Promotional email delivery finished', {
+        total: params.total,
+        successful,
+        failed: params.total - successful,
+        authStopped,
+      });
+    } catch (error: unknown) {
+      logger.error(`Promotional email delivery stopped: ${brevoErrorMessage(error)}`);
+    } finally {
+      if (params.attachmentPath && fs.existsSync(params.attachmentPath)) {
+        try {
+          fs.unlinkSync(params.attachmentPath);
+        } catch (error) {
+          logger.error('Error deleting attachment file:', error);
+        }
+      }
+    }
+  })();
+}
 
 const parseIdList = (value: unknown): string[] | null => {
   if (value == null || value === '') return [];
@@ -273,19 +429,13 @@ router.post(
 router.post(
   '/send',
   requireAgentAuth,
+  (req, _res, next) => {
+    // Cancel the 30s "Response timeout" before upload and delivery work starts.
+    releaseRequestTimeout(req);
+    next();
+  },
   emailAttachmentUpload.single('attachment'),
   async (req: Request, res: Response) => {
-    // Check if request has timed out before processing
-    if (req.timedout) {
-      if (!res.headersSent) {
-        return res.status(408).json({
-          success: false,
-          message: 'Request timeout. Email sending may still be processing in the background.'
-        });
-      }
-      return;
-    }
-
     try {
       const { subject, emailBody, headerTitle, headerSubtitle, recipientIds, recipientEmails, labelIds, labelMatch } = req.body;
       const attachment = req.file;
@@ -411,25 +561,15 @@ router.post(
         });
       }
 
-      // Send emails using Brevo API
-      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-
-      sendSmtpEmail.sender = {
+      const sender = {
         name: process.env.BREVO_FROM_NAME || 'Global Ace Gaming',
         email: process.env.BREVO_FROM_EMAIL || 'noreply@globalacegaming.com'
       };
-      
-      // Ensure the sender name is properly set to avoid showing email address
-      if (!sendSmtpEmail.sender.name || sendSmtpEmail.sender.name === sendSmtpEmail.sender.email) {
-        sendSmtpEmail.sender.name = 'Global Ace Gaming';
+      if (!sender.name || sender.name === sender.email) {
+        sender.name = 'Global Ace Gaming';
       }
 
       const { html: brandedHtml, attachment: logoAttachment } = prepareHtmlWithInlineLogo(emailHtml);
-      if (logoAttachment) {
-        sendSmtpEmail.attachment = [logoAttachment];
-      }
-
-      sendSmtpEmail.tags = ['promotional'];
 
       const personalized = [subject, headerTitle, headerSubtitle, emailBody].some((value) => containsNameToken(value));
       const variants: Array<{ emails: string[]; subject: string; html: string }> = [];
@@ -456,240 +596,91 @@ router.post(
         }
       }
 
-      // Track results
-      const results = {
-        total: recipients.length,
-        successful: 0,
-        failed: 0,
-        errors: [] as string[]
+      logger.info(`Sending email to ${recipients.length} recipients in ${variants.length} version(s)`);
+
+      const removeUpload = () => {
+        if (attachment?.path && fs.existsSync(attachment.path)) {
+          try {
+            fs.unlinkSync(attachment.path);
+          } catch (unlinkError) {
+            logger.error('Error deleting attachment file:', unlinkError);
+          }
+        }
       };
 
-      // Brevo has a limit of 99 recipients per email, so we need to batch them.
-      // People who share a first name can still share one message, because {Name} is the same for them.
-      const MAX_RECIPIENTS_PER_BATCH = 99;
+      // The first batch is sent on this request so a bad API key or sender
+      // comes back as an error. Everyone after that is delivered in the
+      // background, where the 30s response timeout cannot stop the list.
+      const firstVariant = variants[0];
+      const firstBatch = firstVariant.emails.slice(0, MAX_BCC_PER_BATCH);
+      const firstOutcome = await sendBrevoBatch(
+        apiInstance,
+        sender,
+        firstBatch,
+        firstVariant.subject,
+        firstVariant.html,
+        logoAttachment,
+      );
 
-      logger.info(`Sending email to ${recipients.length} recipients in ${variants.length} version(s)`);
-      let authStopped = false;
-
-      for (const variant of variants) {
-      if (req.timedout) break;
-      sendSmtpEmail.subject = variant.subject;
-      sendSmtpEmail.htmlContent = variant.html;
-      const batches: string[][] = [];
-      for (let i = 0; i < variant.emails.length; i += MAX_RECIPIENTS_PER_BATCH) {
-        batches.push(variant.emails.slice(i, i + MAX_RECIPIENTS_PER_BATCH));
-      }
-
-      // Send emails in batches
-      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        // Check for timeout periodically
-        if (req.timedout) {
-          logger.warn(`Request timed out while processing batch ${batchIndex + 1}/${batches.length}. Stopping email sending.`);
-          break;
-        }
-
-        const batch = batches[batchIndex];
-        
-        try {
-          // Create a copy of the email for this batch
-          // Use BCC to hide recipient email addresses from each other
-          const batchEmail = new SibApiV3Sdk.SendSmtpEmail();
-          batchEmail.sender = sendSmtpEmail.sender;
-          // Set a single "to" address (the sender's email) and use BCC for all recipients
-          // This ensures recipients cannot see each other's email addresses
-          batchEmail.to = [{ email: sendSmtpEmail.sender.email }];
-          batchEmail.bcc = batch.map(email => ({ email }));
-          batchEmail.subject = sendSmtpEmail.subject;
-          batchEmail.htmlContent = sendSmtpEmail.htmlContent;
-          batchEmail.attachment = sendSmtpEmail.attachment;
-          batchEmail.tags = sendSmtpEmail.tags;
-          
-          // Set timeout for each email batch (10 seconds)
-          const result = await Promise.race([
-            apiInstance.sendTransacEmail(batchEmail),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Email batch send timeout')), 10000)
-            )
-          ]) as any;
-          
-          results.successful += batch.length;
-          
-          logger.info(`Batch ${batchIndex + 1}/${batches.length}: Successfully sent ${batch.length} emails`, {
-            subject,
-            messageId: result.messageId
-          });
-          
-          // Add a small delay between batches to avoid rate limiting (except for the last batch)
-          if (batchIndex < batches.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay between batches
-          }
-        } catch (error: unknown) {
-          const errorMessage = brevoErrorMessage(error);
-          logger.error(`Error sending batch ${batchIndex + 1}: ${errorMessage}`);
-
-          if (isBrevoAuthFailure(error)) {
-            authStopped = true;
-            results.failed += batch.length;
-            results.errors.push(errorMessage);
-            break;
-          }
-
-          // Check if it's a "too many recipients" error
-          if (errorMessage.includes('Too many recipients')) {
-            // If batch is too large, split and retry
-            logger.warn(`Batch ${batchIndex + 1} had too many recipients, splitting into smaller batches`);
-            const halfSize = Math.ceil(batch.length / 2);
-            const firstHalf = batch.slice(0, halfSize);
-            const secondHalf = batch.slice(halfSize);
-            
-            // Retry with first half
-            if (firstHalf.length > 0 && firstHalf.length <= MAX_RECIPIENTS_PER_BATCH) {
-              try {
-                const splitEmail = new SibApiV3Sdk.SendSmtpEmail();
-                splitEmail.sender = sendSmtpEmail.sender;
-                splitEmail.to = [{ email: sendSmtpEmail.sender.email }];
-                splitEmail.bcc = firstHalf.map(email => ({ email }));
-                splitEmail.subject = sendSmtpEmail.subject;
-                splitEmail.htmlContent = sendSmtpEmail.htmlContent;
-                splitEmail.attachment = sendSmtpEmail.attachment;
-                splitEmail.tags = sendSmtpEmail.tags;
-                await apiInstance.sendTransacEmail(splitEmail);
-                results.successful += firstHalf.length;
-              } catch (err: any) {
-                // If still fails, try individually
-                for (const email of firstHalf) {
-                  try {
-                    const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
-                    individualEmail.sender = sendSmtpEmail.sender;
-                    individualEmail.to = [{ email }];
-                    individualEmail.subject = sendSmtpEmail.subject;
-                    individualEmail.htmlContent = sendSmtpEmail.htmlContent;
-                    individualEmail.attachment = sendSmtpEmail.attachment;
-                    individualEmail.tags = sendSmtpEmail.tags;
-                    await apiInstance.sendTransacEmail(individualEmail);
-                    results.successful++;
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                  } catch (e: any) {
-                    results.failed++;
-                    const emailForError = email; // Capture email in scope
-                    results.errors.push(`${emailForError}: ${e.response?.body?.message || e.message || 'Unknown error'}`);
-                  }
-                }
-              }
-            }
-            
-            // Retry with second half
-            if (secondHalf.length > 0 && secondHalf.length <= MAX_RECIPIENTS_PER_BATCH) {
-              try {
-                const splitEmail = new SibApiV3Sdk.SendSmtpEmail();
-                splitEmail.sender = sendSmtpEmail.sender;
-                splitEmail.to = [{ email: sendSmtpEmail.sender.email }];
-                splitEmail.bcc = secondHalf.map(emailAddr => ({ email: emailAddr }));
-                splitEmail.subject = sendSmtpEmail.subject;
-                splitEmail.htmlContent = sendSmtpEmail.htmlContent;
-                splitEmail.attachment = sendSmtpEmail.attachment;
-                splitEmail.tags = sendSmtpEmail.tags;
-                await apiInstance.sendTransacEmail(splitEmail);
-                results.successful += secondHalf.length;
-              } catch (err: any) {
-                // If still fails, try individually
-                for (const emailAddr of secondHalf) {
-                  try {
-                    const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
-                    individualEmail.sender = sendSmtpEmail.sender;
-                    individualEmail.to = [{ email: emailAddr }];
-                    individualEmail.subject = sendSmtpEmail.subject;
-                    individualEmail.htmlContent = sendSmtpEmail.htmlContent;
-                    individualEmail.attachment = sendSmtpEmail.attachment;
-                    individualEmail.tags = sendSmtpEmail.tags;
-                    await apiInstance.sendTransacEmail(individualEmail);
-                    results.successful++;
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                  } catch (e: any) {
-                    results.failed++;
-                    results.errors.push(`${emailAddr}: ${e.response?.body?.message || e.message || 'Unknown error'}`);
-                  }
-                }
-              }
-            }
-          } else {
-            // If batch fails for other reasons, try sending individually as fallback
-            // For individual sends, use "to" since there's only one recipient
-            for (const email of batch) {
-              if (req.timedout) break; // Check timeout before each individual send
-              
-              try {
-                const individualEmail = new SibApiV3Sdk.SendSmtpEmail();
-                individualEmail.sender = sendSmtpEmail.sender;
-                individualEmail.to = [{ email }];
-                individualEmail.subject = sendSmtpEmail.subject;
-                individualEmail.htmlContent = sendSmtpEmail.htmlContent;
-                individualEmail.attachment = sendSmtpEmail.attachment;
-                individualEmail.tags = sendSmtpEmail.tags;
-                
-                await Promise.race([
-                  apiInstance.sendTransacEmail(individualEmail),
-                  new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Individual email send timeout')), 5000)
-                  )
-                ]);
-                results.successful++;
-                
-                // Small delay between individual sends to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 100));
-              } catch (err: unknown) {
-                results.failed++;
-                const errorMsg = brevoErrorMessage(err);
-                results.errors.push(`${email}: ${errorMsg}`);
-                logger.error(`Failed to send email to ${email}: ${errorMsg}`);
-                if (isBrevoAuthFailure(err)) {
-                  authStopped = true;
-                  break;
-                }
-              }
-            }
-          }
-        }
-        if (authStopped) break;
-      }
-      if (authStopped) break;
-      }
-
-      // Clean up attachment file
-      if (attachment && fs.existsSync(attachment.path)) {
-        try {
-          fs.unlinkSync(attachment.path);
-        } catch (error) {
-          logger.error('Error deleting attachment file:', error);
-        }
-      }
-
-      if (authStopped && !res.headersSent) {
+      if (firstOutcome.status === 'auth' || (firstOutcome.status === 'fail' && firstOutcome.sent === 0)) {
+        removeUpload();
         return res.status(502).json({
           success: false,
-          message: 'Brevo rejected the API key, so the email was not delivered. Enable the transactional email key in Brevo, or replace BREVO_API_KEY, then send again.',
-          data: {
-            total: results.total,
-            successful: results.successful,
-            failed: results.failed
-          }
+          message: firstOutcome.status === 'auth'
+            ? 'Brevo rejected the API key, so the email was not delivered. Enable the transactional email key in Brevo, or replace BREVO_API_KEY, then send again.'
+            : 'The email provider did not accept this message, so nothing was delivered. Check the sender address in Brevo, then send again.',
         });
       }
 
-      // Only send response if headers haven't been sent yet
-      if (!res.headersSent) {
+      const remainingFirst = firstVariant.emails.slice(MAX_BCC_PER_BATCH);
+      const remainingVariants = [
+        ...(remainingFirst.length > 0 ? [{ ...firstVariant, emails: remainingFirst }] : []),
+        ...variants.slice(1),
+      ];
+
+      if (remainingVariants.length === 0) {
+        removeUpload();
+        const failed = recipients.length - firstOutcome.sent;
         return res.json({
           success: true,
-          message: `Email promotion sent. ${results.successful} successful, ${results.failed} failed.`,
+          message: failed === 0
+            ? `Email sent to ${firstOutcome.sent} ${firstOutcome.sent === 1 ? 'person' : 'people'}.`
+            : `Email sent to ${firstOutcome.sent} of ${recipients.length} people. The email provider rejected the rest.`,
           data: {
-            total: results.total,
-            successful: results.successful,
-            failed: results.failed,
-            errors: results.errors.length > 0 ? results.errors.slice(0, 10) : undefined // Limit error details to first 10
-          }
+            total: recipients.length,
+            successful: firstOutcome.sent,
+            failed,
+            status: 'sent',
+          },
         });
       }
+
+      deliverPromotionalEmails({
+        apiInstance,
+        sender,
+        variants: remainingVariants,
+        attachment: logoAttachment,
+        attachmentPath: attachment?.path,
+        total: recipients.length,
+        priorSuccessful: firstOutcome.sent,
+      });
+
+      return res.status(202).json({
+        success: true,
+        message: `Sending to ${recipients.length} people. The first group is on its way, and the rest continue in the background.`,
+        data: {
+          total: recipients.length,
+          status: 'sending',
+        },
+      });
     } catch (error: unknown) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          logger.error('Error deleting attachment file:', unlinkError);
+        }
+      }
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Error sending promotional emails:', errorMessage);
       
